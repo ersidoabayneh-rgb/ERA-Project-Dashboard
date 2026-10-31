@@ -131,6 +131,16 @@ export default function SupervisionConsultantView({
     );
   }, [currentUser]);
 
+  const isAuthorizedAuditAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    return (
+      currentUser.role === 'master_admin' ||
+      currentUser.role === 'admin' ||
+      currentUser.role === 'directorate_admin' ||
+      currentUser.role === 'cpm_admin'
+    );
+  }, [currentUser]);
+
   // Check whether current user is an ERA Editor or Approver
   const isEraUser = useMemo(() => {
     if (!currentUser) return false;
@@ -2128,6 +2138,7 @@ export default function SupervisionConsultantView({
 
   // Export Staffing & Invoice Report to PDF
   const handleExportPDF = () => {
+    if (!isAuthorizedAuditAdmin) return;
     try {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -2516,6 +2527,7 @@ export default function SupervisionConsultantView({
 
   // Export Fee Invoices & Payments as a Formatted PDF Report for Financial Auditing and Documentation
   const handleExportInvoicesAuditPDF = () => {
+    if (!isAuthorizedAuditAdmin) return;
     try {
       const doc = new jsPDF({
         orientation: 'landscape',
@@ -3008,13 +3020,15 @@ export default function SupervisionConsultantView({
               <Table className="w-4 h-4" />
             </button>
             
-            <button
-              onClick={handleExportPDF}
-              title="Export Project PDF"
-              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer border border-slate-200 dark:border-slate-700"
-            >
-              <Printer className="w-4 h-4" />
-            </button>
+            {isAuthorizedAuditAdmin && (
+              <button
+                onClick={handleExportPDF}
+                title="Export Project PDF"
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer border border-slate-200 dark:border-slate-700"
+              >
+                <Printer className="w-4 h-4" />
+              </button>
+            )}
             
             <button
               onClick={handleExportCSV}

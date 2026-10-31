@@ -108,6 +108,12 @@ export default function DlpDefectModal({
   onUpdateProject,
   onUpdateProjectStatus
 }: DlpDefectModalProps) {
+  const isAuthorizedAuditAdmin = 
+    currentUserObj?.role === 'master_admin' || 
+    currentUserObj?.role === 'admin' || 
+    currentUserObj?.role === 'directorate_admin' || 
+    currentUserObj?.role === 'cpm_admin';
+
   // Real-time ticking automated countdown state (updates every second)
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -519,6 +525,7 @@ export default function DlpDefectModal({
 
   // Generate & Download PDF Summary Report of all defects logged for this project
   const handleDownloadDlpReport = () => {
+    if (!isAuthorizedAuditAdmin) return;
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'pt',
@@ -741,15 +748,17 @@ export default function DlpDefectModal({
             </div>
 
             <div className="flex items-center gap-2 self-end sm:self-center">
-              <button
-                onClick={handleDownloadDlpReport}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer active:scale-95 border border-emerald-400/30"
-                title="Generate and download summary PDF report of all defects logged for this project"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Download Report (PDF)</span>
-                <span className="sm:hidden">PDF</span>
-              </button>
+              {isAuthorizedAuditAdmin && (
+                <button
+                  onClick={handleDownloadDlpReport}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer active:scale-95 border border-emerald-400/30"
+                  title="Generate and download summary PDF report of all defects logged for this project"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Download Report (PDF)</span>
+                  <span className="sm:hidden">PDF</span>
+                </button>
+              )}
               <button
                 onClick={onClose}
                 className="p-1.5 text-slate-400 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition cursor-pointer"

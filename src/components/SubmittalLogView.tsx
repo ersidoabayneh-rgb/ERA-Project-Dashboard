@@ -79,6 +79,11 @@ export default function SubmittalLogView({
   isReadonly = false,
   currentUserObj
 }: SubmittalLogViewProps) {
+  const isAuthorizedAuditAdmin = 
+    currentUserObj?.role === 'master_admin' || 
+    currentUserObj?.role === 'admin' || 
+    currentUserObj?.role === 'directorate_admin' || 
+    currentUserObj?.role === 'cpm_admin';
   const consultant: SupervisionConsultantInfo = useMemo(() => {
     if (project.supervisionConsultant) {
       return {
@@ -805,6 +810,7 @@ export default function SubmittalLogView({
   };
 
   const handleExportPdf = (forcedScope?: 'selected' | 'all') => {
+    if (!isAuthorizedAuditAdmin) return;
     // Determine which records to export (Selected Technical Submittals + Selected RFIs)
     const hasSelectedTech = selectedSubmittalNos.length > 0;
     const hasSelectedRfi = selectedRfiIds.length > 0;
@@ -1417,26 +1423,28 @@ export default function SubmittalLogView({
                   <option value="CONFIDENTIAL">CONFIDENTIAL</option>
                 </select>
               </div>
-              {(selectedSubmittalNos.length > 0 || selectedRfiIds.length > 0) ? (
-                <button
-                  onClick={() => handleExportPdf('selected')}
-                  className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
-                  title="Export selected RFIs and technical submittals directly to official PDF"
-                >
-                  <FileText className="w-4 h-4 text-rose-200" />
-                  <span>
-                    Export Selected ({selectedSubmittalNos.length + selectedRfiIds.length}) PDF
-                  </span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => handleExportPdf('all')}
-                  className="px-4 py-2 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl flex items-center gap-1.5 transition cursor-pointer border border-indigo-200 dark:border-indigo-800"
-                  title="Export all submittal & RFI records to a beautifully formatted PDF document."
-                >
-                  <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                  <span>Export All PDF</span>
-                </button>
+              {isAuthorizedAuditAdmin && (
+                (selectedSubmittalNos.length > 0 || selectedRfiIds.length > 0) ? (
+                  <button
+                    onClick={() => handleExportPdf('selected')}
+                    className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+                    title="Export selected RFIs and technical submittals directly to official PDF"
+                  >
+                    <FileText className="w-4 h-4 text-rose-200" />
+                    <span>
+                      Export Selected ({selectedSubmittalNos.length + selectedRfiIds.length}) PDF
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleExportPdf('all')}
+                    className="px-4 py-2 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl flex items-center gap-1.5 transition cursor-pointer border border-indigo-200 dark:border-indigo-800"
+                    title="Export all submittal & RFI records to a beautifully formatted PDF document."
+                  >
+                    <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>Export All PDF</span>
+                  </button>
+                )
               )}
             </div>
           </div>
@@ -1622,14 +1630,16 @@ export default function SubmittalLogView({
               <Printer className="w-3.5 h-3.5" />
               <span>Print Selected ({selectedSubmittalNos.length})</span>
             </button>
-            <button
-              onClick={() => handleExportPdf('selected')}
-              className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-              title="Export selected technical submittals and RFIs directly to official PDF"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Export to PDF ({selectedSubmittalNos.length + selectedRfiIds.length})</span>
-            </button>
+            {isAuthorizedAuditAdmin && (
+              <button
+                onClick={() => handleExportPdf('selected')}
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Export selected technical submittals and RFIs directly to official PDF"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Export to PDF ({selectedSubmittalNos.length + selectedRfiIds.length})</span>
+              </button>
+            )}
             <button
               onClick={() => setSelectedSubmittalNos([])}
               className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition cursor-pointer"

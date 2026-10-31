@@ -260,6 +260,12 @@ export default function GroupReportGenerator({
     currentUserObj?.role === 'directorate_admin' || 
     currentUserObj?.role === 'cpm_admin';
 
+  const isAuthorizedAuditAdmin = 
+    currentUserObj?.role === 'master_admin' || 
+    currentUserObj?.role === 'admin' || 
+    currentUserObj?.role === 'directorate_admin' || 
+    currentUserObj?.role === 'cpm_admin';
+
   const canAccessGroupReport = !isConsultantOrContractor;
 
   // Universal Signature / Sign-Off Block builder supporting dynamic credentials and orientations
@@ -403,6 +409,12 @@ export default function GroupReportGenerator({
   const [isInstitutesModalOpen, setIsInstitutesModalOpen] = useState(false);
   const [institutesModalTab, setInstitutesModalTab] = useState<'institutes' | 'guaranties'>('guaranties');
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthorizedAuditAdmin && auditPerspective !== 'contractor') {
+      setAuditPerspective('contractor');
+    }
+  }, [isAuthorizedAuditAdmin, auditPerspective]);
 
   // EFY Month Definitions (12 Fiscal Months in Gregorian Calendar: Jul to Jun)
   const EFY_MONTH_DEFINITIONS = [
@@ -10565,14 +10577,16 @@ export default function GroupReportGenerator({
               </>
             ) : reportMode === 'audit' ? (
               <>
-                <button
-                  onClick={handleExportAuditPDF}
-                  id="btn-export-audit-pdf"
-                  disabled={processedProjects.length === 0}
-                  className="w-full flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2 rounded-lg text-xs font-extrabold shadow-2xs transition cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" /> Export Audit PDF
-                </button>
+                {isAuthorizedAuditAdmin && (
+                  <button
+                    onClick={handleExportAuditPDF}
+                    id="btn-export-audit-pdf"
+                    disabled={processedProjects.length === 0}
+                    className="w-full flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2 rounded-lg text-xs font-extrabold shadow-2xs transition cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Export Audit PDF
+                  </button>
+                )}
                 <button
                   onClick={handleExportAuditCSV}
                   id="btn-export-audit-csv"
@@ -10704,7 +10718,7 @@ export default function GroupReportGenerator({
         <div className={reportMode === 'progressComparison' ? "w-full space-y-2.5 sm:space-y-3" : "lg:col-span-8 space-y-2.5 sm:space-y-3"}>
 
           {/* Supervision Consultant Performance Evaluation Cohort Switcher: Sole vs JV Separately */}
-          {(reportMode === 'audit' && (groupType === 'consultant' || auditPerspective === 'consultant')) && (
+          {(reportMode === 'audit' && isAuthorizedAuditAdmin && (groupType === 'consultant' || auditPerspective === 'consultant')) && (
             <div className="p-2.5 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-900/60 space-y-1.5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -11190,43 +11204,45 @@ export default function GroupReportGenerator({
             {reportMode === 'audit' && (
               <div className="space-y-2">
                 {/* Grading Domain Selector */}
-                <div className="bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/60 p-2.5 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-2 shadow-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                      ⚖️
+                {isAuthorizedAuditAdmin && (
+                  <div className="bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/60 p-2.5 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-2 shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                        ⚖️
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wide">
+                          Select Grading & Audit Focus Domain
+                        </h4>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                          Switch between project contractor performance grading and supervision consultant SLA grading
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wide">
-                        Select Grading & Audit Focus Domain
-                      </h4>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                        Switch between project contractor performance grading and supervision consultant SLA grading
-                      </p>
+                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                      <button
+                        onClick={() => setAuditPerspective('contractor')}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                          auditPerspective === 'contractor'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        <span>🏗️ Project / Contractor</span>
+                      </button>
+                      <button
+                        onClick={() => setAuditPerspective('consultant')}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                          auditPerspective === 'consultant'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        <span>👥 Supervision Consultant</span>
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
-                    <button
-                      onClick={() => setAuditPerspective('contractor')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
-                        auditPerspective === 'contractor'
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      <span>🏗️ Project / Contractor</span>
-                    </button>
-                    <button
-                      onClick={() => setAuditPerspective('consultant')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
-                        auditPerspective === 'consultant'
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      <span>👥 Supervision Consultant</span>
-                    </button>
-                  </div>
-                </div>
+                )}
 
                 {auditPerspective === 'contractor' && (
                   <div className="bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 p-2.5 rounded-xl text-2xs space-y-1.5 text-slate-600 dark:text-slate-400">

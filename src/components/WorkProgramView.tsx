@@ -46,10 +46,17 @@ interface UploadedScheduleMeta {
 
 interface WorkProgramViewProps {
   project: Project;
+  currentUser?: any;
   onUpdateActivities: (activities: WorkProgramActivity[]) => void;
 }
 
-export default function WorkProgramView({ project, onUpdateActivities }: WorkProgramViewProps) {
+export default function WorkProgramView({ project, currentUser, onUpdateActivities }: WorkProgramViewProps) {
+  const isAuthorizedAuditAdmin = 
+    currentUser?.role === 'master_admin' || 
+    currentUser?.role === 'admin' || 
+    currentUser?.role === 'directorate_admin' || 
+    currentUser?.role === 'cpm_admin';
+
   const activities = project.workProgram || [];
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
@@ -520,14 +527,16 @@ export default function WorkProgramView({ project, onUpdateActivities }: WorkPro
 
           {activities.length > 0 && (
             <>
-              <button
-                onClick={() => generateCpmPdfReport(project, activities)}
-                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition shadow-xs"
-                title="Export Critical Path Method diagram, activity table, and CPM logic to PDF"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Export CPM PDF
-              </button>
+              {isAuthorizedAuditAdmin && (
+                <button
+                  onClick={() => generateCpmPdfReport(project, activities)}
+                  className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                  title="Export Critical Path Method diagram, activity table, and CPM logic to PDF"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export CPM PDF
+                </button>
+              )}
               <button
                 onClick={handleExportCsv}
                 className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-250 text-xs font-bold py-1.5 px-3 rounded-xl flex items-center gap-1.5 transition"

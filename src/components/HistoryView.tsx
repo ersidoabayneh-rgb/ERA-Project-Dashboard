@@ -56,6 +56,12 @@ interface HistoryViewProps {
 }
 
 export default function HistoryView({ project, onTakeSnapshot, onClearHistory, onProjectUpdate, currentUserObj }: HistoryViewProps) {
+  const isAuthorizedAuditAdmin = useMemo(() => {
+    if (!currentUserObj) return false;
+    const r = currentUserObj.role;
+    return r === 'master_admin' || r === 'admin' || r === 'directorate_admin' || r === 'cpm_admin';
+  }, [currentUserObj]);
+
   const history = project.history || [];
   const [analyzing, setGenerating] = useState(false);
   const [logoError, setLogoError] = useState(false);
@@ -997,6 +1003,7 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     });
 
   const handleExportPDF = () => {
+    if (!isAuthorizedAuditAdmin) return;
     const doc = new jsPDF('p', 'pt', 'a4'); // portrait, point, A4 (595.28 x 841.89 pt)
     
     // Redirect helvetica to times for Times New Roman font support
@@ -4082,20 +4089,24 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
             </div>
           </div>
           <div className="flex gap-2 flex-wrap self-start md:self-auto">
-            <button
-              onClick={handleExportPDF}
-              className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black py-2 px-4 rounded-xl flex items-center gap-2 transition shadow-md cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Export Board PDF Report
-            </button>
-            <button
-              onClick={handleExportPDF}
-              className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-black py-2 px-4 rounded-xl flex items-center gap-2 transition shadow-md cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Download Audit Summary
-            </button>
+            {isAuthorizedAuditAdmin && (
+              <>
+                <button
+                  onClick={handleExportPDF}
+                  className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black py-2 px-4 rounded-xl flex items-center gap-2 transition shadow-md cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Export Board PDF Report
+                </button>
+                <button
+                  onClick={handleExportPDF}
+                  className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-black py-2 px-4 rounded-xl flex items-center gap-2 transition shadow-md cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download Audit Summary
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -4242,21 +4253,25 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                 Print Layout
               </button>
 
-              <button
-                onClick={handleExportPDF}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-2xs font-extrabold py-1.5 px-3 rounded-xl flex items-center gap-1 transition shadow-md select-none cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Export Board PDF
-              </button>
+              {isAuthorizedAuditAdmin && (
+                <>
+                  <button
+                    onClick={handleExportPDF}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-2xs font-extrabold py-1.5 px-3 rounded-xl flex items-center gap-1 transition shadow-md select-none cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Export Board PDF
+                  </button>
 
-              <button
-                onClick={handleExportPDF}
-                className="bg-blue-600 hover:bg-blue-700 text-white text-2xs font-extrabold py-1.5 px-3 rounded-xl flex items-center gap-1 transition shadow-md select-none cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Download Audit Summary
-              </button>
+                  <button
+                    onClick={handleExportPDF}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-2xs font-extrabold py-1.5 px-3 rounded-xl flex items-center gap-1 transition shadow-md select-none cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download Audit Summary
+                  </button>
+                </>
+              )}
             </div>
           </div>
 

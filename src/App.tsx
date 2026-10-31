@@ -148,30 +148,45 @@ export function isProjectApprover(user: User | null, projectId: string, project?
 
 export function canUserViewPage(user: User | null, pageId: string): boolean {
   if (!user) return false;
-  const isAdmin = user.role === 'master_admin' || user.role === 'admin' || user.role === 'cpm_admin' || user.role === 'directorate_admin' || user.role === 'pmo_admin' || (user.role && user.role.includes('admin'));
-  if (isAdmin || user.username === 'proj_1781786415663') {
+  const roleStr = String(user.role || '').toLowerCase();
+  const usernameStr = String(user.username || '').toLowerCase();
+
+  const isAdmin = 
+    user.role === 'master_admin' || 
+    user.role === 'admin' || 
+    user.role === 'cpm_admin' || 
+    user.role === 'directorate_admin' || 
+    user.role === 'pmo_admin' || 
+    roleStr.includes('admin') ||
+    user.username === 'proj_1781786415663' ||
+    usernameStr.includes('ersido');
+
+  if (isAdmin) {
     return true;
   }
 
-  // Contractor Editor is allowed to edit and view the Submittal log and Daily Activities pages
-  if (user.role === 'contractor_editor') {
-    return pageId === 'submittalLog' || pageId === 'dailyActivities';
+  // Contractor Editor/Approver/Role is restricted strictly to Dashboard, Submittal log, and Daily Activities pages
+  if (roleStr.includes('contractor')) {
+    if (pageId === 'dash' || pageId === 'submittalLog' || pageId === 'dailyActivities') {
+      return true;
+    }
+    if (user.assignedPages && Array.isArray(user.assignedPages) && user.assignedPages.length > 0) {
+      return user.assignedPages.includes(pageId);
+    }
+    return false;
   }
 
-  // Consultant Approver or Editor are NOT allowed to view or access Performance KPIs & RFI SLA Evaluation, history page, setting page, KPIs page, progress comparison page and Issue log page
-  if (user.role === 'consultant_approver' || user.role === 'consultant_editor') {
+  // Consultant Approver, Editor, or Role are NOT allowed to view or access Performance KPIs & RFI SLA Evaluation, history page, setting page, KPIs page, progress comparison page and Issue log page
+  if (roleStr.includes('consultant')) {
     if (pageId === 'history' || pageId === 'settings' || pageId === 'kpiEditor' || pageId === 'progressPlanEditor' || pageId === 'issueLog') {
       return false;
     }
   }
 
-  if (pageId === 'history') {
+  if (pageId === 'history' || pageId === 'settings') {
     return isAdmin;
   }
 
-  if (pageId === 'settings') {
-    return false;
-  }
   if (user.assignedPages && Array.isArray(user.assignedPages) && user.assignedPages.length > 0) {
     return user.assignedPages.includes(pageId);
   }
@@ -180,27 +195,46 @@ export function canUserViewPage(user: User | null, pageId: string): boolean {
 
 export function canUserEditPage(user: User | null, pageId: string): boolean {
   if (!user) return false;
-  const isAdmin = user.role === 'master_admin' || user.role === 'admin' || user.role === 'cpm_admin' || user.role === 'directorate_admin' || user.role === 'pmo_admin' || (user.role && user.role.includes('admin'));
-  if (isAdmin || user.username === 'proj_1781786415663') {
+  const roleStr = String(user.role || '').toLowerCase();
+  const usernameStr = String(user.username || '').toLowerCase();
+
+  const isAdmin = 
+    user.role === 'master_admin' || 
+    user.role === 'admin' || 
+    user.role === 'cpm_admin' || 
+    user.role === 'directorate_admin' || 
+    user.role === 'pmo_admin' || 
+    roleStr.includes('admin') ||
+    user.username === 'proj_1781786415663' ||
+    usernameStr.includes('ersido');
+
+  if (isAdmin) {
     return true;
   }
-  if (user.role === 'viewer') {
+
+  if (roleStr.includes('viewer')) {
     return false;
   }
 
-  // Contractor Editor is allowed to edit and view the Submittal log and Daily Activities pages
-  if (user.role === 'contractor_editor') {
-    return pageId === 'submittalLog' || pageId === 'dailyActivities';
+  // Contractor Editor is allowed to edit the Submittal log and Daily Activities pages
+  if (roleStr.includes('contractor')) {
+    if (pageId === 'submittalLog' || pageId === 'dailyActivities') {
+      return true;
+    }
+    if (user.assignedPages && Array.isArray(user.assignedPages) && user.assignedPages.length > 0) {
+      return user.assignedPages.includes(pageId);
+    }
+    return false;
   }
 
-  // Consultant Approver or Editor are NOT allowed to view or access forbidden pages
-  if (user.role === 'consultant_approver' || user.role === 'consultant_editor') {
+  // Consultant Approver, Editor, or Role are NOT allowed to edit forbidden pages
+  if (roleStr.includes('consultant')) {
     if (pageId === 'history' || pageId === 'settings' || pageId === 'kpiEditor' || pageId === 'progressPlanEditor' || pageId === 'issueLog') {
       return false;
     }
   }
 
-  if (pageId === 'history') {
+  if (pageId === 'history' || pageId === 'settings') {
     return isAdmin;
   }
 
@@ -5810,6 +5844,7 @@ let isBatchSyncRunning = false;
               {activeTab === 'workProgram' && (
                 <WorkProgramView
                   project={currentProject}
+                  currentUser={currentUserObj}
                   onUpdateActivities={(workProgram) => handleProjectUpdate({ workProgram }, 'Work program schedule modified')}
                 />
               )}
@@ -5826,7 +5861,7 @@ let isBatchSyncRunning = false;
                 <ResourceMobilizationView
                   project={currentProject}
                   onUpdateProject={handleProjectUpdate}
-                  isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
+                  isReadonly={!canUserEditPage(currentUserObj, 'resourceMobilization')}
                 />
               )}
 
@@ -5834,7 +5869,7 @@ let isBatchSyncRunning = false;
                 <ProjectRisksView
                   project={currentProject}
                   onUpdateRisks={(risks) => handleProjectUpdate({ risks }, 'Project risks register updated')}
-                  isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
+                  isReadonly={!canUserEditPage(currentUserObj, 'risks')}
                   onProjectUpdate={handleProjectUpdate}
                 />
               )}
@@ -5844,7 +5879,7 @@ let isBatchSyncRunning = false;
                   project={currentProject}
                   projects={projects}
                   onUpdateProject={handleProjectUpdate}
-                  isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
+                  isReadonly={!canUserEditPage(currentUserObj, 'consultant')}
                   currentUser={currentUserObj}
                 />
               )}
@@ -5853,7 +5888,7 @@ let isBatchSyncRunning = false;
                 <SubmittalLogView
                   project={currentProject}
                   onProjectUpdate={handleProjectUpdate}
-                  isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
+                  isReadonly={!canUserEditPage(currentUserObj, 'submittalLog')}
                   currentUserObj={currentUserObj}
                 />
               )}
@@ -5862,7 +5897,7 @@ let isBatchSyncRunning = false;
                 <IssueLogView
                   project={currentProject}
                   onProjectUpdate={handleProjectUpdate}
-                  isAdmin={currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663'}
+                  isAdmin={canUserEditPage(currentUserObj, 'issueLog')}
                   currentUserObj={currentUserObj}
                 />
               )}
@@ -5873,7 +5908,7 @@ let isBatchSyncRunning = false;
                   onUpdateProject={(updProj, actionDesc) => {
                     handleProjectUpdate(updProj, actionDesc);
                   }}
-                  isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
+                  isReadonly={!canUserEditPage(currentUserObj, 'dailyActivities')}
                   currentUserObj={currentUserObj}
                 />
               )}
@@ -5886,7 +5921,7 @@ let isBatchSyncRunning = false;
                 <DocumentationView 
                   project={currentProject}
                   onUpdateDocuments={(docs) => handleProjectUpdate({ documents: docs }, 'Project documents list updated')}
-                  isReadonly={currentUserObj?.role === 'viewer' && currentUserObj?.username !== 'proj_1781786415663'}
+                  isReadonly={!canUserEditPage(currentUserObj, 'documentation')}
                 />
               )}
 

@@ -36,6 +36,12 @@ const STORAGE_KEY_INSTITUTES = 'era_financial_institutes_v1';
 const STORAGE_KEY_GUARANTIES = 'era_guaranty_categories_v1';
 
 export default function BondsGuaranteeView({ project, currentUser, onUpdateBonds }: BondsGuaranteeViewProps) {
+  const isAuthorizedAuditAdmin = 
+    currentUser?.role === 'master_admin' || 
+    currentUser?.role === 'admin' || 
+    currentUser?.role === 'directorate_admin' || 
+    currentUser?.role === 'cpm_admin';
+
   const bonds = project.bonds || [];
   const [isRegistryModalOpen, setIsRegistryModalOpen] = useState(false);
   const [registryInitialTab, setRegistryInitialTab] = useState<'institutes' | 'guaranties'>('guaranties');
@@ -184,6 +190,7 @@ export default function BondsGuaranteeView({ project, currentUser, onUpdateBonds
 
   // Trigger PDF Generation and Download
   const handleDownloadPdf = (bond: BondGuarantee) => {
+    if (!isAuthorizedAuditAdmin) return;
     try {
       const doc = generateBondGuaranteePdf(bond, project);
       const safeName = (bond.type || 'Security_Instrument').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -586,14 +593,16 @@ export default function BondsGuaranteeView({ project, currentUser, onUpdateBonds
                 )}
 
                 {/* Instant Official PDF Instrument Button */}
-                <button
-                  onClick={() => handleDownloadPdf(b)}
-                  className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 font-bold text-[11px] flex items-center gap-1.5 transition cursor-pointer border border-rose-200 dark:border-rose-800"
-                  title="Generate & Download Official ERA Security Guarantee Certificate PDF"
-                >
-                  <Download className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                  <span>Download Official PDF</span>
-                </button>
+                {isAuthorizedAuditAdmin && (
+                  <button
+                    onClick={() => handleDownloadPdf(b)}
+                    className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 font-bold text-[11px] flex items-center gap-1.5 transition cursor-pointer border border-rose-200 dark:border-rose-800"
+                    title="Generate & Download Official ERA Security Guarantee Certificate PDF"
+                  >
+                    <Download className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                    <span>Download Official PDF</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => handlePreviewPdf(b)}
@@ -715,13 +724,15 @@ export default function BondsGuaranteeView({ project, currentUser, onUpdateBonds
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleDownloadPdf(previewPdfModalBond)}
-                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Download PDF
-                  </button>
+                  {isAuthorizedAuditAdmin && (
+                    <button
+                      onClick={() => handleDownloadPdf(previewPdfModalBond)}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download PDF
+                    </button>
+                  )}
                   <button
                     onClick={() => setPreviewPdfModalBond(null)}
                     className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
