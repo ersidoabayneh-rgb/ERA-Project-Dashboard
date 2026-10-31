@@ -9,16 +9,17 @@ This document summarizes the full scope of requested enhancements and fixes acro
 ---
 
 ## 1. History Page: Monthly Contractor & Supervision Consultant Grading Ledger
-- **Action Column Removal**: Removed the action/edit column from the Monthly Contractor & Supervision Consultant Grading Ledger table.
+- **Action Column Removal**: Completely removed the action/edit column from all tabs in the Monthly Contractor & Supervision Consultant Grading Ledger table (Contractor Tab, Supervision Consultant Tab, and Joint/Dual View Tab).
 - **Read-Only Governance**:
-  - Grading input fields are read-only when the reporting month has been locked by Directorate Admin or is outside the authorized reporting window.
-  - Displayed a `🔒 Locked` badge next to finalized and completed grading records.
+  - Implemented `isMonthLockedByDirectorateOrWindow` callback verifying whether an audit month is locked by Directorate Admin (via `p.progressPlanHistory` or record finalization) or falls outside the authorized reporting window.
+  - In the Monthly Grading modal, all grading input fields (Plan %, Actual %, Audit Score, Grade select, Remarks) are set to `readOnly` and `disabled` when locked, with a prominent `🔒 Reporting Period Locked — Read-Only Mode` status banner and a disabled save button.
+  - Displayed a `🔒 Locked` badge next to finalized and completed grading records across all tabs.
 - **6-Month Semester Averaging (July–December & January–June)**:
-  - Implemented semester aggregation utilities that automatically partition monthly records into official Ethiopian Fiscal Year semesters:
-    - **Semester 1**: July to December
-    - **Semester 2**: January to June
-  - Computes read-only cumulative grade and score averages for both Contractor and Supervision Consultant.
-  - Persisted semester averages into the project data records and dual grading reports.
+  - Implemented automatic calculation of 6-month averages:
+    - **Semester 1 (H1)**: July to December
+    - **Semester 2 (H2)**: January to June
+  - Auto-persists these computed averages (`sixMonthAverageContractorScore`, `sixMonthAverageConsultantScore`, `semesterKey`, `semesterLabel`) into `project.monthlyGradingRecords` upon load or change.
+  - Ensured all semester calculations and summary cards remain strictly read-only system metrics.
 
 ---
 

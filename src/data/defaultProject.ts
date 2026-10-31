@@ -2781,17 +2781,21 @@ export function calculateAndPersistSixMonthAverages(records: MonthlyGradingRecor
   records.forEach(r => recordsMap.set(r.id, { ...r }));
 
   semesters.forEach(sem => {
-    const sortedRecs = [...sem.records].sort((a, b) => compareMonthsDesc(b.month, a.month, b.recordedDate, a.recordedDate));
-    if (sortedRecs.length > 0) {
-      const latestRec = recordsMap.get(sortedRecs[0].id);
-      if (latestRec) {
-        const sumContractorScore = sortedRecs.reduce((acc, r) => acc + (typeof r.contractorScore === 'number' ? r.contractorScore : 80), 0);
-        latestRec.sixMonthAverageContractorScore = Number((sumContractorScore / sortedRecs.length).toFixed(1));
-        
-        const sumConsultantScore = sortedRecs.reduce((acc, r) => acc + (typeof r.consultantOverallScore === 'number' ? r.consultantOverallScore : 82.5), 0);
-        latestRec.sixMonthAverageConsultantScore = Number((sumConsultantScore / sortedRecs.length).toFixed(1));
+    const sumContractorScore = sem.records.reduce((acc, r) => acc + (typeof r.contractorScore === 'number' ? r.contractorScore : 80), 0);
+    const avgContScore = Number((sumContractorScore / (sem.records.length || 1)).toFixed(1));
+
+    const sumConsultantScore = sem.records.reduce((acc, r) => acc + (typeof r.consultantOverallScore === 'number' ? r.consultantOverallScore : 82.5), 0);
+    const avgConsScore = Number((sumConsultantScore / (sem.records.length || 1)).toFixed(1));
+
+    sem.records.forEach(r => {
+      const rec = recordsMap.get(r.id);
+      if (rec) {
+        rec.sixMonthAverageContractorScore = avgContScore;
+        rec.sixMonthAverageConsultantScore = avgConsScore;
+        rec.semesterKey = sem.semesterKey;
+        rec.semesterLabel = `${sem.fiscalYearLabel} ${sem.semesterLabel}`;
       }
-    }
+    });
   });
 
   return Array.from(recordsMap.values());

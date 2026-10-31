@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { parseLocalDate, addDaysToDate } from '../lib/dateUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -6,7 +6,7 @@ import {
   FileText, FileBadge, ShieldAlert, CheckCircle2, AlertCircle, Download, Activity, 
   ChevronDown, Scale, FileSpreadsheet, RefreshCw, Award, Users, Clock,
   Building2, Calendar, Plus, Edit3, X, ExternalLink, ArrowUpRight, ArrowDownRight, Eye, Check,
-  HardHat, Briefcase, Layers
+  HardHat, Briefcase, Layers, Lock
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Project, HistoryItem, MonthlyGradingRecord, HistoricalSupervisionConsultant, formatAccounting, isProjectClosed } from '../types';
@@ -216,6 +216,66 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     return [...filtered].sort((a, b) => compareMonthsDesc(a.month, b.month, a.recordedDate, b.recordedDate));
   }, [monthlyGradingRecords, selectedGradingMonthFilter, selectedConsultantTenureFilter, selectedSemesterFilter, sixMonthGradingList, selectedStartMonthFilter, selectedEndMonthFilter]);
 
+  // Check if a monthly grading period is locked by Directorate Admin or is outside the authorized reporting window
+  const isMonthLockedByDirectorateOrWindow = useCallback((monthStr?: string, status?: string): { isLocked: boolean; reason: string } => {
+    if (!monthStr) return { isLocked: false, reason: '' };
+
+    // 1. Completed / Finalized / Approved records are locked from editing
+    if (status === 'Finalized' || status === 'Approved') {
+      return { isLocked: true, reason: 'Record finalized & certified for directorate reporting' };
+    }
+
+    // 2. Check if locked in Directorate progressPlanHistory
+    const canonicalMatch = matchCanonicalKpiPeriod(p, monthStr);
+    const targetYm = canonicalMatch?.parsedYm || parseMonthToYyyyMm(monthStr);
+
+    if (p.progressPlanHistory && p.progressPlanHistory.length > 0) {
+      const hist = p.progressPlanHistory.find(h => {
+        const hYm = parseMonthToYyyyMm(h.monthLabel);
+        return h.monthLabel === monthStr || (targetYm && hYm === targetYm);
+      });
+      if (hist?.isLocked || hist?.approvedByDirectorate) {
+        return { isLocked: true, reason: 'Month locked by Directorate Admin' };
+      }
+    }
+
+    // 3. Authorized reporting window: active month or immediate previous month
+    const now = new Date();
+    const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const prevD = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevYm = `${prevD.getFullYear()}-${String(prevD.getMonth() + 1).padStart(2, '0')}`;
+
+    if (targetYm) {
+      if (targetYm > currentYm) {
+        return { isLocked: true, reason: 'Future reporting period is not yet authorized' };
+      }
+      if (targetYm < prevYm) {
+        return { isLocked: true, reason: 'Outside authorized reporting window (closed historical cycle)' };
+      }
+    }
+
+    return { isLocked: false, reason: '' };
+  }, [p]);
+
+  // Auto-aggregate monthly contractor and consultant grading data from July-Dec & Jan-Jun,
+  // implement automatic 6-month average calculation, and persist these read-only averages to project data
+  useEffect(() => {
+    if (!onProjectUpdate || !p.monthlyGradingRecords || p.monthlyGradingRecords.length === 0) return;
+
+    // Check if any record lacks sixMonthAverageContractorScore or sixMonthAverageConsultantScore
+    const needsUpdate = p.monthlyGradingRecords.some(
+      r => r.sixMonthAverageContractorScore === undefined || r.sixMonthAverageConsultantScore === undefined || !r.semesterKey
+    );
+
+    if (needsUpdate) {
+      const persistedList = calculateAndPersistSixMonthAverages(p.monthlyGradingRecords);
+      onProjectUpdate(
+        { monthlyGradingRecords: persistedList },
+        'Automatically computed and persisted 6-month average grades (Jul-Dec & Jan-Jun)'
+      );
+    }
+  }, [p.monthlyGradingRecords, onProjectUpdate]);
+
   // Auto-calculate grading values for form
   const handleAutoCalculateForm = (targetMonth: string) => {
     const canonicalMatch = matchCanonicalKpiPeriod(p, targetMonth);
@@ -306,6 +366,11 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
 
   const handleSaveGradingRecord = () => {
     if (!gradingForm.month) return;
+    const lockCheck = isMonthLockedByDirectorateOrWindow(gradingForm.month, gradingForm.status);
+    if (lockCheck.isLocked && editingRecordId) {
+      alert(`This monthly grading record is read-only and locked: ${lockCheck.reason}`);
+      return;
+    }
     if (isMonthAboveCurrentMonth(gradingForm.month, gradingForm.recordedDate)) {
       alert("Months above the current month cannot be recorded into the grading ledger.");
       return;
@@ -2934,6 +2999,10 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                             <span className="text-[9.5px] font-bold text-amber-800 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200/80 dark:border-amber-800/60">
                               Fiscal Calendar: July (Start) – June (End)
                             </span>
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full border border-slate-300 dark:border-slate-700 font-mono">
+                              <Lock className="w-2.5 h-2.5 text-slate-500" />
+                              Read-Only Auto Calculation
+                            </span>
                           </h4>
                           <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                             Cumulative 6-month semester evaluation cycles (H1: Jul – Dec | H2: Jan – Jun) aggregating contractor execution & supervision consultant grades.
@@ -3215,8 +3284,11 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                       <span className="text-xs font-black">Grade {rec.contractorGrade || 'B'}</span>
                                       <span className="text-[9px] font-mono font-extrabold">{(rec.contractorScore ?? 80).toFixed(1)}%</span>
                                     </div>
-                                    {rec.status === 'Finalized' && (
-                                      <span className="block text-[8px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded uppercase mt-1">Locked</span>
+                                    {(rec.status === 'Finalized' || rec.status === 'Approved' || isMonthLockedByDirectorateOrWindow(rec.month, rec.status).isLocked) && (
+                                      <span className="inline-flex items-center gap-1 text-[8px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded uppercase mt-1">
+                                        <Lock className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                                        Locked
+                                      </span>
                                     )}
                                     <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.contractorStanding}>
                                       {rec.contractorStanding}
@@ -3506,7 +3578,6 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                               <th className="py-2.5 px-3 text-center">Combined Rating %</th>
                               <th className="py-2.5 px-3 text-center">Consultant Grade</th>
                               <th className="py-2.5 px-3.5 text-left">Supervisory Directives & Observations</th>
-                              <th className="py-2.5 px-3 text-center w-24 no-print">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal font-sans">
@@ -3591,6 +3662,12 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                       <span className="text-xs font-black">Grade {rec.consultantGrade || 'B'}</span>
                                       <span className="text-[9px] font-mono font-extrabold">{(rec.consultantOverallScore ?? 82.5).toFixed(1)}%</span>
                                     </div>
+                                    {(rec.status === 'Finalized' || rec.status === 'Approved' || isMonthLockedByDirectorateOrWindow(rec.month, rec.status).isLocked) && (
+                                      <span className="inline-flex items-center gap-1 text-[8px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded uppercase mt-1">
+                                        <Lock className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                                        Locked
+                                      </span>
+                                    )}
                                     <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.consultantStanding}>
                                       {rec.consultantStanding}
                                     </span>
@@ -3602,43 +3679,13 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                       {rec.consultantRemarks || rec.notes || 'Standard supervisory inspection and submittal compliance logged.'}
                                     </p>
                                   </td>
-
-                                  {/* Actions */}
-                                  <td className="py-2.5 px-3 text-center no-print">
-                                    <div className="flex items-center justify-center gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => setSelectedGradingDetailModal(rec)}
-                                        className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
-                                        title="View Detailed Monthly Audit Breakdown"
-                                      >
-                                        <Eye className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => openEditGradingModal(rec)}
-                                        className="p-1 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
-                                        title="Edit Month Grading"
-                                      >
-                                        <Edit3 className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteGradingRecord(rec.id)}
-                                        className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
-                                        title="Delete Record"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  </td>
                                 </tr>
                               );
                             })}
 
                             {filteredMonthlyGradingRecords.length === 0 && (
                               <tr>
-                                <td colSpan={7} className="p-8 text-center text-slate-400 text-xs font-medium">
+                                <td colSpan={6} className="p-8 text-center text-slate-400 text-xs font-medium">
                                   No monthly consultant grading records found.
                                 </td>
                               </tr>
@@ -3752,7 +3799,6 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                               <th className="py-2.5 px-3.5 text-left">Consultant Dual-Pillar Evaluation</th>
                               <th className="py-2.5 px-3 text-center">Consultant Grade</th>
                               <th className="py-2.5 px-3.5 text-left">Audit Remarks & Exceptions</th>
-                              <th className="py-2.5 px-3 text-center w-24 no-print">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal font-sans">
@@ -3816,6 +3862,12 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                       <span className="text-xs font-black">Grade {rec.contractorGrade || 'B'}</span>
                                       <span className="text-[9px] font-mono font-extrabold">{(rec.contractorScore ?? 80).toFixed(1)}%</span>
                                     </div>
+                                    {(rec.status === 'Finalized' || rec.status === 'Approved' || isMonthLockedByDirectorateOrWindow(rec.month, rec.status).isLocked) && (
+                                      <span className="inline-flex items-center gap-1 text-[8px] font-bold bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded uppercase mt-1">
+                                        <Lock className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                                        Locked
+                                      </span>
+                                    )}
                                     <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.contractorStanding}>
                                       {rec.contractorStanding}
                                     </span>
@@ -3868,6 +3920,12 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                       <span className="text-xs font-black">Grade {rec.consultantGrade || 'B'}</span>
                                       <span className="text-[9px] font-mono font-extrabold">{(rec.consultantOverallScore ?? 82.5).toFixed(1)}%</span>
                                     </div>
+                                    {(rec.status === 'Finalized' || rec.status === 'Approved' || isMonthLockedByDirectorateOrWindow(rec.month, rec.status).isLocked) && (
+                                      <span className="inline-flex items-center gap-1 text-[8px] font-bold bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 px-1.5 py-0.5 rounded uppercase mt-1">
+                                        <Lock className="w-2.5 h-2.5 text-indigo-600 dark:text-indigo-400" />
+                                        Locked
+                                      </span>
+                                    )}
                                     <span className="block text-[8.5px] text-slate-400 mt-1 max-w-[110px] mx-auto truncate" title={rec.consultantStanding}>
                                       {rec.consultantStanding}
                                     </span>
@@ -3905,43 +3963,13 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                                       )}
                                     </div>
                                   </td>
-
-                                  {/* Actions */}
-                                  <td className="py-2.5 px-3 text-center no-print">
-                                    <div className="flex items-center justify-center gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => setSelectedGradingDetailModal(rec)}
-                                        className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
-                                        title="View Detailed Monthly Audit Breakdown"
-                                      >
-                                        <Eye className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => openEditGradingModal(rec)}
-                                        className="p-1 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
-                                        title="Edit Month Grading"
-                                      >
-                                        <Edit3 className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteGradingRecord(rec.id)}
-                                        className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
-                                        title="Delete Record"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  </td>
                                 </tr>
                               );
                             })}
 
                             {filteredMonthlyGradingRecords.length === 0 && (
                               <tr>
-                                <td colSpan={7} className="p-8 text-center text-slate-400 text-xs font-medium">
+                                <td colSpan={6} className="p-8 text-center text-slate-400 text-xs font-medium">
                                   No monthly grading records found for the selected filter.
                                 </td>
                               </tr>
@@ -5012,312 +5040,401 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
 
               {/* Modal Form Body */}
               <div className="p-5 overflow-y-auto space-y-4 text-xs">
-                {/* Month & Auto Calculation Bar */}
-                <div className="p-3 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <label className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300 font-mono">
-                      Audit Month:
-                    </label>
-                    <input
-                      type="month"
-                      max={new Date().toISOString().slice(0, 7)}
-                      value={gradingForm.month || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setGradingForm(prev => ({ ...prev, month: val }));
-                        handleAutoCalculateForm(val);
-                      }}
-                      className="py-1 px-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const d = new Date();
-                        d.setMonth(d.getMonth() - 1);
-                        const defaultMonth = d.toISOString().slice(0, 7);
-                        handleAutoCalculateForm(gradingForm.month || defaultMonth);
-                      }}
-                      className="flex items-center justify-center gap-1.5 py-1 px-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition-colors cursor-pointer"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Auto-Calculate</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Current Month Open / Provisional Notice */}
-                {isCurrentMonth(gradingForm.month) && (
-                  <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 rounded-xl text-xs flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                    <div>
-                      <strong className="block text-[11px] font-black uppercase font-mono tracking-wide">
-                        Current Month Ledger Standing: Open / Provisional
-                      </strong>
-                      <span className="text-[10px] text-slate-600 dark:text-slate-300">
-                        The current month's contractor grading remains open and provisional until the end of the month. Finalized certification unlocks automatically after the month concludes.
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Supervision Consultant Tenure Cross-Check & Verification Status */}
                 {(() => {
-                  const checkInfo = resolveConsultantForPeriod(p, gradingForm.month);
-                  return (
-                    <div className={`p-3 rounded-xl border text-xs ${
-                      checkInfo.isHistorical 
-                        ? 'bg-amber-50/90 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800/70 text-amber-950 dark:text-amber-100'
-                        : 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800/60 text-indigo-950 dark:text-indigo-100'
-                    }`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`p-1.5 rounded-lg shrink-0 ${checkInfo.isHistorical ? 'bg-amber-600 text-white' : 'bg-indigo-600 text-white'}`}>
-                            {checkInfo.isHistorical ? <Clock className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-black text-xs uppercase tracking-wide">
-                                {checkInfo.isHistorical ? 'Historical Predecessor Consultant Tenure' : 'Active Supervision Consultant Tenure'}
-                              </span>
-                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md font-mono ${
-                                checkInfo.isHistorical 
-                                  ? 'bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-100' 
-                                  : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100'
-                              }`}>
-                                {checkInfo.isHistorical ? 'Pre-Assignment Archive' : 'Active Assignment'}
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
-                              Supervisory Firm: <strong className="text-slate-900 dark:text-white">{checkInfo.firmName}</strong>
-                              {checkInfo.residentEngineer && <> • RE: <strong>{checkInfo.residentEngineer}</strong></>}
-                            </div>
-                          </div>
-                        </div>
+                  const modalLockStatus = isMonthLockedByDirectorateOrWindow(gradingForm.month, gradingForm.status);
+                  const isModalLocked = modalLockStatus.isLocked;
 
-                        <div className="text-right shrink-0">
-                          <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-mono block">Attributed Grade</span>
-                          <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-black ${
-                            checkInfo.officialGrade === 'A' ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'
-                          }`}>
-                            Grade {checkInfo.officialGrade} ({checkInfo.overallScore.toFixed(1)}%)
+                  return (
+                    <>
+                      {/* Locked Period Banner */}
+                      {isModalLocked && (
+                        <div className="p-3 bg-amber-500/15 border border-amber-500/40 text-amber-900 dark:text-amber-200 rounded-xl text-xs flex items-center justify-between gap-2 shadow-xs">
+                          <div className="flex items-center gap-2.5">
+                            <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                            <div>
+                              <strong className="block text-[11px] font-black uppercase font-mono tracking-wide">
+                                🔒 Reporting Period Locked — Read-Only Mode
+                              </strong>
+                              <span className="text-[10.5px]">
+                                {modalLockStatus.reason}. Direct editing of this monthly grading record is restricted.
+                              </span>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 font-mono shrink-0">
+                            Read Only
                           </span>
                         </div>
+                      )}
+
+                      {/* Month & Auto Calculation Bar */}
+                      <div className="p-3 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <label className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300 font-mono">
+                            Audit Month:
+                          </label>
+                          <input
+                            type="month"
+                            max={new Date().toISOString().slice(0, 7)}
+                            disabled={isModalLocked && Boolean(editingRecordId)}
+                            readOnly={isModalLocked && Boolean(editingRecordId)}
+                            value={gradingForm.month || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setGradingForm(prev => ({ ...prev, month: val }));
+                              handleAutoCalculateForm(val);
+                            }}
+                            className={`py-1 px-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold ${
+                              isModalLocked && Boolean(editingRecordId) ? 'cursor-not-allowed opacity-75' : ''
+                            }`}
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={isModalLocked}
+                            onClick={() => {
+                              if (isModalLocked) return;
+                              const d = new Date();
+                              d.setMonth(d.getMonth() - 1);
+                              const defaultMonth = d.toISOString().slice(0, 7);
+                              handleAutoCalculateForm(gradingForm.month || defaultMonth);
+                            }}
+                            className={`flex items-center justify-center gap-1.5 py-1 px-3 font-bold rounded-lg text-[10px] transition-colors ${
+                              isModalLocked
+                                ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                                : 'bg-amber-500 hover:bg-amber-600 text-white cursor-pointer'
+                            }`}
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Auto-Calculate</span>
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between gap-2 text-[10px] text-slate-600 dark:text-slate-400">
-                        <span>
-                          {checkInfo.isHistorical 
-                            ? `Audit month (${gradingForm.month}) is before active commencement (${activeConsultantAssignmentDate}). Linked to predecessor archive (${checkInfo.assignmentDate} → ${checkInfo.handoverDate}).`
-                            : `Audit month (${gradingForm.month}) falls on or after assignment date (${activeConsultantAssignmentDate}).`
-                          }
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setGradingForm(prev => ({
-                              ...prev,
-                              consultantName: checkInfo.firmName,
-                              residentEngineer: checkInfo.residentEngineer,
-                              consultantTenureId: checkInfo.tenureId,
-                              isHistoricalConsultant: checkInfo.isHistorical,
-                              consultantAssignmentDate: checkInfo.assignmentDate,
-                              consultantHandoverDate: checkInfo.handoverDate,
-                              consultantSlaTurnaroundScore: checkInfo.slaScore,
-                              consultantFiveDimScore: checkInfo.fiveDimScore,
-                              consultantOverallScore: checkInfo.overallScore,
-                              consultantGrade: checkInfo.officialGrade,
-                              consultantStanding: checkInfo.standing
-                            }));
-                          }}
-                          className="px-2 py-1 rounded bg-white dark:bg-slate-800 hover:bg-slate-100 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold transition shrink-0 cursor-pointer"
-                        >
-                          Sync Consultant Parameters
-                        </button>
+                      {/* Current Month Open / Provisional Notice */}
+                      {isCurrentMonth(gradingForm.month) && (
+                        <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 rounded-xl text-xs flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                          <div>
+                            <strong className="block text-[11px] font-black uppercase font-mono tracking-wide">
+                              Current Month Ledger Standing: Open / Provisional
+                            </strong>
+                            <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                              The current month's contractor grading remains open and provisional until the end of the month. Finalized certification unlocks automatically after the month concludes.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Supervision Consultant Tenure Cross-Check & Verification Status */}
+                      {(() => {
+                        const checkInfo = resolveConsultantForPeriod(p, gradingForm.month);
+                        return (
+                          <div className={`p-3 rounded-xl border text-xs ${
+                            checkInfo.isHistorical 
+                              ? 'bg-amber-50/90 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800/70 text-amber-950 dark:text-amber-100'
+                              : 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800/60 text-indigo-950 dark:text-indigo-100'
+                          }`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <div className={`p-1.5 rounded-lg shrink-0 ${checkInfo.isHistorical ? 'bg-amber-600 text-white' : 'bg-indigo-600 text-white'}`}>
+                                  {checkInfo.isHistorical ? <Clock className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-black text-xs uppercase tracking-wide">
+                                      {checkInfo.isHistorical ? 'Historical Predecessor Consultant Tenure' : 'Active Supervision Consultant Tenure'}
+                                    </span>
+                                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md font-mono ${
+                                      checkInfo.isHistorical 
+                                        ? 'bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-100' 
+                                        : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100'
+                                    }`}>
+                                      {checkInfo.isHistorical ? 'Pre-Assignment Archive' : 'Active Assignment'}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                                    Supervisory Firm: <strong className="text-slate-900 dark:text-white">{checkInfo.firmName}</strong>
+                                    {checkInfo.residentEngineer && <> • RE: <strong>{checkInfo.residentEngineer}</strong></>}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-mono block">Attributed Grade</span>
+                                <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-black ${
+                                  checkInfo.officialGrade === 'A' ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'
+                                }`}>
+                                  Grade {checkInfo.officialGrade} ({checkInfo.overallScore.toFixed(1)}%)
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between gap-2 text-[10px] text-slate-600 dark:text-slate-400">
+                              <span>
+                                {checkInfo.isHistorical 
+                                  ? `Audit month (${gradingForm.month}) is before active commencement (${activeConsultantAssignmentDate}). Linked to predecessor archive (${checkInfo.assignmentDate} → ${checkInfo.handoverDate}).`
+                                  : `Audit month (${gradingForm.month}) falls on or after assignment date (${activeConsultantAssignmentDate}).`
+                                }
+                              </span>
+                              {!isModalLocked && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGradingForm(prev => ({
+                                      ...prev,
+                                      consultantName: checkInfo.firmName,
+                                      residentEngineer: checkInfo.residentEngineer,
+                                      consultantTenureId: checkInfo.tenureId,
+                                      isHistoricalConsultant: checkInfo.isHistorical,
+                                      consultantAssignmentDate: checkInfo.assignmentDate,
+                                      consultantHandoverDate: checkInfo.handoverDate,
+                                      consultantSlaTurnaroundScore: checkInfo.slaScore,
+                                      consultantFiveDimScore: checkInfo.fiveDimScore,
+                                      consultantOverallScore: checkInfo.overallScore,
+                                      consultantGrade: checkInfo.officialGrade,
+                                      consultantStanding: checkInfo.standing
+                                    }));
+                                  }}
+                                  className="px-2 py-1 rounded bg-white dark:bg-slate-800 hover:bg-slate-100 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold transition shrink-0 cursor-pointer"
+                                >
+                                  Sync Consultant Parameters
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Section A: Contractor Metrics */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 flex items-center gap-1.5 font-mono">
+                            <span className="w-1.5 h-2.5 bg-emerald-500 rounded-xs" />
+                            Contractor Monthly Grading Parameters
+                          </h4>
+                          {isModalLocked && (
+                            <span className="text-[9px] font-bold text-amber-700 dark:text-amber-400 font-mono">🔒 Locked Input</span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                          <div>
+                            <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Plan Monthly (%)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              disabled={isModalLocked}
+                              readOnly={isModalLocked}
+                              value={gradingForm.contractorPlanMonthly || 0}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                const act = gradingForm.contractorActualMonthly || 0;
+                                const diff = act - val;
+                                setGradingForm(prev => ({ 
+                                  ...prev, 
+                                  contractorPlanMonthly: val,
+                                  contractorVariance: Number(diff.toFixed(2)),
+                                  contractorSpi: val > 0 ? Number((act / val).toFixed(2)) : 1.0
+                                }));
+                              }}
+                              className={`w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono ${
+                                isModalLocked ? 'cursor-not-allowed opacity-75' : ''
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Actual Monthly (%)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              disabled={isModalLocked}
+                              readOnly={isModalLocked}
+                              value={gradingForm.contractorActualMonthly || 0}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                const plan = gradingForm.contractorPlanMonthly || 0;
+                                const diff = val - plan;
+                                setGradingForm(prev => ({ 
+                                  ...prev, 
+                                  contractorActualMonthly: val,
+                                  contractorVariance: Number(diff.toFixed(2)),
+                                  contractorSpi: plan > 0 ? Number((val / plan).toFixed(2)) : 1.0
+                                }));
+                              }}
+                              className={`w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold ${
+                                isModalLocked ? 'cursor-not-allowed opacity-75' : ''
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Audit Score (%)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              max="100"
+                              min="0"
+                              disabled={isModalLocked}
+                              readOnly={isModalLocked}
+                              value={gradingForm.contractorScore || 80}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                let gr: 'A' | 'B' | 'C' | 'D' | 'F' = 'B';
+                                if (val >= 90) gr = 'A';
+                                else if (val >= 80) gr = 'B';
+                                else if (val >= 70) gr = 'C';
+                                else if (val >= 60) gr = 'D';
+                                else gr = 'F';
+                                setGradingForm(prev => ({ ...prev, contractorScore: val, contractorGrade: gr }));
+                              }}
+                              className={`w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-emerald-600 ${
+                                isModalLocked ? 'cursor-not-allowed opacity-75' : ''
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Contractor Grade</label>
+                            <select
+                              disabled={isModalLocked}
+                              value={gradingForm.contractorGrade || 'B'}
+                              onChange={(e) => setGradingForm(prev => ({ ...prev, contractorGrade: e.target.value as any }))}
+                              className={`w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold ${
+                                isModalLocked ? 'cursor-not-allowed opacity-75' : ''
+                              }`}
+                            >
+                              <option value="A">Grade A (≥90%)</option>
+                              <option value="B">Grade B (80-89%)</option>
+                              <option value="C">Grade C (70-79%)</option>
+                              <option value="D">Grade D (60-69%)</option>
+                              <option value="F">Grade F (&lt;60%)</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Contractor Audit Remarks</label>
+                          <input
+                            type="text"
+                            disabled={isModalLocked}
+                            readOnly={isModalLocked}
+                            value={gradingForm.contractorRemarks || ''}
+                            onChange={(e) => setGradingForm(prev => ({ ...prev, contractorRemarks: e.target.value }))}
+                            placeholder="e.g. Earthworks accelerated on Section 2; asphalt paving on track."
+                            className={`w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs ${
+                              isModalLocked ? 'cursor-not-allowed opacity-75' : ''
+                            }`}
+                          />
+                        </div>
                       </div>
-                    </div>
+
+                      {/* Section B: Supervision Consultant Metrics */}
+                      <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 flex items-center gap-1.5 font-mono">
+                            <span className="w-1.5 h-2.5 bg-indigo-600 rounded-xs" />
+                            Supervision Consultant Dual-Pillar Evaluation
+                          </h4>
+                          {isModalLocked && (
+                            <span className="text-[9px] font-bold text-indigo-700 dark:text-indigo-400 font-mono">🔒 Locked Input</span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                          <div>
+                            <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Pillar 1 (SLA %)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              disabled={isModalLocked}
+                              readOnly={isModalLocked}
+                              value={gradingForm.consultantSlaTurnaroundScore || 85}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                const dim = gradingForm.consultantFiveDimScore || 80;
+                                const overall = Number(((val + dim) / 2).toFixed(1));
+                                setGradingForm(prev => ({ ...prev, consultantSlaTurnaroundScore: val, consultantOverallScore: overall }));
+                              }}
+                              className={`w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono ${
+                                isModalLocked ? 'cursor-not-allowed opacity-75' : ''
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Pillar 2 (5-Dim %)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              disabled={isModalLocked}
+                              readOnly={isModalLocked}
+                              value={gradingForm.consultantFiveDimScore || 80}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                const sla = gradingForm.consultantSlaTurnaroundScore || 85;
+                                const overall = Number(((sla + val) / 2).toFixed(1));
+                                setGradingForm(prev => ({ ...prev, consultantFiveDimScore: val, consultantOverallScore: overall }));
+                              }}
+                              className={`w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono ${
+                                isModalLocked ? 'cursor-not-allowed opacity-75' : ''
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Combined Score (%)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              disabled={isModalLocked}
+                              readOnly={isModalLocked}
+                              value={gradingForm.consultantOverallScore || 82.5}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                let gr: 'A' | 'B' | 'C' | 'D' | 'F' = 'B';
+                                if (val >= 90) gr = 'A';
+                                else if (val >= 80) gr = 'B';
+                                else if (val >= 70) gr = 'C';
+                                else if (val >= 60) gr = 'D';
+                                else gr = 'F';
+                                setGradingForm(prev => ({ ...prev, consultantOverallScore: val, consultantGrade: gr }));
+                              }}
+                              className={`w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-indigo-600 ${
+                                isModalLocked ? 'cursor-not-allowed opacity-75' : ''
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Consultant Grade</label>
+                            <select
+                              disabled={isModalLocked}
+                              value={gradingForm.consultantGrade || 'B'}
+                              onChange={(e) => setGradingForm(prev => ({ ...prev, consultantGrade: e.target.value as any }))}
+                              className={`w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold ${
+                                isModalLocked ? 'cursor-not-allowed opacity-75' : ''
+                              }`}
+                            >
+                              <option value="A">Grade A (≥90%)</option>
+                              <option value="B">Grade B (80-89%)</option>
+                              <option value="C">Grade C (70-79%)</option>
+                              <option value="D">Grade D (60-69%)</option>
+                              <option value="F">Grade F (&lt;60%)</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Consultant Supervisory Remarks</label>
+                          <input
+                            type="text"
+                            disabled={isModalLocked}
+                            readOnly={isModalLocked}
+                            value={gradingForm.consultantRemarks || ''}
+                            onChange={(e) => setGradingForm(prev => ({ ...prev, consultantRemarks: e.target.value }))}
+                            placeholder="e.g. Submittal turnaround maintained under 6 days; resident engineer present on site."
+                            className={`w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs ${
+                              isModalLocked ? 'cursor-not-allowed opacity-75' : ''
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </>
                   );
                 })()}
-
-                {/* Section A: Contractor Metrics */}
-                <div className="space-y-2">
-                  <h4 className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 flex items-center gap-1.5 font-mono">
-                    <span className="w-1.5 h-2.5 bg-emerald-500 rounded-xs" />
-                    Contractor Monthly Grading Parameters
-                  </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    <div>
-                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Plan Monthly (%)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={gradingForm.contractorPlanMonthly || 0}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          const act = gradingForm.contractorActualMonthly || 0;
-                          const diff = act - val;
-                          setGradingForm(prev => ({ 
-                            ...prev, 
-                            contractorPlanMonthly: val,
-                            contractorVariance: Number(diff.toFixed(2)),
-                            contractorSpi: val > 0 ? Number((act / val).toFixed(2)) : 1.0
-                          }));
-                        }}
-                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Actual Monthly (%)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={gradingForm.contractorActualMonthly || 0}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          const plan = gradingForm.contractorPlanMonthly || 0;
-                          const diff = val - plan;
-                          setGradingForm(prev => ({ 
-                            ...prev, 
-                            contractorActualMonthly: val,
-                            contractorVariance: Number(diff.toFixed(2)),
-                            contractorSpi: plan > 0 ? Number((val / plan).toFixed(2)) : 1.0
-                          }));
-                        }}
-                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Audit Score (%)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        max="100"
-                        min="0"
-                        value={gradingForm.contractorScore || 80}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          let gr: 'A' | 'B' | 'C' | 'D' | 'F' = 'B';
-                          if (val >= 90) gr = 'A';
-                          else if (val >= 80) gr = 'B';
-                          else if (val >= 70) gr = 'C';
-                          else if (val >= 60) gr = 'D';
-                          else gr = 'F';
-                          setGradingForm(prev => ({ ...prev, contractorScore: val, contractorGrade: gr }));
-                        }}
-                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-emerald-600"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Contractor Grade</label>
-                      <select
-                        value={gradingForm.contractorGrade || 'B'}
-                        onChange={(e) => setGradingForm(prev => ({ ...prev, contractorGrade: e.target.value as any }))}
-                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold"
-                      >
-                        <option value="A">Grade A (≥90%)</option>
-                        <option value="B">Grade B (80-89%)</option>
-                        <option value="C">Grade C (70-79%)</option>
-                        <option value="D">Grade D (60-69%)</option>
-                        <option value="F">Grade F (&lt;60%)</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Contractor Audit Remarks</label>
-                    <input
-                      type="text"
-                      value={gradingForm.contractorRemarks || ''}
-                      onChange={(e) => setGradingForm(prev => ({ ...prev, contractorRemarks: e.target.value }))}
-                      placeholder="e.g. Earthworks accelerated on Section 2; asphalt paving on track."
-                      className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs"
-                    />
-                  </div>
-                </div>
-
-                {/* Section B: Supervision Consultant Metrics */}
-                <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-                  <h4 className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 flex items-center gap-1.5 font-mono">
-                    <span className="w-1.5 h-2.5 bg-indigo-600 rounded-xs" />
-                    Supervision Consultant Dual-Pillar Evaluation
-                  </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    <div>
-                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Pillar 1 (SLA %)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={gradingForm.consultantSlaTurnaroundScore || 85}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          const dim = gradingForm.consultantFiveDimScore || 80;
-                          const overall = Number(((val + dim) / 2).toFixed(1));
-                          setGradingForm(prev => ({ ...prev, consultantSlaTurnaroundScore: val, consultantOverallScore: overall }));
-                        }}
-                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Pillar 2 (5-Dim %)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={gradingForm.consultantFiveDimScore || 80}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          const sla = gradingForm.consultantSlaTurnaroundScore || 85;
-                          const overall = Number(((sla + val) / 2).toFixed(1));
-                          setGradingForm(prev => ({ ...prev, consultantFiveDimScore: val, consultantOverallScore: overall }));
-                        }}
-                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Combined Score (%)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={gradingForm.consultantOverallScore || 82.5}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          let gr: 'A' | 'B' | 'C' | 'D' | 'F' = 'B';
-                          if (val >= 90) gr = 'A';
-                          else if (val >= 80) gr = 'B';
-                          else if (val >= 70) gr = 'C';
-                          else if (val >= 60) gr = 'D';
-                          else gr = 'F';
-                          setGradingForm(prev => ({ ...prev, consultantOverallScore: val, consultantGrade: gr }));
-                        }}
-                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-indigo-600"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Consultant Grade</label>
-                      <select
-                        value={gradingForm.consultantGrade || 'B'}
-                        onChange={(e) => setGradingForm(prev => ({ ...prev, consultantGrade: e.target.value as any }))}
-                        className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold"
-                      >
-                        <option value="A">Grade A (≥90%)</option>
-                        <option value="B">Grade B (80-89%)</option>
-                        <option value="C">Grade C (70-79%)</option>
-                        <option value="D">Grade D (60-69%)</option>
-                        <option value="F">Grade F (&lt;60%)</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[9.5px] font-bold text-slate-500 mb-1">Consultant Supervisory Remarks</label>
-                    <input
-                      type="text"
-                      value={gradingForm.consultantRemarks || ''}
-                      onChange={(e) => setGradingForm(prev => ({ ...prev, consultantRemarks: e.target.value }))}
-                      placeholder="e.g. Submittal turnaround maintained under 6 days; resident engineer present on site."
-                      className="w-full p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs"
-                    />
-                  </div>
-                </div>
               </div>
 
               {/* Modal Footer */}
@@ -5329,14 +5446,26 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
                 >
                   Cancel
                 </button>
-                <button
-                  type="button"
-                  onClick={handleSaveGradingRecord}
-                  className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg transition-colors cursor-pointer text-xs flex items-center gap-1.5 shadow-2xs"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Save Monthly Grading Record</span>
-                </button>
+                {(() => {
+                  const modalLockStatus = isMonthLockedByDirectorateOrWindow(gradingForm.month, gradingForm.status);
+                  const isModalLocked = modalLockStatus.isLocked;
+                  return (
+                    <button
+                      type="button"
+                      disabled={isModalLocked}
+                      onClick={handleSaveGradingRecord}
+                      className={`px-4 py-1.5 font-bold rounded-lg transition-colors text-xs flex items-center gap-1.5 shadow-2xs ${
+                        isModalLocked
+                          ? 'bg-slate-300 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                          : 'bg-amber-500 hover:bg-amber-600 text-white cursor-pointer'
+                      }`}
+                      title={isModalLocked ? `Record locked: ${modalLockStatus.reason}` : 'Save Monthly Grading Record'}
+                    >
+                      {isModalLocked ? <Lock className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                      <span>{isModalLocked ? 'Record Locked (Read Only)' : 'Save Monthly Grading Record'}</span>
+                    </button>
+                  );
+                })()}
               </div>
             </motion.div>
           </motion.div>

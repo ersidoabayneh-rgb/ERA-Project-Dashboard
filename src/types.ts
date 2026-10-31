@@ -332,6 +332,8 @@ export interface MonthlyGradingRecord {
   // 6-month averages
   sixMonthAverageContractorScore?: number;
   sixMonthAverageConsultantScore?: number;
+  semesterKey?: string;
+  semesterLabel?: string;
   
   notes?: string;
 }
