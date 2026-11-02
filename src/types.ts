@@ -510,6 +510,14 @@ export interface IssueLogItem {
   transfers: IssueTransferRecord[];
 }
 
+export interface AiChatMessage {
+  id?: string;
+  role: 'user' | 'assistant';
+  content: string;
+  username: string;
+  timestamp: string;
+}
+
 export type ProjectLifecycleStatus = 'In Progress' | 'Completed' | 'Completed and Closed' | 'Suspended' | 'Terminated' | 'Terminated and Closed' | 'Archived';
 
 /**
@@ -735,7 +743,7 @@ export interface Project {
   issues?: IssueLogItem[];
   dailyActivities?: DailyActivityRecord[];
   dlpDefects?: DlpDefect[];
-  aiChatHistory?: any[];
+  aiChatHistory?: AiChatMessage[];
   documents?: ProjectDocument[];
   supervisionConsultant?: SupervisionConsultantInfo;
   approvedClaimsCostSum?: number;

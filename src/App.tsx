@@ -3092,13 +3092,15 @@ let isBatchSyncRunning = false;
   // General atomic updates to active project
   const handleProjectUpdate = (fields: Partial<Project>, sectionName: string) => {
     if (!currentProject || !currentUserObj) return;
-    if (currentUserObj.role === 'viewer' && currentUserObj.username !== 'proj_1781786415663') {
+    const isAiChatUpdate = fields.aiChatHistory !== undefined || sectionName.includes('AI Chat');
+
+    if (currentUserObj.role === 'viewer' && currentUserObj.username !== 'proj_1781786415663' && !isAiChatUpdate) {
       alert('🔒 READ-ONLY: Viewer accounts cannot modify project data.');
       return;
     }
 
     // 1. Check if project lifecycle is Closed (Completed & Closed or Terminated & Closed) (data entry freeze)
-    if (isProjectClosed(currentProject.status) && fields.status === undefined) {
+    if (isProjectClosed(currentProject.status) && fields.status === undefined && !isAiChatUpdate) {
       const isTerminated = currentProject.status === 'Terminated and Closed' || currentProject.status === 'Terminated';
       alert(
         `🔒 PROJECT LIFE CYCLE ${isTerminated ? 'TERMINATED' : 'COMPLETED'} & CLOSED\n\n` +
@@ -3109,7 +3111,7 @@ let isBatchSyncRunning = false;
     }
 
     // 2. Check if user is assigned editing permission for this page by the Admin
-    const isProjectInfoSection = sectionName.includes('Project Information') || sectionName.includes('Contract Specifications');
+    const isProjectInfoSection = sectionName.includes('Project Information') || sectionName.includes('Contract Specifications') || isAiChatUpdate;
     if (!isProjectInfoSection && !canUserEditPage(currentUserObj, activeTab)) {
       alert(
         `🔒 PAGE EDITING ACCESS RESTRICTED\n\n` +
@@ -3483,10 +3485,11 @@ let isBatchSyncRunning = false;
     // Editors work strictly inside an isolated private draft environment. No Editor change may affect
     // the main live database or become visible to other users until explicitly submitted and approved.
     if (
-      currentUserObj.role === 'editor' ||
+      (currentUserObj.role === 'editor' ||
       currentUserObj.role === 'era_editor' ||
       currentUserObj.role === 'consultant_editor' ||
-      currentUserObj.role === 'contractor_editor'
+      currentUserObj.role === 'contractor_editor') &&
+      !isAiChatUpdate
     ) {
       const nowIso = new Date().toISOString();
       const draftSection = sectionName || activeTab;
@@ -8730,6 +8733,15 @@ let isBatchSyncRunning = false;
         details={dbSavedPopup.details}
         timestamp={dbSavedPopup.timestamp}
       />
+
+      {/* Real-time AI Road Engineer & FIDIC Contract Assistant Chat */}
+      {currentProject && currentUserObj && currentPage !== 'login' && (
+        <AiAssistantChat
+          project={currentProject}
+          currentUserObj={currentUserObj}
+          onProjectUpdate={handleProjectUpdate}
+        />
+      )}
 
     </div>
   );
