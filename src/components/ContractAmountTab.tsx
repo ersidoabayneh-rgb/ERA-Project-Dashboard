@@ -49,6 +49,8 @@ interface Props {
   onCurrencyToggle?: (newCurrency: 'ETB' | 'USD') => void;
   onSaveExchangeRate?: (newRate: number) => void;
   onToggleUsdPayments?: () => void;
+  isUsdEnabled?: boolean;
+  onToggleUsdEnabled?: (enabled: boolean) => void;
 }
 
 export const ContractAmountTab: React.FC<Props> = ({ 
@@ -64,7 +66,9 @@ export const ContractAmountTab: React.FC<Props> = ({
   exchangeRate,
   onCurrencyToggle,
   onSaveExchangeRate,
-  onToggleUsdPayments
+  onToggleUsdPayments,
+  isUsdEnabled: propIsUsdEnabled,
+  onToggleUsdEnabled
 }) => {
   if (!project) return <div className="p-8 text-center text-slate-500 font-medium">Loading project contract data...</div>;
 
@@ -286,7 +290,39 @@ export const ContractAmountTab: React.FC<Props> = ({
   const isUsd = viewCurrency === 'USD';
   // Show both ETB and USD columns/figures when USD option is selected on the contract
   const hasUsdOption = Boolean(consultant?.enableUsdPayments || project?.enableUsdPayments);
-  const isUsdEnabled = hasUsdOption;
+  
+  // State-controlled USD column filter: controls whether USD columns should be rendered in the contract cost table
+  const [internalUsdEnabled, setInternalUsdEnabled] = useState<boolean>(() => {
+    if (propIsUsdEnabled !== undefined) return propIsUsdEnabled;
+    return hasUsdOption;
+  });
+
+  useEffect(() => {
+    if (propIsUsdEnabled !== undefined) {
+      setInternalUsdEnabled(propIsUsdEnabled);
+    }
+  }, [propIsUsdEnabled]);
+
+  const isUsdEnabled = propIsUsdEnabled !== undefined ? propIsUsdEnabled : internalUsdEnabled;
+
+  const handleToggleUsdFilter = () => {
+    const nextVal = !isUsdEnabled;
+    setInternalUsdEnabled(nextVal);
+    if (onToggleUsdEnabled) {
+      onToggleUsdEnabled(nextVal);
+    }
+    if (onToggleUsdPayments) {
+      onToggleUsdPayments();
+    } else if (onUpdateProject) {
+      onUpdateProject({
+        supervisionConsultant: {
+          ...consultant,
+          enableUsdPayments: nextVal
+        }
+      }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency remuneration option`);
+    }
+  };
+
   const effRate = exchangeRate && exchangeRate > 0 ? exchangeRate : (consultant?.exchangeRate || project?.exchangeRate || 125.0);
   const [rateInput, setRateInput] = useState<number>(effRate);
 
@@ -1086,28 +1122,16 @@ export const ContractAmountTab: React.FC<Props> = ({
             {/* USD Contract Active Status Toggle Button - Permanently Visible on Contract Data */}
             <button
               type="button"
-              onClick={() => {
-                if (onToggleUsdPayments) {
-                  onToggleUsdPayments();
-                } else if (onUpdateProject) {
-                  const nextVal = !hasUsdOption;
-                  onUpdateProject({
-                    supervisionConsultant: {
-                      ...consultant,
-                      enableUsdPayments: nextVal
-                    }
-                  }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency remuneration option`);
-                }
-              }}
+              onClick={handleToggleUsdFilter}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs border whitespace-nowrap ${
-                hasUsdOption
+                isUsdEnabled
                   ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-600 shadow-sm'
                   : 'bg-white hover:bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
               }`}
-              title="Toggle USD foreign currency remuneration option"
+              title="Toggle whether USD columns and calculations should be rendered in the contract cost table"
             >
-              <DollarSign className={`w-3.5 h-3.5 ${hasUsdOption ? 'text-white' : 'text-purple-600 dark:text-purple-400'}`} />
-              <span>{hasUsdOption ? 'USD Option Active (Dual Currency)' : 'Enable USD Option'}</span>
+              <DollarSign className={`w-3.5 h-3.5 ${isUsdEnabled ? 'text-white' : 'text-purple-600 dark:text-purple-400'}`} />
+              <span>{isUsdEnabled ? 'USD Option Active (Dual Currency)' : 'Enable USD Option'}</span>
             </button>
 
             <button
@@ -1223,14 +1247,14 @@ export const ContractAmountTab: React.FC<Props> = ({
       )}
 
       {/* Quick Summary Metric Cards */}
-      <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
+      <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <span className="p-2 bg-emerald-600 text-white rounded-xl shadow-xs">
               <Calculator className="w-4 h-4" />
             </span>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
                   Contract Cost Calculation Source:
                 </span>
@@ -1243,6 +1267,17 @@ export const ContractAmountTab: React.FC<Props> = ({
               </p>
             </div>
           </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500">Currency Mode:</span>
+            <span className={`px-2.5 py-1 rounded-xl text-xs font-bold border ${
+              isUsdEnabled
+                ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300 dark:border-purple-800'
+                : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+            }`}>
+              {isUsdEnabled ? 'Dual Currency (ETB + USD)' : 'Single Currency (ETB Only)'}
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
@@ -1250,7 +1285,7 @@ export const ContractAmountTab: React.FC<Props> = ({
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fees (Time-Based)</div>
             <div className="text-xl font-black font-mono text-slate-900 dark:text-white mt-1">
               {fmt(activeSummaryPrice.fees)} <span className="text-xs text-slate-400">ETB</span>
-              {hasUsdOption && activeSummaryPrice.feesUsd > 0 && (
+              {isUsdEnabled && activeSummaryPrice.feesUsd > 0 && (
                 <span className="text-xs text-purple-600 dark:text-purple-400 ml-1.5 font-bold">
                   + ${fmt(activeSummaryPrice.feesUsd)} USD
                 </span>
@@ -1267,7 +1302,7 @@ export const ContractAmountTab: React.FC<Props> = ({
             </div>
             <div className="text-xl font-black font-mono text-amber-700 dark:text-amber-400 mt-1">
               {fmt(activeSummaryPrice.reimb)} <span className="text-xs text-slate-400">ETB</span>
-              {hasUsdOption && activeSummaryPrice.reimbUsd > 0 && (
+              {isUsdEnabled && activeSummaryPrice.reimbUsd > 0 && (
                 <span className="text-xs text-purple-600 dark:text-purple-400 ml-1.5 font-bold">
                   + ${fmt(activeSummaryPrice.reimbUsd)} USD
                 </span>
@@ -1281,49 +1316,51 @@ export const ContractAmountTab: React.FC<Props> = ({
           <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Contingency ({c1Data.contingencyPct ?? 10}%)</div>
             <div className="text-xl font-black font-mono text-indigo-600 dark:text-indigo-400 mt-1">
-              {hasUsdOption 
+              {isUsdEnabled 
                 ? `${fmt(activeSummaryPrice.contingency + (activeSummaryPrice.contingencyUsd * effRate))} ETB` 
                 : `${fmt(activeSummaryPrice.contingency)} ETB`}
             </div>
-            <div className="text-[11px] text-indigo-600/80 mt-0.5">
-              {hasUsdOption 
-                ? `ETB + USD × ${effRate.toFixed(2)} ETB/USD (${c1Data.contingencyPct ?? 10}%)` 
+            <div className="text-[11px] text-indigo-600/80 mt-0.5 truncate">
+              {isUsdEnabled 
+                ? `ETB (${fmt(activeSummaryPrice.contingency)}) + USD ($${fmt(activeSummaryPrice.contingencyUsd)}) × ${effRate.toFixed(2)}` 
                 : `${c1Data.contingencyPct ?? 10}% of (A + B)`}
             </div>
           </div>
 
           <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Value Added Tax (15% VAT)</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">15% VAT (Separated)</div>
             <div className="text-xl font-black font-mono text-cyan-600 dark:text-cyan-400 mt-1">
-              {hasUsdOption 
+              {isUsdEnabled 
                 ? `${fmt(activeSummaryPrice.vat + (activeSummaryPrice.vatUsd * effRate))} ETB` 
                 : `${fmt(activeSummaryPrice.vat)} ETB`}
             </div>
-            <div className="text-[11px] text-cyan-600/80 mt-0.5">
-              {hasUsdOption ? `ETB VAT + USD VAT × ${effRate.toFixed(2)} ETB/USD` : '15% on Base (A + B + C)'}
+            <div className="text-[11px] text-cyan-600/80 mt-0.5 truncate">
+              {isUsdEnabled 
+                ? `ETB VAT (${fmt(activeSummaryPrice.vat)}) + USD VAT ($${fmt(activeSummaryPrice.vatUsd)}) × ${effRate.toFixed(2)}` 
+                : '15% on Base (A + B + C)'}
             </div>
           </div>
 
           <div className={`p-4 rounded-2xl border shadow-xs ${
-            hasUsdOption 
+            isUsdEnabled 
               ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800'
               : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
           }`}>
             <div className={`text-[11px] font-bold uppercase tracking-wider ${
-              hasUsdOption ? 'text-purple-800 dark:text-purple-300' : 'text-emerald-800 dark:text-emerald-300'
+              isUsdEnabled ? 'text-purple-800 dark:text-purple-300' : 'text-emerald-800 dark:text-emerald-300'
             }`}>
-              Total Contract Price (E) {hasUsdOption ? '[ETB + USD × Rate]' : ''}
+              Total Contract Price (E) {isUsdEnabled ? '[ETB + USD × Rate]' : ''}
             </div>
             <div className={`text-xl font-black font-mono mt-1 ${
-              hasUsdOption ? 'text-purple-700 dark:text-purple-300' : 'text-emerald-700 dark:text-emerald-400'
+              isUsdEnabled ? 'text-purple-700 dark:text-purple-300' : 'text-emerald-700 dark:text-emerald-400'
             }`}>
-              {hasUsdOption 
+              {isUsdEnabled 
                 ? `${fmt(activeSummaryPrice.grandTotal + (activeSummaryPrice.grandTotalUsd * effRate))} ETB` 
                 : `${fmt(activeSummaryPrice.grandTotal)} ETB`}
             </div>
-            <div className="text-[11px] opacity-80 font-semibold mt-0.5">
-              {hasUsdOption 
-                ? `Sum of ETB + USD × ${effRate.toFixed(2)} ETB/USD` 
+            <div className="text-[11px] opacity-80 font-semibold mt-0.5 truncate">
+              {isUsdEnabled 
+                ? `Sum of ETB (${fmt(activeSummaryPrice.grandTotal)}) + USD ($${fmt(activeSummaryPrice.grandTotalUsd)}) × ${effRate.toFixed(2)} ETB/USD` 
                 : '100% Local Currency ETB'}
             </div>
           </div>
@@ -1463,7 +1500,7 @@ export const ContractAmountTab: React.FC<Props> = ({
             <div className="flex items-center gap-2">
               {isUsdEnabled && (
                 <span className="px-2.5 py-1 bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 text-xs font-bold rounded-lg border border-purple-300 dark:border-purple-800">
-                  Dual Currency Active: ETB + USD
+                  Dual Currency Active: ETB + USD (1 USD = {effRate.toFixed(2)} ETB)
                 </span>
               )}
               <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-xs font-bold rounded-lg border border-emerald-300 dark:border-emerald-800 flex items-center gap-1.5">

@@ -342,7 +342,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   const [contingencyToDateUsd, setContingencyToDateUsd] = useState<number>(0);
   const [vatRatePct, setVatRatePct] = useState<number>(15.0);
   const [advanceDeductionEtb, setAdvanceDeductionEtb] = useState<number>(0);
+  const [advanceDeductionUsd, setAdvanceDeductionUsd] = useState<number>(0);
   const [taxDeductionEtb, setTaxDeductionEtb] = useState<number>(0);
+  const [taxDeductionUsd, setTaxDeductionUsd] = useState<number>(0);
   const [overtimeEtb, setOvertimeEtb] = useState<number>(0);
   const [overtimeDeductionEtb, setOvertimeDeductionEtb] = useState<number>(0);
   const [retentionDeductionEtb, setRetentionDeductionEtb] = useState<number>(0);
@@ -720,7 +722,9 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       setPaymentDate(activeInvoice.paymentDate || '');
       setRemarks(activeInvoice.remarks || '');
       setAdvanceDeductionEtb(activeInvoice.advanceDeductionEtb || 0);
+      setAdvanceDeductionUsd((activeInvoice as any).advanceDeductionUsd || 0);
       setTaxDeductionEtb(activeInvoice.taxDeductionEtb || 0);
+      setTaxDeductionUsd((activeInvoice as any).taxDeductionUsd || 0);
       setOvertimeEtb(activeInvoice.overtimeEtb || 0);
       setOvertimeDeductionEtb(activeInvoice.overtimeDeductionEtb || 0);
 
@@ -3469,19 +3473,23 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       y += boxH + (isCompactPdfMode ? 4 : 6);
 
       const t3SummaryHeaders = isUsdModeActive ? [
-        { title: 'Item', width: 30, align: 'center' },
-        { title: 'Fee Component Description', width: 220, align: 'left' },
-        { title: 'Contract (ETB / USD)', width: 120, align: 'right' },
-        { title: 'Preceding (ETB / USD)', width: 120, align: 'right' },
-        { title: 'This Month (ETB / USD)', width: 120, align: 'right' },
-        { title: 'To-Date (ETB / USD)', width: 129, align: 'right' }
+        { title: 'Item', width: 26, align: 'center' },
+        { title: 'Fee Component Description', width: 170, align: 'left' },
+        { title: 'Contract (ETB)', width: 70, align: 'right' },
+        { title: 'Contract (USD)', width: 65, align: 'right' },
+        { title: 'Preceding (ETB)', width: 70, align: 'right' },
+        { title: 'Preceding (USD)', width: 65, align: 'right' },
+        { title: 'This Month (ETB)', width: 75, align: 'right' },
+        { title: 'This Month (USD)', width: 70, align: 'right' },
+        { title: 'To-Date (ETB)', width: 75, align: 'right' },
+        { title: 'To-Date (USD)', width: 70, align: 'right' }
       ] : [
-        { title: 'Item', width: 40, align: 'center' },
-        { title: 'Fee Component Description', width: 280, align: 'left' },
-        { title: 'Contract Amount (ETB)', width: 145, align: 'right' },
-        { title: 'Preceding Claim (ETB)', width: 145, align: 'right' },
-        { title: 'This Month Claim (ETB)', width: 145, align: 'right' },
-        { title: 'To-Date Claim (ETB)', width: 144, align: 'right' }
+        { title: 'Item', width: 36, align: 'center' },
+        { title: 'Fee Component Description', width: 260, align: 'left' },
+        { title: 'Contract Amount (ETB)', width: 115, align: 'right' },
+        { title: 'Preceding Claim (ETB)', width: 115, align: 'right' },
+        { title: 'This Month Claim (ETB)', width: 115, align: 'right' },
+        { title: 'To-Date Claim (ETB)', width: 115, align: 'right' }
       ];
 
       doc.setFillColor(30, 41, 59);
@@ -3508,40 +3516,56 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         {
           no: '1',
           desc: 'Construction Supervision Fees (Sub Total 1)',
-          contract: isUsdModeActive ? `${fmt(subTotal1Contract)}\n($${fmt(subTotal1ContractUsd)})` : fmt(subTotal1Contract),
-          preceding: isUsdModeActive ? `${fmt(subTotal1Preceding)}\n($${fmt(subTotal1PrecedingUsd)})` : fmt(subTotal1Preceding),
-          thisMonth: isUsdModeActive ? `${fmt(subTotal1ThisInvoice)}\n($${fmt(subTotal1ThisInvoiceUsd)})` : fmt(subTotal1ThisInvoice),
-          toDate: isUsdModeActive ? `${fmt(subTotal1ToDate)}\n($${fmt(subTotal1ToDateUsd)})` : fmt(subTotal1ToDate)
+          contractEtb: fmt(subTotal1Contract),
+          contractUsd: `$${fmt(subTotal1ContractUsd)}`,
+          precedingEtb: fmt(subTotal1Preceding),
+          precedingUsd: `$${fmt(subTotal1PrecedingUsd)}`,
+          thisMonthEtb: fmt(subTotal1ThisInvoice),
+          thisMonthUsd: `$${fmt(subTotal1ThisInvoiceUsd)}`,
+          toDateEtb: fmt(subTotal1ToDate),
+          toDateUsd: `$${fmt(subTotal1ToDateUsd)}`
         },
         {
           no: '2',
           desc: 'Reimbursable Expenses (Sub Total 2)',
-          contract: isUsdModeActive ? `${fmt(linkedReimbContract)}\n($${fmt(linkedReimbContractUsd)})` : fmt(linkedReimbContract),
-          preceding: isUsdModeActive ? `${fmt(subTotal2Preceding)}\n($${fmt(subTotal2PrecedingUsd)})` : fmt(subTotal2Preceding),
-          thisMonth: isUsdModeActive ? `${fmt(subTotal2ThisInvoice)}\n($${fmt(subTotal2ThisInvoiceUsd)})` : fmt(subTotal2ThisInvoice),
-          toDate: isUsdModeActive ? `${fmt(subTotal2ToDate)}\n($${fmt(subTotal2ToDateUsd)})` : fmt(subTotal2ToDate)
+          contractEtb: fmt(linkedReimbContract),
+          contractUsd: `$${fmt(linkedReimbContractUsd)}`,
+          precedingEtb: fmt(subTotal2Preceding),
+          precedingUsd: `$${fmt(subTotal2PrecedingUsd)}`,
+          thisMonthEtb: fmt(subTotal2ThisInvoice),
+          thisMonthUsd: `$${fmt(subTotal2ThisInvoiceUsd)}`,
+          toDateEtb: fmt(subTotal2ToDate),
+          toDateUsd: `$${fmt(subTotal2ToDateUsd)}`
         },
         {
           no: '3',
           desc: 'Defect Liability Period Personnel (Sub Total 3)',
-          contract: isUsdModeActive ? `${fmt(subTotal3Contract)}\n($${fmt(subTotal3ContractUsd)})` : fmt(subTotal3Contract),
-          preceding: isUsdModeActive ? `${fmt(subTotal3Preceding)}\n($${fmt(subTotal3PrecedingUsd)})` : fmt(subTotal3Preceding),
-          thisMonth: isUsdModeActive ? `${fmt(subTotal3ThisInvoice)}\n($${fmt(subTotal3ThisInvoiceUsd)})` : fmt(subTotal3ThisInvoice),
-          toDate: isUsdModeActive ? `${fmt(subTotal3ToDate)}\n($${fmt(subTotal3ToDateUsd)})` : fmt(subTotal3ToDate)
+          contractEtb: fmt(subTotal3Contract),
+          contractUsd: `$${fmt(subTotal3ContractUsd)}`,
+          precedingEtb: fmt(subTotal3Preceding),
+          precedingUsd: `$${fmt(subTotal3PrecedingUsd)}`,
+          thisMonthEtb: fmt(subTotal3ThisInvoice),
+          thisMonthUsd: `$${fmt(subTotal3ThisInvoiceUsd)}`,
+          toDateEtb: fmt(subTotal3ToDate),
+          toDateUsd: `$${fmt(subTotal3ToDateUsd)}`
         },
         {
           no: 'TOTAL',
           desc: 'TOTAL INVOICE AMOUNT (AGGREGATED FEES & DIRECT EXPENSES)',
-          contract: isUsdModeActive ? `${fmt(totalBaseContract)}\n($${fmt(totalBaseContractUsd)})` : fmt(totalBaseContract),
-          preceding: isUsdModeActive ? `${fmt(totalSubtotalPreceding)}\n($${fmt(totalSubtotalPrecedingUsd)})` : fmt(totalSubtotalPreceding),
-          thisMonth: isUsdModeActive ? `${fmt(totalSubtotalThisInvoice)}\n($${fmt(totalSubtotalThisInvoiceUsd)})` : fmt(totalSubtotalThisInvoice),
-          toDate: isUsdModeActive ? `${fmt(totalSubtotalToDate)}\n($${fmt(totalSubtotalToDateUsd)})` : fmt(totalSubtotalToDate),
+          contractEtb: fmt(totalBaseContract),
+          contractUsd: `$${fmt(totalBaseContractUsd)}`,
+          precedingEtb: fmt(totalSubtotalPreceding),
+          precedingUsd: `$${fmt(totalSubtotalPrecedingUsd)}`,
+          thisMonthEtb: fmt(totalSubtotalThisInvoice),
+          thisMonthUsd: `$${fmt(totalSubtotalThisInvoiceUsd)}`,
+          toDateEtb: fmt(totalSubtotalToDate),
+          toDateUsd: `$${fmt(totalSubtotalToDateUsd)}`,
           isBold: true
         }
       ];
 
       summaryRows.forEach((sRow, idx) => {
-        const rowH = minRowH * (isUsdModeActive ? 1.6 : 1.2);
+        const rowH = minRowH * (isCompactPdfMode ? 1.1 : 1.25);
         if (idx % 2 === 1) {
           doc.setFillColor(248, 250, 252);
           doc.rect(margin + 6, y, contentWidth - 12, rowH, 'F');
@@ -3559,28 +3583,55 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         let rx = margin + 8;
         const textYOffset = isCompactPdfMode ? 6.5 : 8;
 
-        // Item
-        doc.text(sRow.no, rx + (isUsdModeActive ? 15 : 20), y + textYOffset, { align: 'center' });
-        rx += isUsdModeActive ? 30 : 40;
-
-        // Desc
-        doc.text(sRow.desc, rx + 2, y + textYOffset);
-        rx += isUsdModeActive ? 220 : 280;
-
-        // Contract
-        doc.text(sRow.contract, rx + (isUsdModeActive ? 120 : 145) - 2, y + textYOffset, { align: 'right' });
-        rx += isUsdModeActive ? 120 : 145;
-
-        // Preceding
-        doc.text(sRow.preceding, rx + (isUsdModeActive ? 120 : 145) - 2, y + textYOffset, { align: 'right' });
-        rx += isUsdModeActive ? 120 : 145;
-
-        // This Month
-        doc.text(sRow.thisMonth, rx + (isUsdModeActive ? 120 : 145) - 2, y + textYOffset, { align: 'right' });
-        rx += isUsdModeActive ? 120 : 145;
-
-        // To-Date
-        doc.text(sRow.toDate, rx + (isUsdModeActive ? 129 : 144) - 2, y + textYOffset, { align: 'right' });
+        if (isUsdModeActive) {
+          // Item
+          doc.text(sRow.no, rx + 13, y + textYOffset, { align: 'center' });
+          rx += 26;
+          // Desc
+          doc.text(sRow.desc, rx + 2, y + textYOffset);
+          rx += 170;
+          // Contract ETB
+          doc.text(sRow.contractEtb, rx + 70 - 2, y + textYOffset, { align: 'right' });
+          rx += 70;
+          // Contract USD
+          doc.text(sRow.contractUsd, rx + 65 - 2, y + textYOffset, { align: 'right' });
+          rx += 65;
+          // Preceding ETB
+          doc.text(sRow.precedingEtb, rx + 70 - 2, y + textYOffset, { align: 'right' });
+          rx += 70;
+          // Preceding USD
+          doc.text(sRow.precedingUsd, rx + 65 - 2, y + textYOffset, { align: 'right' });
+          rx += 65;
+          // This Month ETB
+          doc.text(sRow.thisMonthEtb, rx + 75 - 2, y + textYOffset, { align: 'right' });
+          rx += 75;
+          // This Month USD
+          doc.text(sRow.thisMonthUsd, rx + 70 - 2, y + textYOffset, { align: 'right' });
+          rx += 70;
+          // To-Date ETB
+          doc.text(sRow.toDateEtb, rx + 75 - 2, y + textYOffset, { align: 'right' });
+          rx += 75;
+          // To-Date USD
+          doc.text(sRow.toDateUsd, rx + 70 - 2, y + textYOffset, { align: 'right' });
+        } else {
+          // Item
+          doc.text(sRow.no, rx + 18, y + textYOffset, { align: 'center' });
+          rx += 36;
+          // Desc
+          doc.text(sRow.desc, rx + 2, y + textYOffset);
+          rx += 260;
+          // Contract
+          doc.text(sRow.contractEtb, rx + 115 - 2, y + textYOffset, { align: 'right' });
+          rx += 115;
+          // Preceding
+          doc.text(sRow.precedingEtb, rx + 115 - 2, y + textYOffset, { align: 'right' });
+          rx += 115;
+          // This Month
+          doc.text(sRow.thisMonthEtb, rx + 115 - 2, y + textYOffset, { align: 'right' });
+          rx += 115;
+          // To-Date
+          doc.text(sRow.toDateEtb, rx + 115 - 2, y + textYOffset, { align: 'right' });
+        }
 
         doc.setDrawColor(241, 245, 249);
         doc.line(margin + 6, y + rowH, margin + contentWidth - 6, y + rowH);
@@ -3594,15 +3645,28 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       drawPageHeader(6, "Table 5: Consolidated Summary & Net Payment Computation");
       y = margin + 52;
 
-      // Table 5 Headers (Total width = 756 pt)
-      const t5Headers = [
-        { title: 'Item', width: 28, align: 'center' },
+      // Table 5 Headers
+      const t5Headers = isUsdModeActive ? [
+        { title: 'Item', width: 24, align: 'center' },
+        { title: 'Claim Component Description', width: 142, align: 'left' },
+        { title: 'Contract (ETB)', width: 60, align: 'right' },
+        { title: 'Contract (USD)', width: 54, align: 'right' },
+        { title: 'Preceding (ETB)', width: 58, align: 'right' },
+        { title: 'Preceding (USD)', width: 52, align: 'right' },
+        { title: 'This Month (ETB)', width: 64, align: 'right' },
+        { title: 'This Month (USD)', width: 58, align: 'right' },
+        { title: 'To-Date (ETB)', width: 62, align: 'right' },
+        { title: 'To-Date (USD)', width: 56, align: 'right' },
+        { title: 'Remaining (ETB)', width: 64, align: 'right' },
+        { title: 'Remaining (USD)', width: 58, align: 'right' }
+      ] : [
+        { title: 'Item', width: 32, align: 'center' },
         { title: 'Claim Component Description', width: 220, align: 'left' },
-        { title: `Contract Baseline (${isUsdModeActive ? 'ETB / USD' : 'ETB'})`, width: 108, align: 'right' },
-        { title: `Preceding Claim (${isUsdModeActive ? 'ETB / USD' : 'ETB'})`, width: 95, align: 'right' },
-        { title: `This Month (${isUsdModeActive ? 'ETB / USD' : 'ETB'})`, width: 110, align: 'right' },
-        { title: `To-Date Claim (${isUsdModeActive ? 'ETB / USD' : 'ETB'})`, width: 100, align: 'right' },
-        { title: `Remaining Balance (${isUsdModeActive ? 'ETB / USD' : 'ETB'})`, width: 95, align: 'right' }
+        { title: 'Contract Baseline (ETB)', width: 104, align: 'right' },
+        { title: 'Preceding Claim (ETB)', width: 100, align: 'right' },
+        { title: 'This Month Claim (ETB)', width: 104, align: 'right' },
+        { title: 'To-Date Claim (ETB)', width: 100, align: 'right' },
+        { title: 'Remaining Balance (ETB)', width: 96, align: 'right' }
       ];
 
       doc.setFillColor(30, 41, 59);
@@ -3629,125 +3693,121 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         {
           item: '1',
           desc: 'Sub Total 1 (Remuneration of Construction Supervisory Staff)',
-          contract: isUsdModeActive && linkedFeesContractUsd > 0 ? `${fmt(linkedFeesContract)}\n($${fmt(linkedFeesContractUsd)})` : fmt(linkedFeesContract),
-          thisMonth: isUsdModeActive && subTotal1ThisInvoiceUsd > 0 ? `${fmt(subTotal1ThisInvoice)}\n($${fmt(subTotal1ThisInvoiceUsd)})` : fmt(subTotal1ThisInvoice),
-          preceding: isUsdModeActive && subTotal1PrecedingUsd > 0 ? `${fmt(subTotal1Preceding)}\n($${fmt(subTotal1PrecedingUsd)})` : fmt(subTotal1Preceding),
-          toDate: isUsdModeActive && subTotal1ToDateUsd > 0 ? `${fmt(subTotal1ToDate)}\n($${fmt(subTotal1ToDateUsd)})` : fmt(subTotal1ToDate),
-          remaining: isUsdModeActive && subTotal1RemainingUsd > 0 ? `${fmt(subTotal1Remaining)}\n($${fmt(subTotal1RemainingUsd)})` : fmt(subTotal1Remaining)
+          contractEtb: fmt(linkedFeesContract), contractUsd: linkedFeesContractUsd > 0 ? `$${fmt(linkedFeesContractUsd)}` : '-',
+          thisMonthEtb: fmt(subTotal1ThisInvoice), thisMonthUsd: subTotal1ThisInvoiceUsd > 0 ? `$${fmt(subTotal1ThisInvoiceUsd)}` : '-',
+          precedingEtb: fmt(subTotal1Preceding), precedingUsd: subTotal1PrecedingUsd > 0 ? `$${fmt(subTotal1PrecedingUsd)}` : '-',
+          toDateEtb: fmt(subTotal1ToDate), toDateUsd: subTotal1ToDateUsd > 0 ? `$${fmt(subTotal1ToDateUsd)}` : '-',
+          remainingEtb: fmt(subTotal1Remaining), remainingUsd: subTotal1RemainingUsd > 0 ? `$${fmt(subTotal1RemainingUsd)}` : '-'
         },
         {
           item: '2',
           desc: 'Sub Total 2 (Reimbursable Operating Direct Costs — Per Diem, Transport, Communication)',
-          contract: isUsdModeActive && linkedReimbContractUsd > 0 ? `${fmt(linkedReimbContract)}\n($${fmt(linkedReimbContractUsd)})` : fmt(linkedReimbContract),
-          thisMonth: isUsdModeActive && subTotal2ThisInvoiceUsd > 0 ? `${fmt(subTotal2ThisInvoice)}\n($${fmt(subTotal2ThisInvoiceUsd)})` : fmt(subTotal2ThisInvoice),
-          preceding: isUsdModeActive && subTotal2PrecedingUsd > 0 ? `${fmt(subTotal2Preceding)}\n($${fmt(subTotal2PrecedingUsd)})` : fmt(subTotal2Preceding),
-          toDate: isUsdModeActive && subTotal2ToDateUsd > 0 ? `${fmt(subTotal2ToDate)}\n($${fmt(subTotal2ToDateUsd)})` : fmt(subTotal2ToDate),
-          remaining: isUsdModeActive && subTotal2RemainingUsd > 0 ? `${fmt(subTotal2Remaining)}\n($${fmt(subTotal2RemainingUsd)})` : fmt(subTotal2Remaining)
+          contractEtb: fmt(linkedReimbContract), contractUsd: linkedReimbContractUsd > 0 ? `$${fmt(linkedReimbContractUsd)}` : '-',
+          thisMonthEtb: fmt(subTotal2ThisInvoice), thisMonthUsd: subTotal2ThisInvoiceUsd > 0 ? `$${fmt(subTotal2ThisInvoiceUsd)}` : '-',
+          precedingEtb: fmt(subTotal2Preceding), precedingUsd: subTotal2PrecedingUsd > 0 ? `$${fmt(subTotal2PrecedingUsd)}` : '-',
+          toDateEtb: fmt(subTotal2ToDate), toDateUsd: subTotal2ToDateUsd > 0 ? `$${fmt(subTotal2ToDateUsd)}` : '-',
+          remainingEtb: fmt(subTotal2Remaining), remainingUsd: subTotal2RemainingUsd > 0 ? `$${fmt(subTotal2RemainingUsd)}` : '-'
         },
         {
           item: '3',
           desc: 'Sub Total 3 (Defect Liability Personnel Allocation)',
-          contract: isUsdModeActive && subTotal3ContractUsd > 0 ? `${fmt(subTotal3Contract)}\n($${fmt(subTotal3ContractUsd)})` : fmt(subTotal3Contract),
-          thisMonth: isUsdModeActive && subTotal3ThisInvoiceUsd > 0 ? `${fmt(subTotal3ThisInvoice)}\n($${fmt(subTotal3ThisInvoiceUsd)})` : fmt(subTotal3ThisInvoice),
-          preceding: isUsdModeActive && subTotal3PrecedingUsd > 0 ? `${fmt(subTotal3Preceding)}\n($${fmt(subTotal3PrecedingUsd)})` : (subTotal3Preceding > 0 ? fmt(subTotal3Preceding) : '-'),
-          toDate: isUsdModeActive && subTotal3ToDateUsd > 0 ? `${fmt(subTotal3ToDate)}\n($${fmt(subTotal3ToDateUsd)})` : fmt(subTotal3ToDate),
-          remaining: isUsdModeActive && subTotal3RemainingUsd > 0 ? `${fmt(subTotal3Remaining)}\n($${fmt(subTotal3RemainingUsd)})` : fmt(subTotal3Remaining)
+          contractEtb: fmt(subTotal3Contract), contractUsd: subTotal3ContractUsd > 0 ? `$${fmt(subTotal3ContractUsd)}` : '-',
+          thisMonthEtb: fmt(subTotal3ThisInvoice), thisMonthUsd: subTotal3ThisInvoiceUsd > 0 ? `$${fmt(subTotal3ThisInvoiceUsd)}` : '-',
+          precedingEtb: subTotal3Preceding > 0 ? fmt(subTotal3Preceding) : '-', precedingUsd: subTotal3PrecedingUsd > 0 ? `$${fmt(subTotal3PrecedingUsd)}` : '-',
+          toDateEtb: fmt(subTotal3ToDate), toDateUsd: subTotal3ToDateUsd > 0 ? `$${fmt(subTotal3ToDateUsd)}` : '-',
+          remainingEtb: fmt(subTotal3Remaining), remainingUsd: subTotal3RemainingUsd > 0 ? `$${fmt(subTotal3RemainingUsd)}` : '-'
         },
         {
           item: 'A+B',
           desc: 'SUBTOTAL DIRECT SERVICES & EXPENSES (1 + 2 + 3)',
-          contract: isUsdModeActive && totalBaseContractUsd > 0 ? `${fmt(totalBaseContract)}\n($${fmt(totalBaseContractUsd)})` : fmt(totalBaseContract),
-          thisMonth: isUsdModeActive && totalSubtotalThisInvoiceUsd > 0 ? `${fmt(totalSubtotalThisInvoice)}\n($${fmt(totalSubtotalThisInvoiceUsd)})` : fmt(totalSubtotalThisInvoice),
-          preceding: isUsdModeActive && totalSubtotalPrecedingUsd > 0 ? `${fmt(totalSubtotalPreceding)}\n($${fmt(totalSubtotalPrecedingUsd)})` : fmt(totalSubtotalPreceding),
-          toDate: isUsdModeActive && totalSubtotalToDateUsd > 0 ? `${fmt(totalSubtotalToDate)}\n($${fmt(totalSubtotalToDateUsd)})` : fmt(totalSubtotalToDate),
-          remaining: isUsdModeActive && totalSubtotalRemainingUsd > 0 ? `${fmt(Math.max(0, totalBaseContract - totalSubtotalToDate))}\n($${fmt(totalSubtotalRemainingUsd)})` : fmt(Math.max(0, totalBaseContract - totalSubtotalToDate)),
+          contractEtb: fmt(totalBaseContract), contractUsd: totalBaseContractUsd > 0 ? `$${fmt(totalBaseContractUsd)}` : '-',
+          thisMonthEtb: fmt(totalSubtotalThisInvoice), thisMonthUsd: totalSubtotalThisInvoiceUsd > 0 ? `$${fmt(totalSubtotalThisInvoiceUsd)}` : '-',
+          precedingEtb: fmt(totalSubtotalPreceding), precedingUsd: totalSubtotalPrecedingUsd > 0 ? `$${fmt(totalSubtotalPrecedingUsd)}` : '-',
+          toDateEtb: fmt(totalSubtotalToDate), toDateUsd: totalSubtotalToDateUsd > 0 ? `$${fmt(totalSubtotalToDateUsd)}` : '-',
+          remainingEtb: fmt(Math.max(0, totalBaseContract - totalSubtotalToDate)), remainingUsd: totalSubtotalRemainingUsd > 0 ? `$${fmt(totalSubtotalRemainingUsd)}` : '-',
           isBold: true
         },
         {
           item: '4',
           desc: `Contingency Provision (${contingencyRatePct}% Contract Ceiling)`,
-          contract: isUsdModeActive && contingencyContractUsd > 0 ? `${fmt(contingencyContract)}\n($${fmt(contingencyContractUsd)})` : fmt(contingencyContract),
-          thisMonth: isUsdModeActive && contingencyThisInvoiceUsd > 0 ? `${fmt(contingencyThisInvoice)}\n($${fmt(contingencyThisInvoiceUsd)})` : fmt(contingencyThisInvoice),
-          preceding: isUsdModeActive && contingencyPrecedingClaimUsd > 0 ? `${fmt(contingencyPrecedingClaim)}\n($${fmt(contingencyPrecedingClaimUsd)})` : fmt(contingencyPrecedingClaim),
-          toDate: isUsdModeActive && contingencyToDateUsdValue > 0 ? `${fmt(contingencyToDate)}\n($${fmt(contingencyToDateUsdValue)})` : fmt(contingencyToDate),
-          remaining: isUsdModeActive && contingencyRemainingUsd > 0 ? `${fmt(Math.max(0, contingencyContract - contingencyToDate))}\n($${fmt(contingencyRemainingUsd)})` : fmt(Math.max(0, contingencyContract - contingencyToDate))
+          contractEtb: fmt(contingencyContract), contractUsd: contingencyContractUsd > 0 ? `$${fmt(contingencyContractUsd)}` : '-',
+          thisMonthEtb: fmt(contingencyThisInvoice), thisMonthUsd: contingencyThisInvoiceUsd > 0 ? `$${fmt(contingencyThisInvoiceUsd)}` : '-',
+          precedingEtb: fmt(contingencyPrecedingClaim), precedingUsd: contingencyPrecedingClaimUsd > 0 ? `$${fmt(contingencyPrecedingClaimUsd)}` : '-',
+          toDateEtb: fmt(contingencyToDate), toDateUsd: contingencyToDateUsdValue > 0 ? `$${fmt(contingencyToDateUsdValue)}` : '-',
+          remainingEtb: fmt(Math.max(0, contingencyContract - contingencyToDate)), remainingUsd: contingencyRemainingUsd > 0 ? `$${fmt(contingencyRemainingUsd)}` : '-'
         },
         {
           item: '5',
           desc: `Value Added Tax (${vatRatePct}% VAT)`,
-          contract: isUsdModeActive && vatContractUsd > 0 ? `${fmt(vatContract)}\n($${fmt(vatContractUsd)})` : fmt(vatContract),
-          thisMonth: isUsdModeActive && vatThisInvoiceUsd > 0 ? `${fmt(vatThisInvoice)}\n($${fmt(vatThisInvoiceUsd)})` : fmt(vatThisInvoice),
-          preceding: isUsdModeActive && vatPrecedingUsd > 0 ? `${fmt(vatPreceding)}\n($${fmt(vatPrecedingUsd)})` : fmt(vatPreceding),
-          toDate: isUsdModeActive && vatToDateUsd > 0 ? `${fmt(vatToDate)}\n($${fmt(vatToDateUsd)})` : fmt(vatToDate),
-          remaining: isUsdModeActive && vatRemainingUsd > 0 ? `${fmt(Math.max(0, vatContract - vatToDate))}\n($${fmt(vatRemainingUsd)})` : fmt(Math.max(0, vatContract - vatToDate))
+          contractEtb: fmt(vatContract), contractUsd: vatContractUsd > 0 ? `$${fmt(vatContractUsd)}` : '-',
+          thisMonthEtb: fmt(vatThisInvoice), thisMonthUsd: vatThisInvoiceUsd > 0 ? `$${fmt(vatThisInvoiceUsd)}` : '-',
+          precedingEtb: fmt(vatPreceding), precedingUsd: vatPrecedingUsd > 0 ? `$${fmt(vatPrecedingUsd)}` : '-',
+          toDateEtb: fmt(vatToDate), toDateUsd: vatToDateUsd > 0 ? `$${fmt(vatToDateUsd)}` : '-',
+          remainingEtb: fmt(Math.max(0, vatContract - vatToDate)), remainingUsd: vatRemainingUsd > 0 ? `$${fmt(vatRemainingUsd)}` : '-'
         },
         {
           item: '6',
-          desc: 'GROSS INVOICE CLAIM AMOUNT (ETB)',
-          contract: isUsdModeActive && totalContractDueUsd > 0 ? `${fmt(totalContractDue)}\n($${fmt(totalContractDueUsd)})` : fmt(totalContractDue),
-          thisMonth: isUsdModeActive && grossPayableBaseUsd > 0 ? `${fmt(grossPayableBase)}\n($${fmt(grossPayableBaseUsd)})` : fmt(grossPayableBase),
-          preceding: isUsdModeActive && grossPrecedingUsd > 0 ? `${fmt(grossPreceding)}\n($${fmt(grossPrecedingUsd)})` : fmt(grossPreceding),
-          toDate: isUsdModeActive && grossToDateUsd > 0 ? `${fmt(grossToDate)}\n($${fmt(grossToDateUsd)})` : fmt(grossToDate),
-          remaining: isUsdModeActive && grossRemainingUsd > 0 ? `${fmt(Math.max(0, totalContractDue - grossToDate))}\n($${fmt(grossRemainingUsd)})` : fmt(Math.max(0, totalContractDue - grossToDate)),
+          desc: 'GROSS INVOICE CLAIM AMOUNT',
+          contractEtb: fmt(totalContractDue), contractUsd: totalContractDueUsd > 0 ? `$${fmt(totalContractDueUsd)}` : '-',
+          thisMonthEtb: fmt(grossPayableBase), thisMonthUsd: grossPayableBaseUsd > 0 ? `$${fmt(grossPayableBaseUsd)}` : '-',
+          precedingEtb: fmt(grossPreceding), precedingUsd: grossPrecedingUsd > 0 ? `$${fmt(grossPrecedingUsd)}` : '-',
+          toDateEtb: fmt(grossToDate), toDateUsd: grossToDateUsd > 0 ? `$${fmt(grossToDateUsd)}` : '-',
+          remainingEtb: fmt(Math.max(0, totalContractDue - grossToDate)), remainingUsd: grossRemainingUsd > 0 ? `$${fmt(grossRemainingUsd)}` : '-',
           isHeader: true
         },
         {
           item: '5a',
           desc: 'Add: Overtime Claim (ETB)',
-          contract: '-',
-          thisMonth: overtimeEtb > 0 ? fmt(overtimeEtb) : '0.00',
-          preceding: '-',
-          toDate: overtimeEtb > 0 ? fmt(overtimeEtb) : '0.00',
-          remaining: '-'
+          contractEtb: '-', contractUsd: '-',
+          thisMonthEtb: overtimeEtb > 0 ? fmt(overtimeEtb) : '0.00', thisMonthUsd: '-',
+          precedingEtb: '-', precedingUsd: '-',
+          toDateEtb: overtimeEtb > 0 ? fmt(overtimeEtb) : '0.00', toDateUsd: '-',
+          remainingEtb: '-', remainingUsd: '-'
         },
         {
           item: '7a',
-          desc: 'Less: Advance Payment Recovery Deduction (ETB)',
-          contract: '-',
-          thisMonth: advanceDeductionEtb > 0 ? `-${fmt(advanceDeductionEtb)}` : '0.00',
-          preceding: '-',
-          toDate: advanceDeductionEtb > 0 ? `-${fmt(advanceDeductionEtb)}` : '0.00',
-          remaining: '-'
+          desc: 'Less: Advance Payment Recovery Deduction',
+          contractEtb: '-', contractUsd: '-',
+          thisMonthEtb: advanceDeductionEtb > 0 ? `-${fmt(advanceDeductionEtb)}` : '0.00', thisMonthUsd: advanceDeductionUsd > 0 ? `-$${fmt(advanceDeductionUsd)}` : '0.00',
+          precedingEtb: '-', precedingUsd: '-',
+          toDateEtb: advanceDeductionEtb > 0 ? `-${fmt(advanceDeductionEtb)}` : '0.00', toDateUsd: advanceDeductionUsd > 0 ? `-$${fmt(advanceDeductionUsd)}` : '0.00',
+          remainingEtb: '-', remainingUsd: '-'
         },
         {
           item: '7b',
           desc: 'Less: Withholding / Statutory Tax Deduction (2%)',
-          contract: '-',
-          thisMonth: taxDeductionEtb > 0 ? `-${fmt(taxDeductionEtb)}` : '0.00',
-          preceding: '-',
-          toDate: taxDeductionEtb > 0 ? `-${fmt(taxDeductionEtb)}` : '0.00',
-          remaining: '-'
+          contractEtb: '-', contractUsd: '-',
+          thisMonthEtb: taxDeductionEtb > 0 ? `-${fmt(taxDeductionEtb)}` : '0.00', thisMonthUsd: taxDeductionUsd > 0 ? `-$${fmt(taxDeductionUsd)}` : '0.00',
+          precedingEtb: '-', precedingUsd: '-',
+          toDateEtb: taxDeductionEtb > 0 ? `-${fmt(taxDeductionEtb)}` : '0.00', toDateUsd: taxDeductionUsd > 0 ? `-$${fmt(taxDeductionUsd)}` : '0.00',
+          remainingEtb: '-', remainingUsd: '-'
         },
         {
           item: '7c',
-          desc: 'Less: Overtime Deduction from Contractor (ETB)',
-          contract: '-',
-          thisMonth: overtimeDeductionEtb > 0 ? `-${fmt(overtimeDeductionEtb)}` : '0.00',
-          preceding: '-',
-          toDate: overtimeDeductionEtb > 0 ? `-${fmt(overtimeDeductionEtb)}` : '0.00',
-          remaining: '-'
+          desc: 'Less: Overtime Deduction from Contractor',
+          contractEtb: '-', contractUsd: '-',
+          thisMonthEtb: overtimeDeductionEtb > 0 ? `-${fmt(overtimeDeductionEtb)}` : '0.00', thisMonthUsd: '-',
+          precedingEtb: '-', precedingUsd: '-',
+          toDateEtb: overtimeDeductionEtb > 0 ? `-${fmt(overtimeDeductionEtb)}` : '0.00', toDateUsd: '-',
+          remainingEtb: '-', remainingUsd: '-'
         },
         {
           item: '8',
-          desc: 'TOTAL NET AMOUNT PAYABLE TO CONSULTANT (ETB) — MINUS VAT',
-          contract: fmt(contractNetAmount),
-          thisMonth: `${fmt(netDueThisInvoice)} ETB`,
-          preceding: fmt(netPreceding),
-          toDate: `${fmt(netToDate)} ETB`,
-          remaining: '-',
+          desc: 'TOTAL NET AMOUNT PAYABLE TO CONSULTANT — MINUS VAT',
+          contractEtb: fmt(contractNetAmount), contractUsd: `$${fmt(grandContractWithContingencyUsd)}`,
+          thisMonthEtb: fmt(netDueThisInvoice), thisMonthUsd: `$${fmt(Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd))}`,
+          precedingEtb: fmt(netPreceding), precedingUsd: `$${fmt(Math.max(0, grossPrecedingUsd - vatPrecedingUsd))}`,
+          toDateEtb: fmt(netToDate), toDateUsd: `$${fmt(Math.max(0, grossToDateUsd - vatToDateUsd))}`,
+          remainingEtb: '-', remainingUsd: '-',
           isNetPayable: true
         }
       ];
 
       t5Rows.forEach((r, idx) => {
-        const descLines = doc.splitTextToSize(r.desc, 220 - 4);
-        const contractLines = r.contract.split('\n');
-        const thisMonthLines = r.thisMonth.split('\n');
-        const precedingLines = r.preceding.split('\n');
-        const toDateLines = r.toDate.split('\n');
-        const remainingLines = r.remaining.split('\n');
-        const maxLines = Math.max(descLines.length, contractLines.length, thisMonthLines.length, precedingLines.length, toDateLines.length, remainingLines.length, 1);
-        const rowHeight = Math.max(maxLines * lineStep + (isCompactPdfMode ? 2 : 4), r.isNetPayable ? (isCompactPdfMode ? 14 : 16) : (isCompactPdfMode ? 10.5 : 13));
+        const descMaxW = isUsdModeActive ? 138 : 216;
+        const descLines = doc.splitTextToSize(r.desc, descMaxW);
+        const maxLines = Math.max(descLines.length, 1);
+        const rowHeight = Math.max(maxLines * lineStep + (isCompactPdfMode ? 2 : 3), r.isNetPayable ? (isCompactPdfMode ? 13 : 15) : (isCompactPdfMode ? 10 : 12));
 
         if (r.isNetPayable) {
           doc.setFillColor(209, 250, 229); // emerald-100
@@ -3763,7 +3823,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         }
 
         doc.setFont('helvetica', (r.isNetPayable || r.isHeader || r.isBold) ? 'bold' : 'normal');
-        doc.setFontSize(r.isNetPayable ? (isCompactPdfMode ? 7 : 7.5) : (isCompactPdfMode ? 6 : 6.5));
+        doc.setFontSize(r.isNetPayable ? (isCompactPdfMode ? 6.5 : 7) : (isCompactPdfMode ? 5.5 : 6));
         doc.setTextColor(
           r.isNetPayable ? 6 : (r.isHeader ? 15 : 30),
           r.isNetPayable ? 95 : (r.isHeader ? 23 : 41),
@@ -3771,69 +3831,111 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         );
 
         let roX = margin + 8;
-        const textYOffset = isCompactPdfMode ? 6.5 : 8;
+        const textYOffset = isCompactPdfMode ? 6 : 7.5;
 
-        // Item
-        doc.text(r.item, roX + 14, y + (rowHeight * 0.5) + 2, { align: 'center' });
-        roX += 28;
+        if (isUsdModeActive) {
+          // Item
+          doc.text(r.item, roX + 12, y + (rowHeight * 0.5) + 2, { align: 'center' });
+          roX += 24;
 
-        // Desc (Wrapped)
-        descLines.forEach((line: string, lIdx: number) => {
-          doc.text(line, roX + 2, y + textYOffset + (lIdx * lineStep));
-        });
-        roX += 220;
+          // Desc (Wrapped)
+          descLines.forEach((line: string, lIdx: number) => {
+            doc.text(line, roX + 2, y + textYOffset + (lIdx * lineStep));
+          });
+          roX += 142;
 
-        // Contract Baseline
-        contractLines.forEach((line: string, lIdx: number) => {
-          doc.text(line, roX + 108 - 2, y + textYOffset + (lIdx * lineStep), { align: 'right' });
-        });
-        roX += 108;
+          // Contract ETB
+          doc.text(r.contractEtb, roX + 60 - 2, y + textYOffset, { align: 'right' });
+          roX += 60;
+          // Contract USD
+          doc.text(r.contractUsd, roX + 54 - 2, y + textYOffset, { align: 'right' });
+          roX += 54;
 
-        // Preceding
-        precedingLines.forEach((line: string, lIdx: number) => {
-          doc.text(line, roX + 95 - 2, y + textYOffset + (lIdx * lineStep), { align: 'right' });
-        });
-        roX += 95;
+          // Preceding ETB
+          doc.text(r.precedingEtb, roX + 58 - 2, y + textYOffset, { align: 'right' });
+          roX += 58;
+          // Preceding USD
+          doc.text(r.precedingUsd, roX + 52 - 2, y + textYOffset, { align: 'right' });
+          roX += 52;
 
-        // This Month
-        if (r.isNetPayable) doc.setTextColor(5, 150, 105);
-        thisMonthLines.forEach((line: string, lIdx: number) => {
-          doc.text(line, roX + 110 - 2, y + textYOffset + (lIdx * lineStep), { align: 'right' });
-        });
-        if (r.isNetPayable) doc.setTextColor(6, 95, 70);
-        roX += 110;
+          // This Month ETB
+          if (r.isNetPayable) doc.setTextColor(5, 150, 105);
+          doc.text(r.thisMonthEtb, roX + 64 - 2, y + textYOffset, { align: 'right' });
+          roX += 64;
+          // This Month USD
+          doc.text(r.thisMonthUsd, roX + 58 - 2, y + textYOffset, { align: 'right' });
+          roX += 58;
+          if (r.isNetPayable) doc.setTextColor(6, 95, 70);
 
-        // To-Date
-        toDateLines.forEach((line: string, lIdx: number) => {
-          doc.text(line, roX + 100 - 2, y + textYOffset + (lIdx * lineStep), { align: 'right' });
-        });
-        roX += 100;
+          // To-Date ETB
+          doc.text(r.toDateEtb, roX + 62 - 2, y + textYOffset, { align: 'right' });
+          roX += 62;
+          // To-Date USD
+          doc.text(r.toDateUsd, roX + 56 - 2, y + textYOffset, { align: 'right' });
+          roX += 56;
 
-        // Remaining
-        remainingLines.forEach((line: string, lIdx: number) => {
-          doc.text(line, roX + 95 - 2, y + textYOffset + (lIdx * lineStep), { align: 'right' });
-        });
+          // Remaining ETB
+          doc.text(r.remainingEtb, roX + 64 - 2, y + textYOffset, { align: 'right' });
+          roX += 64;
+          // Remaining USD
+          doc.text(r.remainingUsd, roX + 58 - 2, y + textYOffset, { align: 'right' });
+        } else {
+          // Item
+          doc.text(r.item, roX + 16, y + (rowHeight * 0.5) + 2, { align: 'center' });
+          roX += 32;
+
+          // Desc (Wrapped)
+          descLines.forEach((line: string, lIdx: number) => {
+            doc.text(line, roX + 2, y + textYOffset + (lIdx * lineStep));
+          });
+          roX += 220;
+
+          // Contract ETB
+          doc.text(r.contractEtb, roX + 104 - 2, y + textYOffset, { align: 'right' });
+          roX += 104;
+
+          // Preceding ETB
+          doc.text(r.precedingEtb, roX + 100 - 2, y + textYOffset, { align: 'right' });
+          roX += 100;
+
+          // This Month ETB
+          if (r.isNetPayable) doc.setTextColor(5, 150, 105);
+          doc.text(r.thisMonthEtb, roX + 104 - 2, y + textYOffset, { align: 'right' });
+          roX += 104;
+          if (r.isNetPayable) doc.setTextColor(6, 95, 70);
+
+          // To-Date ETB
+          doc.text(r.toDateEtb, roX + 100 - 2, y + textYOffset, { align: 'right' });
+          roX += 100;
+
+          // Remaining ETB
+          doc.text(r.remainingEtb, roX + 96 - 2, y + textYOffset, { align: 'right' });
+        }
 
         doc.setDrawColor(226, 232, 240);
         doc.line(margin + 6, y + rowHeight, margin + contentWidth - 6, y + rowHeight);
         y += rowHeight;
       });
 
-      y += isCompactPdfMode ? 4 : 6;
+      y += isCompactPdfMode ? 3 : 5;
 
-      // Net Amount in Words Box
+      // Net Amount in Words Box (Strictly wrapped inside page borders)
       const netDueThisInvoiceUsd = Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd);
       const etbWording = `"${numberToWordsCurrency(netDueThisInvoice, 'ETB')}"`;
       const usdWording = (isUsdModeActive && netDueThisInvoiceUsd > 0)
         ? `   •   USD Portion: "${numberToWordsCurrency(netDueThisInvoiceUsd, 'USD')}"`
         : '';
       const fullWordsText = `${etbWording}${usdWording}`;
-      const wordsLines = doc.splitTextToSize(fullWordsText, contentWidth - 28);
-      const wordsBoxH = Math.max(wordsLines.length * (isCompactPdfMode ? 7.5 : 8.5) + (isCompactPdfMode ? 8 : 12), isCompactPdfMode ? 18 : 22);
+
+      doc.setFont('times', 'italic');
+      doc.setFontSize(isCompactPdfMode ? 6.5 : 7.5);
+      const wordsLines = doc.splitTextToSize(fullWordsText, contentWidth - 32);
+      const wordsBoxH = Math.max(wordsLines.length * (isCompactPdfMode ? 7.5 : 8.5) + (isCompactPdfMode ? 14 : 16), isCompactPdfMode ? 20 : 24);
 
       doc.setFillColor(248, 250, 252);
       doc.setDrawColor(226, 232, 240);
       doc.roundedRect(margin + 6, y, contentWidth - 12, wordsBoxH, 3, 3, 'DF');
+
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(isCompactPdfMode ? 6 : 6.5);
       doc.setTextColor(100, 116, 139);
@@ -3844,6 +3946,7 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
         margin + 14,
         y + (isCompactPdfMode ? 8 : 9)
       );
+
       doc.setFont('times', 'italic');
       doc.setFontSize(isCompactPdfMode ? 6.5 : 7.5);
       doc.setTextColor(15, 23, 42);
@@ -3852,6 +3955,42 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
       });
 
       y += wordsBoxH + (isCompactPdfMode ? 3 : 4);
+
+      // VAT Amount in Words Box (Strictly wrapped inside page borders)
+      const vatEtbWording = `"${numberToWordsCurrency(vatThisInvoice, 'ETB')}"`;
+      const vatUsdWording = (isUsdModeActive && vatThisInvoiceUsd > 0)
+        ? `   •   USD Portion: "${numberToWordsCurrency(vatThisInvoiceUsd, 'USD')}"`
+        : '';
+      const fullVatWordsText = `${vatEtbWording}${vatUsdWording}`;
+
+      doc.setFont('times', 'italic');
+      doc.setFontSize(isCompactPdfMode ? 6.5 : 7.5);
+      const vatWordsLines = doc.splitTextToSize(fullVatWordsText, contentWidth - 32);
+      const vatWordsBoxH = Math.max(vatWordsLines.length * (isCompactPdfMode ? 7.5 : 8.5) + (isCompactPdfMode ? 14 : 16), isCompactPdfMode ? 20 : 24);
+
+      doc.setFillColor(250, 245, 255);
+      doc.setDrawColor(233, 213, 255);
+      doc.roundedRect(margin + 6, y, contentWidth - 12, vatWordsBoxH, 3, 3, 'DF');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(isCompactPdfMode ? 6 : 6.5);
+      doc.setTextColor(126, 34, 206);
+      doc.text(
+        (isUsdModeActive && vatThisInvoiceUsd > 0)
+          ? "VAT AMOUNT IN BIRR & US DOLLAR WORDS:"
+          : "VAT AMOUNT IN ETHIOPIAN BIRR WORDS:",
+        margin + 14,
+        y + (isCompactPdfMode ? 8 : 9)
+      );
+
+      doc.setFont('times', 'italic');
+      doc.setFontSize(isCompactPdfMode ? 6.5 : 7.5);
+      doc.setTextColor(88, 28, 135);
+      vatWordsLines.forEach((line: string, lIdx: number) => {
+        doc.text(line, margin + 14, y + (isCompactPdfMode ? 15 : 17) + (lIdx * (isCompactPdfMode ? 7.5 : 8.5)));
+      });
+
+      y += vatWordsBoxH + (isCompactPdfMode ? 3 : 4);
 
       // Bank Transfer Particulars Box
       const bankBoxH = isCompactPdfMode ? 15 : 18;
@@ -5863,7 +6002,12 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                       </div>
                       <span className="text-[10px] text-purple-600/80 block font-mono">Linked to Contract Table 1 Item D</span>
                       <div className="mt-1 text-[11px] font-semibold text-purple-900 dark:text-purple-200 bg-purple-100/70 dark:bg-purple-900/50 p-1.5 rounded-lg border border-purple-200 dark:border-purple-800">
-                        <span className="font-bold">VAT Amount in Words:</span> {numberToWords(vatThisInvoice)}
+                        <span className="font-bold">VAT Amount in Words:</span> "{numberToWordsCurrency(vatThisInvoice, 'ETB')}"
+                        {isUsdModeActive && vatThisInvoiceUsd > 0 && (
+                          <span className="ml-1.5 text-purple-700 dark:text-purple-300 font-bold">
+                            • USD Portion: "{numberToWordsCurrency(vatThisInvoiceUsd, 'USD')}"
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono text-purple-700 dark:text-purple-300">{fmt(vatContract)}</td>
@@ -6050,7 +6194,12 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                           Official ERA Net Payment Certificate: Gross Invoice Claim minus 15% VAT, minus contractual deductions, plus overtime.
                         </span>
                         <div className="mt-1 text-[11px] font-semibold text-emerald-900 dark:text-emerald-200 bg-emerald-200/60 dark:bg-emerald-900/60 p-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700">
-                          <span className="font-bold">Net Payable Amount in Words:</span> {numberToWords(netDueThisInvoice)}
+                          <span className="font-bold">Net Payable Amount in Words:</span> "{numberToWordsCurrency(netDueThisInvoice, 'ETB')}"
+                          {isUsdModeActive && Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd) > 0 && (
+                            <span className="ml-1.5 text-purple-700 dark:text-purple-300 font-bold">
+                              • USD Portion: "{numberToWordsCurrency(Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd), 'USD')}"
+                            </span>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -6155,6 +6304,23 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
                 {isUsdModeActive && Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd) > 0 && (
                   <span className="text-purple-700 dark:text-purple-300 font-bold not-italic font-sans text-xs">
                     • USD Portion: "{numberToWordsCurrency(Math.max(0, grossPayableBaseUsd - vatThisInvoiceUsd), 'USD')}"
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* VAT Amount in Words Box (Written below Net Payable Amount in Words) */}
+            <div className="bg-purple-50/60 dark:bg-purple-950/40 p-4 rounded-2xl border border-purple-200 dark:border-purple-800/60 space-y-1.5">
+              <span className="text-[11px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider block">
+                {isUsdModeActive && vatThisInvoiceUsd > 0
+                  ? 'VAT Amount in Birr & US Dollar Words:'
+                  : 'VAT Amount in Ethiopian Birr Words:'}
+              </span>
+              <div className="text-sm font-serif italic text-purple-950 dark:text-purple-100 font-semibold flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>"{numberToWordsCurrency(vatThisInvoice, 'ETB')}"</span>
+                {isUsdModeActive && vatThisInvoiceUsd > 0 && (
+                  <span className="text-purple-700 dark:text-purple-300 font-bold not-italic font-sans text-xs">
+                    • USD Portion: "{numberToWordsCurrency(vatThisInvoiceUsd, 'USD')}"
                   </span>
                 )}
               </div>
