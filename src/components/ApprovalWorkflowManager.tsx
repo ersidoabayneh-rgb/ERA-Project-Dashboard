@@ -1340,13 +1340,14 @@ export default function ApprovalWorkflowManager({
                               <span>Approve (MFA)</span>
                             </button>
 
-                            {/* Request Changes Button */}
+                            {/* Request Revision Button */}
                             <button
                               onClick={() => handleInitiateFeedbackAction(req, 'changes_requested')}
                               className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                              title="Send specific feedback and request revision from author"
                             >
                               <AlertTriangle className="w-3.5 h-3.5" />
-                              <span>Request Changes</span>
+                              <span>Request Revision</span>
                             </button>
 
                             {/* Reject Button */}
@@ -1707,7 +1708,7 @@ export default function ApprovalWorkflowManager({
               </div>
               <div>
                 <h3 className="text-sm font-black text-slate-900 dark:text-white">
-                  {feedbackActionType === 'reject' ? 'Reject Submission' : 'Request Revisions from Editor'}
+                  {feedbackActionType === 'reject' ? 'Reject Submission' : 'Request for Revision (Send Specific Feedback to Author)'}
                 </h3>
                 <p className="text-xs text-slate-500">
                   Target: {selectedRequestForFeedback.section} ({selectedRequestForFeedback.projectName})

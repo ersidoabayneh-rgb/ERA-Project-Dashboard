@@ -222,10 +222,8 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
   // Staff Directory Filter (All Assigned, Active Only, Replaced History)
   const [personnelFilter, setPersonnelFilter] = useState<'all' | 'active_only' | 'replaced_only'>('all');
 
-  // USD Billing Toggle State
-  const [usdBillingEnabled, setUsdBillingEnabled] = useState<boolean>(
-    Boolean(project.enableUsdPayments === true || consultant.enableUsdPayments === true)
-  );
+  // USD Billing State (synchronized with Contract Data enableUsdPayments option)
+  const usdBillingEnabled = Boolean(project.enableUsdPayments === true || consultant.enableUsdPayments === true);
 
   // Metadata
   const [invoiceNo, setInvoiceNo] = useState<string>('INV-DKS-01');
@@ -3963,20 +3961,13 @@ export const MonthlyInvoiceCalculationTable: React.FC<MonthlyInvoiceCalculationT
             Proceed to Next Month (Roll Forward)
           </button>
 
-          {/* USD BILLING TOGGLE */}
-          <button
-            type="button"
-            onClick={() => setUsdBillingEnabled(!usdBillingEnabled)}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
-              usdBillingEnabled
-                ? 'bg-purple-600 text-white border-purple-700 shadow-xs ring-2 ring-purple-400/40'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-            title="Toggle USD billing mode: When enabled, all payment tables automatically add columns for Preceding USD and To Date USD"
-          >
-            <DollarSign className="w-3.5 h-3.5" />
-            <span>USD Billing: {usdBillingEnabled ? 'ENABLED' : 'DISABLED'}</span>
-          </button>
+          {/* Dual Currency Active Badge (strictly configured on Contract Data page) */}
+          {usdBillingEnabled && (
+            <span className="px-3.5 py-2 rounded-xl text-xs font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1.5 shadow-xs">
+              <DollarSign className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span>Dual Currency Active (ETB & USD)</span>
+            </span>
+          )}
 
           {/* COMPACT PDF REPORT MODE TOGGLE */}
           <button

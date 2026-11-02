@@ -1082,20 +1082,8 @@ export const ContractAmountTab: React.FC<Props> = ({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsHeaderBarCollapsed(!isHeaderBarCollapsed)}
-            className="p-1.5 rounded-xl bg-white/60 hover:bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 cursor-pointer"
-            title={isHeaderBarCollapsed ? "Show Action Controls" : "Hide Action Controls"}
-          >
-            {isHeaderBarCollapsed ? 'Show Controls' : 'Hide Controls'}
-          </button>
-        </div>
-
-        {/* Global Action Bar & Currency Controls */}
-        {!isHeaderBarCollapsed && (
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* USD Contract Active Status Toggle Button */}
+          <div className="flex items-center gap-2">
+            {/* USD Contract Active Status Toggle Button - Permanently Visible on Contract Data */}
             <button
               type="button"
               onClick={() => {
@@ -1111,16 +1099,31 @@ export const ContractAmountTab: React.FC<Props> = ({
                   }, `${nextVal ? 'Enabled' : 'Disabled'} USD foreign currency remuneration option`);
                 }
               }}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs border ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs border whitespace-nowrap ${
                 hasUsdOption
-                  ? 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800'
-                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                  ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-600 shadow-sm'
+                  : 'bg-white hover:bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
               }`}
               title="Toggle USD foreign currency remuneration option"
             >
-              <ShieldCheck className={`w-4 h-4 ${hasUsdOption ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
-              <span>{hasUsdOption ? 'USD Contract Active' : 'Enable USD Option'}</span>
+              <DollarSign className={`w-3.5 h-3.5 ${hasUsdOption ? 'text-white' : 'text-purple-600 dark:text-purple-400'}`} />
+              <span>{hasUsdOption ? 'USD Option Active (Dual Currency)' : 'Enable USD Option'}</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setIsHeaderBarCollapsed(!isHeaderBarCollapsed)}
+              className="p-1.5 rounded-xl bg-white/60 hover:bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 cursor-pointer text-xs font-bold"
+              title={isHeaderBarCollapsed ? "Show Action Controls" : "Hide Action Controls"}
+            >
+              {isHeaderBarCollapsed ? 'More Controls ▾' : 'Hide Controls ▴'}
+            </button>
+          </div>
+        </div>
+
+        {/* Global Action Bar & Currency Controls */}
+        {!isHeaderBarCollapsed && (
+          <div className="flex flex-wrap items-center gap-2.5">
 
             {/* Operational Exchange Rate Inline Input - Only show when USD option is enabled */}
             {hasUsdOption && (
@@ -1242,11 +1245,16 @@ export const ContractAmountTab: React.FC<Props> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fees (Time-Based)</div>
             <div className="text-xl font-black font-mono text-slate-900 dark:text-white mt-1">
-              {currencySymbol}{fmtCurrency(activeSummaryPrice.fees)} <span className="text-xs text-slate-400">{currencyUnit}</span>
+              {fmt(activeSummaryPrice.fees)} <span className="text-xs text-slate-400">ETB</span>
+              {hasUsdOption && activeSummaryPrice.feesUsd > 0 && (
+                <span className="text-xs text-purple-600 dark:text-purple-400 ml-1.5 font-bold">
+                  + ${fmt(activeSummaryPrice.feesUsd)} USD
+                </span>
+              )}
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
               {fmt(activeSummaryPrice.expendedMm, 1)} MM (Planned Baseline)
@@ -1258,7 +1266,12 @@ export const ContractAmountTab: React.FC<Props> = ({
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Direct Reimbursables</span>
             </div>
             <div className="text-xl font-black font-mono text-amber-700 dark:text-amber-400 mt-1">
-              {currencySymbol}{fmtCurrency(activeSummaryPrice.reimb)} <span className="text-xs text-slate-400">{currencyUnit}</span>
+              {fmt(activeSummaryPrice.reimb)} <span className="text-xs text-slate-400">ETB</span>
+              {hasUsdOption && activeSummaryPrice.reimbUsd > 0 && (
+                <span className="text-xs text-purple-600 dark:text-purple-400 ml-1.5 font-bold">
+                  + ${fmt(activeSummaryPrice.reimbUsd)} USD
+                </span>
+              )}
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5">
               Sum of {(c1Data.reimbursableList || []).length} user sub-items
@@ -1266,30 +1279,52 @@ export const ContractAmountTab: React.FC<Props> = ({
           </div>
 
           <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Contingency ({c1Data.contingencyPct ?? 10}%) & VAT (15%)</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Contingency ({c1Data.contingencyPct ?? 10}%)</div>
             <div className="text-xl font-black font-mono text-indigo-600 dark:text-indigo-400 mt-1">
-              {currencySymbol}{fmtCurrency(activeSummaryPrice.contingency + activeSummaryPrice.vat)} <span className="text-xs text-slate-400">{currencyUnit}</span>
+              {hasUsdOption 
+                ? `${fmt(activeSummaryPrice.contingency + (activeSummaryPrice.contingencyUsd * effRate))} ETB` 
+                : `${fmt(activeSummaryPrice.contingency)} ETB`}
             </div>
-            <div className="text-[11px] text-indigo-600/80 mt-0.5">{c1Data.contingencyPct ?? 10}% Contingency + 15% VAT</div>
+            <div className="text-[11px] text-indigo-600/80 mt-0.5">
+              {hasUsdOption 
+                ? `ETB + USD × ${effRate.toFixed(2)} ETB/USD (${c1Data.contingencyPct ?? 10}%)` 
+                : `${c1Data.contingencyPct ?? 10}% of (A + B)`}
+            </div>
+          </div>
+
+          <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Value Added Tax (15% VAT)</div>
+            <div className="text-xl font-black font-mono text-cyan-600 dark:text-cyan-400 mt-1">
+              {hasUsdOption 
+                ? `${fmt(activeSummaryPrice.vat + (activeSummaryPrice.vatUsd * effRate))} ETB` 
+                : `${fmt(activeSummaryPrice.vat)} ETB`}
+            </div>
+            <div className="text-[11px] text-cyan-600/80 mt-0.5">
+              {hasUsdOption ? `ETB VAT + USD VAT × ${effRate.toFixed(2)} ETB/USD` : '15% on Base (A + B + C)'}
+            </div>
           </div>
 
           <div className={`p-4 rounded-2xl border shadow-xs ${
-            isUsd 
+            hasUsdOption 
               ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800'
               : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
           }`}>
             <div className={`text-[11px] font-bold uppercase tracking-wider ${
-              isUsd ? 'text-purple-800 dark:text-purple-300' : 'text-emerald-800 dark:text-emerald-300'
+              hasUsdOption ? 'text-purple-800 dark:text-purple-300' : 'text-emerald-800 dark:text-emerald-300'
             }`}>
-              Total Contract Price (E)
+              Total Contract Price (E) {hasUsdOption ? '[ETB + USD × Rate]' : ''}
             </div>
             <div className={`text-xl font-black font-mono mt-1 ${
-              isUsd ? 'text-purple-700 dark:text-purple-300' : 'text-emerald-700 dark:text-emerald-400'
+              hasUsdOption ? 'text-purple-700 dark:text-purple-300' : 'text-emerald-700 dark:text-emerald-400'
             }`}>
-              {currencySymbol}{fmtCurrency(activeSummaryPrice.grandTotal)} <span className="text-xs opacity-75">{currencyUnit}</span>
+              {hasUsdOption 
+                ? `${fmt(activeSummaryPrice.grandTotal + (activeSummaryPrice.grandTotalUsd * effRate))} ETB` 
+                : `${fmt(activeSummaryPrice.grandTotal)} ETB`}
             </div>
             <div className="text-[11px] opacity-80 font-semibold mt-0.5">
-              {isUsd ? `Converted @ 1 USD = ${effRate.toFixed(2)} ETB` : '100% Local Currency ETB'}
+              {hasUsdOption 
+                ? `Sum of ETB + USD × ${effRate.toFixed(2)} ETB/USD` 
+                : '100% Local Currency ETB'}
             </div>
           </div>
         </div>
@@ -1698,6 +1733,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                   {isUsdEnabled && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Unit Price (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[70px]">Contr. MM</th>
                   <th className="py-2.5 px-3 text-right min-w-[110px] font-bold">Total Fee (ETB)</th>
+                  {isUsdEnabled && <th className="py-2.5 px-3 text-right min-w-[110px] font-bold text-purple-700 dark:text-purple-300">Total Fee (USD)</th>}
                   <th className="py-2.5 px-2 text-center w-12">Act</th>
                 </tr>
               </thead>
@@ -1705,7 +1741,7 @@ export const ContractAmountTab: React.FC<Props> = ({
                 {staffSubtotals.groups.map((group) => (
                   <React.Fragment key={group.categoryKey}>
                     <tr className="bg-slate-50/80 dark:bg-slate-800/80 font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-slate-700">
-                      <td className="py-2 px-3 text-left" colSpan={isUsdEnabled ? 8 : 7}>
+                      <td className="py-2 px-3 text-left" colSpan={isUsdEnabled ? 9 : 8}>
                         {group.label}
                       </td>
                     </tr>
@@ -1775,6 +1811,11 @@ export const ContractAmountTab: React.FC<Props> = ({
                             />
                           </td>
                           <td className="py-2 px-3 text-right font-mono font-bold">{fmt(totalAmount)}</td>
+                          {isUsdEnabled && (
+                            <td className="py-2 px-3 text-right font-mono font-bold text-purple-700 dark:text-purple-300">
+                              ${fmt(totalAmountUsd)}
+                            </td>
+                          )}
                           <td className="py-2 px-2 text-center">
                             {!effectiveReadonly ? (
                               <button
@@ -1798,6 +1839,11 @@ export const ContractAmountTab: React.FC<Props> = ({
                       {isUsdEnabled && <td className="py-2 px-2 text-right">—</td>}
                       <td className="py-2 px-2 text-right font-mono">{fmt(group.constrMm, 1)}</td>
                       <td className="py-2 px-3 text-right font-mono">{fmt(group.constrEtb)}</td>
+                      {isUsdEnabled && (
+                        <td className="py-2 px-3 text-right font-mono text-purple-700 dark:text-purple-300">
+                          ${fmt(group.constrUsd)}
+                        </td>
+                      )}
                       <td></td>
                     </tr>
                   </React.Fragment>
@@ -1810,6 +1856,11 @@ export const ContractAmountTab: React.FC<Props> = ({
                   {isUsdEnabled && <td className="py-2.5 px-2 text-right">—</td>}
                   <td className="py-2.5 px-2 text-right font-mono">{fmt(staffSubtotals.totalConstrMm, 1)}</td>
                   <td className="py-2.5 px-3 text-right font-mono font-black">{fmt(staffSubtotals.totalConstrEtb)} ETB</td>
+                  {isUsdEnabled && (
+                    <td className="py-2.5 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300">
+                      ${fmt(staffSubtotals.totalConstrUsd)} USD
+                    </td>
+                  )}
                   <td></td>
                 </tr>
               </tfoot>
@@ -2108,20 +2159,22 @@ export const ContractAmountTab: React.FC<Props> = ({
                   <th className="py-2.5 px-2 text-right min-w-[105px]">Unit Price (ETB)</th>
                   {isUsdEnabled && <th className="py-2.5 px-2 text-right min-w-[100px] text-purple-700 dark:text-purple-300">Unit Price (USD)</th>}
                   <th className="py-2.5 px-2 text-right min-w-[90px]">Contract MM</th>
-                  <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount</th>
+                  <th className="py-2.5 px-3 text-right min-w-[110px]">Contract Amount (ETB)</th>
+                  {isUsdEnabled && <th className="py-2.5 px-3 text-right min-w-[110px] text-purple-700 dark:text-purple-300">Contract Amount (USD)</th>}
                   <th className="py-2.5 px-2 text-center w-12">Act</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans text-xs">
                 {staffSubtotals.dlpGroups.length === 0 ? (
                   <tr>
-                    <td colSpan={isUsdEnabled ? 8 : 7} className="py-8 text-center text-slate-400">
+                    <td colSpan={isUsdEnabled ? 9 : 8} className="py-8 text-center text-slate-400">
                       No DLP personnel allocation rows defined. Click "+ Add Staff Position" to add.
                     </td>
                   </tr>
                 ) : (
                   staffSubtotals.dlpGroups.flatMap(g => g.rows).map((row, idx) => {
                     const totalAmount = (Number(row.rateEtb) || 0) * (Number(row.mmDlp) || 0);
+                    const totalAmountUsd = (Number(row.rateUsd) || 0) * (Number(row.mmDlp) || 0);
                     return (
                       <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                         <td className="py-2 px-3 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
@@ -2187,6 +2240,11 @@ export const ContractAmountTab: React.FC<Props> = ({
                             <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
                               {fmt(totalAmount)}
                             </td>
+                            {isUsdEnabled && (
+                              <td className="py-2 px-3 text-right font-mono font-semibold text-purple-700 dark:text-purple-300">
+                                ${fmt(totalAmountUsd)}
+                              </td>
+                            )}
                             <td className="py-2 px-2 text-center">
                               {!effectiveReadonly ? (
                                 <button
@@ -2217,6 +2275,11 @@ export const ContractAmountTab: React.FC<Props> = ({
                   <td className="py-2.5 px-3 text-right font-mono font-black text-indigo-700 dark:text-indigo-300">
                     {fmt(staffSubtotals.totalDlpEtb)} ETB
                   </td>
+                  {isUsdEnabled && (
+                    <td className="py-2.5 px-3 text-right font-mono font-black text-purple-700 dark:text-purple-300">
+                      ${fmt(staffSubtotals.totalDlpUsd)} USD
+                    </td>
+                  )}
                   <td></td>
                 </tr>
               </tfoot>

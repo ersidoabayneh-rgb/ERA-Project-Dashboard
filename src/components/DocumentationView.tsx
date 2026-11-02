@@ -30,6 +30,9 @@ import {
 import { Project, ProjectDocument, formatAccounting } from '../types';
 
 const FILING_STRUCTURE_HEADINGS = [
+  "Contract Agreement",
+  "Design Report",
+  "Site Handover Certificate",
   "Contract Documents",
   "Drawings",
   "Tender Stage Information",
@@ -611,20 +614,23 @@ export default function DocumentationView({
                       className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold outline-none text-slate-750 dark:text-zinc-200 focus:border-indigo-500 transition"
                     />
                     <datalist id="doc-categories">
-                      <option value="Contract Documents">1. Contract Documents</option>
-                      <option value="Drawings">2. Drawings</option>
-                      <option value="Tender Stage Information">3. Tender Stage Information</option>
-                      <option value="Correspondence">4. Correspondence</option>
-                      <option value="Meetings">5. Meetings</option>
-                      <option value="Reports">6. Reports</option>
-                      <option value="Right of Way">7. Right of Way</option>
-                      <option value="Programmes">8. Programmes</option>
-                      <option value="Design and Design Changes">9. Design and Design Changes</option>
-                      <option value="Financial Control">10. Financial Control</option>
-                      <option value="Claims">11. Claims</option>
-                      <option value="Contract Administration Manual (CAM)">12. Contract Administration Manual (CAM)</option>
-                      <option value="Taking Over and Defects Notification">13. Taking Over and Defects Notification</option>
-                      <option value="Additional">14. Additional</option>
+                      <option value="Contract Agreement">Contract Agreement</option>
+                      <option value="Design Report">Design Report</option>
+                      <option value="Site Handover Certificate">Site Handover Certificate</option>
+                      <option value="Contract Documents">Contract Documents</option>
+                      <option value="Drawings">Drawings</option>
+                      <option value="Tender Stage Information">Tender Stage Information</option>
+                      <option value="Correspondence">Correspondence</option>
+                      <option value="Meetings">Meetings</option>
+                      <option value="Reports">Reports</option>
+                      <option value="Right of Way">Right of Way</option>
+                      <option value="Programmes">Programmes</option>
+                      <option value="Design and Design Changes">Design and Design Changes</option>
+                      <option value="Financial Control">Financial Control</option>
+                      <option value="Claims">Claims</option>
+                      <option value="Contract Administration Manual (CAM)">Contract Administration Manual (CAM)</option>
+                      <option value="Taking Over and Defects Notification">Taking Over and Defects Notification</option>
+                      <option value="Additional">Additional</option>
                     </datalist>
                   </div>
 
@@ -1344,6 +1350,9 @@ export default function DocumentationView({
                   className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer"
                 >
                   <option value="Contract Agreement">📄 Contract Agreement</option>
+                  <option value="Design Report">📊 Design Report</option>
+                  <option value="Site Handover Certificate">🛠️ Site Handover Certificate</option>
+                  <option value="Contract Documents">📁 Contract Documents</option>
                   <option value="Technical Report">📊 Technical Report</option>
                   <option value="Correspondence">✉️ Correspondence</option>
                   <option value="Drawings">📐 Drawings & Technical Dossier</option>
