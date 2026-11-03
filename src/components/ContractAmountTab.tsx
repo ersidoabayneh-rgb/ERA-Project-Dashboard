@@ -167,6 +167,7 @@ export const ContractAmountTab: React.FC<Props> = ({
   });
 
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [saveValidationWarning, setSaveValidationWarning] = useState<string | null>(null);
   const [reimbSyncStatus, setReimbSyncStatus] = useState<{
     status: 'synced' | 'error' | 'syncing';
     message?: string;
@@ -917,6 +918,12 @@ export const ContractAmountTab: React.FC<Props> = ({
   const handleSaveAndSyncContract = () => {
     if (!onUpdateProject) return;
 
+    if (isUsdEnabled && (!effRate || effRate <= 0 || isNaN(effRate))) {
+      setSaveValidationWarning("⚠️ Validation Warning: 'Dual-Currency' (USD Option) is enabled, but the USD Exchange Rate field is empty or set to 0. Please specify a valid USD Exchange Rate (e.g. 125.00 ETB) before saving contract data.");
+      return;
+    }
+    setSaveValidationWarning(null);
+
     const currentPersonnel: ConsultantPersonnel[] = consultant.personnel || [];
 
     const rateMapByPosition: Record<string, number> = {};
@@ -1111,28 +1118,38 @@ export const ContractAmountTab: React.FC<Props> = ({
               <h4 className="font-bold text-sm">
                 {isLocked ? 'Contract Data is VALIDATED and LOCKED' : 'Contract Data Entry & Remuneration Schedule'}
               </h4>
-              <p className="text-xs opacity-90">
-                {isLocked 
-                  ? `Validated and locked by ${c1Data.validatedBy || 'Directorate Admin'}. Modifications are frozen. Only Master Admin can revert/unlock.`
-                  : 'Data entry is open. Directorate Admin or Master Admin can validate and lock contract data.'}
-              </p>
+              {isLocked && (
+                <p className="text-xs opacity-90">
+                  Validated and locked by {c1Data.validatedBy || 'Directorate Admin'}. Modifications are frozen. Only Master Admin can revert/unlock.
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
             {/* USD Contract Active Status Toggle Button - Permanently Visible on Contract Data */}
-            <button
-              type="button"
-              onClick={handleToggleUsdFilter}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs border whitespace-nowrap ${
-                isUsdEnabled
-                  ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-600 shadow-sm'
-                  : 'bg-white hover:bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
-              }`}
-              title="Toggle whether USD columns and calculations should be rendered in the contract cost table"
-            >
-              <DollarSign className={`w-3.5 h-3.5 ${isUsdEnabled ? 'text-white' : 'text-purple-600 dark:text-purple-400'}`} />
-              <span>{isUsdEnabled ? 'USD Option Active (Dual Currency)' : 'Enable USD Option'}</span>
-            </button>
+            <div className="relative group">
+              <button
+                type="button"
+                onClick={handleToggleUsdFilter}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs border whitespace-nowrap ${
+                  isUsdEnabled
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-600 shadow-sm'
+                    : 'bg-white hover:bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
+                }`}
+                title="Enables foreign currency (USD) invoicing, dual-currency fee breakdown, and 15% VAT calculations"
+              >
+                <DollarSign className={`w-3.5 h-3.5 ${isUsdEnabled ? 'text-white' : 'text-purple-600 dark:text-purple-400'}`} />
+                <span>{isUsdEnabled ? 'USD Option Active (Dual Currency)' : 'Enable USD Option'}</span>
+              </button>
+              {/* Descriptive hover tooltip */}
+              <div className="absolute right-0 top-full mt-2 hidden group-hover:block z-50 w-72 p-3 bg-slate-900 text-white text-[11px] rounded-2xl shadow-xl border border-slate-700 leading-relaxed pointer-events-none animate-in fade-in duration-150">
+                <div className="font-bold text-purple-300 mb-1 flex items-center gap-1">
+                  <DollarSign className="w-3.5 h-3.5 text-purple-400" />
+                  <span>USD Currency Remuneration Option</span>
+                </div>
+                Enables foreign currency (USD) invoicing, dual-currency fee breakdown (ETB & USD), and 15% VAT calculations across contract schedules and monthly fee certificates.
+              </div>
+            </div>
 
             <button
               type="button"
@@ -1246,39 +1263,34 @@ export const ContractAmountTab: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Quick Summary Metric Cards */}
-      <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* USD Exchange Rate Validation Warning */}
+      {saveValidationWarning && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/50 border-2 border-amber-400 dark:border-amber-700 rounded-2xl text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center justify-between gap-3 shadow-md animate-fadeIn">
           <div className="flex items-center gap-2.5">
-            <span className="p-2 bg-emerald-600 text-white rounded-xl shadow-xs">
-              <Calculator className="w-4 h-4" />
-            </span>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-                  Contract Cost Calculation Source:
-                </span>
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700">
-                  Planned Contract Baseline Schedule (820 Planned MM)
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Displaying official master contract price schedule (820 planned man-months baseline).
-              </p>
-            </div>
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>{saveValidationWarning}</span>
           </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500">Currency Mode:</span>
-            <span className={`px-2.5 py-1 rounded-xl text-xs font-bold border ${
-              isUsdEnabled
-                ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300 dark:border-purple-800'
-                : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-            }`}>
-              {isUsdEnabled ? 'Dual Currency (ETB + USD)' : 'Single Currency (ETB Only)'}
-            </span>
-          </div>
+          <button
+            type="button"
+            onClick={() => setSaveValidationWarning(null)}
+            className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-white font-black text-xs px-2 py-1 rounded-lg hover:bg-amber-200/50 cursor-pointer"
+          >
+            ✕
+          </button>
         </div>
+      )}
+
+      {isUsdEnabled && (!effRate || effRate <= 0 || isNaN(effRate)) && !saveValidationWarning && (
+        <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/80 rounded-2xl text-amber-900 dark:text-amber-200 text-xs font-semibold flex items-center gap-2.5 animate-fadeIn">
+          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+          <span>
+            <strong>Dual-Currency Validation Alert:</strong> 'Dual-Currency' option is enabled, but the USD Exchange Rate field is empty or set to 0. Please specify a valid USD exchange rate (e.g. 125.00 ETB) to calculate 15% VAT and USD conversions.
+          </span>
+        </div>
+      )}
+
+      {/* Quick Summary Metric Cards */}
+      <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-3xl border border-slate-200 dark:border-slate-800">
 
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">

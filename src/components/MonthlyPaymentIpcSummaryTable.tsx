@@ -242,18 +242,7 @@ export default function MonthlyPaymentIpcSummaryTable({
             <div>
               <h2 className="text-base font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2 flex-wrap">
                 Monthly Payment Bill Summary, IPC Maturation & Interest Ledger
-                <span className="text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 rounded-full" title={fidicInfo.edition}>
-                  {fidicInfo.fidicName} • {paymentClauseStr.split(' [')[0]}
-                </span>
-                {!isUsdEnabled && (
-                  <span className="text-[10px] font-extrabold uppercase bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full">
-                    ETB Only (USD Off)
-                  </span>
-                )}
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Tracks 56-day statutory payment maturation and financing charges under <strong className="text-slate-700 dark:text-slate-300">{paymentClauseStr}</strong> and <strong className="text-slate-700 dark:text-slate-300">{interestClauseStr}</strong> as per selected contract type: <span className="font-semibold text-indigo-600 dark:text-indigo-400">{fidicInfo.deliveryMethodName}</span>
-              </p>
             </div>
           </div>
         </div>
@@ -302,7 +291,7 @@ export default function MonthlyPaymentIpcSummaryTable({
           {/* Annual Financing Charge Rate Input */}
           <div className="flex items-center gap-1.5 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 px-2.5 py-1 rounded-xl text-xs" title="FIDIC Sub-Clause 14.8 / Commercial Bank Annual Interest Rate for delayed payments">
             <Percent className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-            <span className="font-semibold text-amber-800 dark:text-amber-300">FIDIC 14.8 Rate:</span>
+            <span className="font-semibold text-amber-800 dark:text-amber-300">Interest Rate:</span>
             <input
               type="number"
               step="0.1"
@@ -403,7 +392,7 @@ export default function MonthlyPaymentIpcSummaryTable({
             {formatMoney(summary.totalAccruedInterestEqvEtb, 'Br.')}
           </div>
           <div className={`text-[10px] mt-0.5 ${summary.totalAccruedInterestEqvEtb > 0 ? 'text-amber-700 dark:text-amber-400 font-semibold' : 'text-slate-400'}`}>
-            FIDIC 14.8 Financing Charges ({annualInterestRate}% p.a.)
+            Interest Charges ({annualInterestRate}% p.a.)
           </div>
         </div>
       </div>

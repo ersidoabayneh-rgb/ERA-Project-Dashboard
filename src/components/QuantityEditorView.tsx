@@ -207,18 +207,7 @@ export default function QuantityEditorView({ project, onUpdateQuantities, onUpda
         </div>
       )}
 
-      {/* Dynamic Linking Information Banner */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 p-3.5 rounded-xl flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-          <Link2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-          <span>
-            <strong className="text-indigo-700 dark:text-indigo-300">Bidirectional Alignment Active:</strong> Subgrade, Capping, Sub-base, Base-Course, and Asphalt Concrete Program Scheduled Plans and Actual Progress are dynamically linked with the Linear Diagram page.
-          </span>
-        </div>
-        <div className="flex items-center gap-1 text-[11px] font-mono text-indigo-700 dark:text-indigo-300 font-bold bg-white/70 dark:bg-slate-900/60 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
-          5 Layers Aligned
-        </div>
-      </div>
+
 
       {/* Spreadsheet Tables */}
       <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">

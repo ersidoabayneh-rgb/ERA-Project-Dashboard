@@ -474,9 +474,15 @@ export default function SupervisionConsultantView({
       lastSyncedScheduleRef.current = fingerprint;
       if (onUpdateProject && consultant) {
         const syncedSchedule = syncTable11SummaryAndSubTables(scheduleData);
+        const grandTotal = syncedSchedule.summary?.subTotal || 0;
+        const grandTotalUsd = syncedSchedule.summary?.subTotalUsd || 0;
         onUpdateProject({
           supervisionConsultant: {
             ...consultant,
+            originalFeeEtb: grandTotal > 0 ? grandTotal : consultant.originalFeeEtb,
+            revisedFeeEtb: grandTotal > 0 ? grandTotal : consultant.revisedFeeEtb,
+            originalFeeUsd: grandTotalUsd > 0 ? grandTotalUsd : consultant.originalFeeUsd,
+            revisedFeeUsd: grandTotalUsd > 0 ? grandTotalUsd : consultant.revisedFeeUsd,
             contractAmountSchedule: {
               ...consultant.contractAmountSchedule,
               condition1: syncedSchedule
@@ -672,6 +678,60 @@ export default function SupervisionConsultantView({
     }
   }, [hasUsdPayments, viewCurrency]);
 
+  // Compute Total Contract Price (E) dynamically linked with Contract Amount Schedule (Condition 1)
+  const totalContractPriceE = useMemo(() => {
+    const c1 = consultant.contractAmountSchedule?.condition1;
+    if (c1?.summary?.subTotal && c1.summary.subTotal > 0) {
+      return {
+        etb: c1.summary.subTotal,
+        usd: c1.summary.subTotalUsd || consultant.revisedFeeUsd || consultant.originalFeeUsd || 0
+      };
+    }
+    if (c1) {
+      const constrStaff = c1.staffFees || [];
+      const dlpStaff = (c1.dlpStaffFees || []).filter(s => s.category !== 'Head Office' && !s.position?.toLowerCase().includes('project coordinator'));
+      const reimbList = c1.reimbursableList || [];
+
+      const constrEtb = constrStaff.reduce((s, r) => s + ((Number(r.mmConstr) || 0) * (Number(r.rateEtb) || 0)), 0);
+      const constrUsd = constrStaff.reduce((s, r) => s + ((Number(r.mmConstr) || 0) * (Number(r.rateUsd) || 0)), 0);
+
+      const dlpEtb = dlpStaff.reduce((s, r) => s + ((Number(r.mmDlp) || 0) * (Number(r.rateEtb) || 0)), 0);
+      const dlpUsd = dlpStaff.reduce((s, r) => s + ((Number(r.mmDlp) || 0) * (Number(r.rateUsd) || 0)), 0);
+
+      const reimbEtb = c1.reimbursableTotal ?? reimbList.reduce((s, r) => s + (Number(r.amountEtb ?? r.contractAmount) || 0), 0);
+      const reimbUsd = reimbList.reduce((s, r) => s + (Number(r.amountUsd) || 0), 0);
+
+      const feesEtb = constrEtb + dlpEtb;
+      const feesUsd = constrUsd + dlpUsd;
+
+      const directEtb = feesEtb + reimbEtb;
+      const directUsd = feesUsd + reimbUsd;
+
+      const contPct = Number(c1.contingencyPct ?? 10);
+      const vatPct = Number(c1.vatPct ?? 15);
+
+      const contEtb = directEtb * (contPct / 100);
+      const contUsd = directUsd * (contPct / 100);
+
+      const baseEtb = directEtb + contEtb;
+      const baseUsd = directUsd + contUsd;
+
+      const vatEtb = baseEtb * (vatPct / 100);
+      const vatUsd = baseUsd * (vatPct / 100);
+
+      const grandEtb = baseEtb + vatEtb;
+      const grandUsd = baseUsd + vatUsd;
+
+      if (grandEtb > 0) {
+        return { etb: grandEtb, usd: grandUsd };
+      }
+    }
+    return {
+      etb: consultant.revisedFeeEtb || consultant.originalFeeEtb || 0,
+      usd: consultant.revisedFeeUsd || consultant.originalFeeUsd || 0
+    };
+  }, [consultant]);
+
   // Calculations for Financials
   const financialSummary = useMemo(() => {
     const invoices = consultant.invoices || [];
@@ -713,8 +773,8 @@ export default function SupervisionConsultantView({
     const maturedPendingUsd = hasUsdPayments ? maturedInvoices.reduce((acc, inv) => acc + (inv.netAmountUsd || inv.foreignCurrencyAmount || 0), 0) : 0;
 
     const totalOutstandingEtb = totalGrossInvoiced - totalPaidEtb;
-    const contractBudgetEtb = consultant.revisedFeeEtb || consultant.originalFeeEtb || 1;
-    const contractBudgetUsd = consultant.revisedFeeUsd || consultant.originalFeeUsd || 0;
+    const contractBudgetEtb = totalContractPriceE.etb > 0 ? totalContractPriceE.etb : (consultant.revisedFeeEtb || consultant.originalFeeEtb || 1);
+    const contractBudgetUsd = totalContractPriceE.usd > 0 ? totalContractPriceE.usd : (consultant.revisedFeeUsd || consultant.originalFeeUsd || 0);
     const financialUtilizationPct = (totalGrossInvoiced / contractBudgetEtb) * 100;
     const paymentDisbursementPct = totalGrossInvoiced > 0 ? (totalPaidEtb / totalNetInvoiced) * 100 : 0;
 
@@ -740,7 +800,7 @@ export default function SupervisionConsultantView({
       financialUtilizationPct,
       paymentDisbursementPct
     };
-  }, [consultant, hasUsdPayments]);
+  }, [consultant, hasUsdPayments, totalContractPriceE]);
 
   const invoiceTotals = useMemo(() => {
     const invs = consultant.invoices || [];
@@ -753,11 +813,11 @@ export default function SupervisionConsultantView({
     const totalDeductionsUsd = hasUsdPayments ? invs.reduce((sum, inv) => sum + ((inv.advanceDeductionUsd || 0) + (inv.taxDeductionUsd || 0)), 0) : 0;
     const totalNetUsd = hasUsdPayments ? invs.reduce((sum, inv) => sum + (inv.netAmountUsd || inv.foreignCurrencyAmount || 0), 0) : 0;
     const totalUsd = totalNetUsd;
-    const contractFee = consultant.revisedFeeEtb || consultant.originalFeeEtb || 0;
-    const contractFeeUsd = consultant.revisedFeeUsd || consultant.originalFeeUsd || 0;
+    const contractFee = totalContractPriceE.etb > 0 ? totalContractPriceE.etb : (consultant.revisedFeeEtb || consultant.originalFeeEtb || 0);
+    const contractFeeUsd = totalContractPriceE.usd > 0 ? totalContractPriceE.usd : (consultant.revisedFeeUsd || consultant.originalFeeUsd || 0);
     const utilization = contractFee > 0 ? (totalGross / contractFee) * 100 : 0;
     return { totalFees, totalReimbursables, totalGross, totalDeductions, totalNet, totalGrossUsd, totalDeductionsUsd, totalNetUsd, totalUsd, contractFee, contractFeeUsd, utilization };
-  }, [consultant.invoices, consultant.revisedFeeEtb, consultant.originalFeeEtb, consultant.revisedFeeUsd, consultant.originalFeeUsd, hasUsdPayments]);
+  }, [consultant.invoices, consultant.revisedFeeEtb, consultant.originalFeeEtb, consultant.revisedFeeUsd, consultant.originalFeeUsd, hasUsdPayments, totalContractPriceE]);
 
   // Calculations for Personnel
   const personnelSummary = useMemo(() => {
@@ -1257,6 +1317,11 @@ export default function SupervisionConsultantView({
 
   // Handler for saving Consultant General Profile
   const handleSaveConsultantProfile = () => {
+    if (Boolean(consultantForm.enableUsdPayments) && (!consultantForm.exchangeRate || consultantForm.exchangeRate <= 0)) {
+      alert("⚠️ Validation Warning: 'Dual-Currency' (USD Option) is enabled, but the USD Exchange Rate field is empty or set to 0. Please specify a valid exchange rate (e.g. 125.00 ETB) before saving.");
+      return;
+    }
+
     const updatedConsultant: SupervisionConsultantInfo = {
       ...consultant,
       ...consultantForm,
@@ -3390,17 +3455,27 @@ export default function SupervisionConsultantView({
                         </div>
                       </div>
 
-                      <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/80 dark:bg-slate-800/40 p-3 rounded-2xl">
+                      <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/80 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
                         <div>
-                          <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px] block">Contract Currency & Remuneration Model</span>
-                          <div className="font-bold text-slate-800 dark:text-slate-200 text-xs mt-0.5 flex flex-wrap items-center gap-2">
-                            <span>{isUsdColumnsVisible ? 'Dual Currency Active (Local ETB + Foreign USD Remuneration)' : 'Single Currency (Local ETB Only)'}</span>
-                            {isUsdColumnsVisible && (
-                              <span className="font-mono text-purple-700 dark:text-purple-300 text-[11px] bg-purple-50 dark:bg-purple-950/50 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800">
-                                1 USD = {activeExchangeRate.toFixed(2)} ETB
+                          <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px] block">
+                            Section 2: Contract Financial Remuneration & Fees (Total Contract Price E)
+                          </span>
+                          <div className="font-extrabold font-mono text-slate-900 dark:text-white text-sm mt-0.5 flex flex-wrap items-center gap-2">
+                            <span className="text-emerald-700 dark:text-emerald-400">
+                              {formatAccounting(totalContractPriceE.etb, 'ETB')}
+                            </span>
+                            {isUsdColumnsVisible && totalContractPriceE.usd > 0 && (
+                              <span className="text-purple-700 dark:text-purple-300">
+                                + {formatAccounting(totalContractPriceE.usd, 'USD')}
                               </span>
                             )}
+                            <span className="font-sans text-[10px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800">
+                              🔗 Linked with Baseline Schedule (Table 1 Total Contract Price E)
+                            </span>
                           </div>
+                        </div>
+                        <div className="text-[11px] font-medium text-slate-500">
+                          {isUsdColumnsVisible ? 'Dual Currency Active (ETB + USD)' : 'Single Currency (ETB Only)'}
                         </div>
                       </div>
                     </div>
@@ -3611,43 +3686,6 @@ export default function SupervisionConsultantView({
 
           {/* Section 2: Contract Financial Remuneration & Fees Baseline Schedule */}
           <div className="pt-2">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-2xl shrink-0 ${
-                  isUsdColumnsVisible 
-                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300' 
-                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300'
-                }`}>
-                  <Calculator className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-                    Contract Cost & Remuneration Baseline Schedule
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Master tables for Construction Staff, Defect Liability, Reimbursables, Contingency, and 15% VAT.
-                  </p>
-                </div>
-              </div>
-
-              {/* State-controlled 'USD' toggle button that filters whether USD columns should be rendered in the contract cost table */}
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span className="text-xs font-semibold text-slate-500">Cost Table Columns:</span>
-                <button
-                  type="button"
-                  onClick={() => handleToggleUsdColumns()}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs border ${
-                    isUsdColumnsVisible
-                      ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-600 ring-2 ring-purple-300 dark:ring-purple-800'
-                      : 'bg-white hover:bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600'
-                  }`}
-                  title={isUsdColumnsVisible ? "USD columns active: Click to filter out USD columns" : "USD columns hidden: Click to render USD columns"}
-                >
-                  <DollarSign className={`w-3.5 h-3.5 ${isUsdColumnsVisible ? 'text-white' : 'text-purple-600'}`} />
-                  <span>USD: {isUsdColumnsVisible ? 'ON (Rendered)' : 'OFF (Hidden)'}</span>
-                </button>
-              </div>
-            </div>
 
             <ContractAmountTab
               project={project}
@@ -6021,16 +6059,37 @@ export default function SupervisionConsultantView({
                         </h4>
                       </div>
 
-                      {/* Foreign Currency USD Toggle */}
-                      <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/50 px-3 py-1.5 rounded-xl border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={!!consultantForm.enableUsdPayments}
-                          onChange={(e) => setConsultantForm({ ...consultantForm, enableUsdPayments: e.target.checked })}
-                          className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                        />
-                        <span>Enable Foreign Currency (USD) Remuneration</span>
-                      </label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {totalContractPriceE.etb > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConsultantForm(prev => ({
+                                ...prev,
+                                originalFeeEtb: totalContractPriceE.etb,
+                                revisedFeeEtb: totalContractPriceE.etb,
+                                originalFeeUsd: totalContractPriceE.usd > 0 ? totalContractPriceE.usd : prev.originalFeeUsd,
+                                revisedFeeUsd: totalContractPriceE.usd > 0 ? totalContractPriceE.usd : prev.revisedFeeUsd
+                              }));
+                            }}
+                            className="px-2.5 py-1 text-[11px] font-bold bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-300 rounded-xl border border-emerald-300 dark:border-emerald-800 transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                            title="Auto-fill values with Total Contract Price (E) from Table 1 Baseline Schedule"
+                          >
+                            <span>🔗 Sync with Total Contract Price (E): {formatAccounting(totalContractPriceE.etb, 'ETB')}</span>
+                          </button>
+                        )}
+
+                        {/* Foreign Currency USD Toggle */}
+                        <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/50 px-3 py-1.5 rounded-xl border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={!!consultantForm.enableUsdPayments}
+                            onChange={(e) => setConsultantForm({ ...consultantForm, enableUsdPayments: e.target.checked })}
+                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                          />
+                          <span>Enable Foreign Currency (USD) Remuneration</span>
+                        </label>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">

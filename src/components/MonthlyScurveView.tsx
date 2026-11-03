@@ -387,13 +387,10 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
       {/* Header and Controls */}
       <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 mb-1 flex items-center gap-2">
+          <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
             <CalendarRange className="w-5 h-5 text-blue-500" />
             S‑Curve Analysis (Monthly Cumulative %)
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            For projects in In Progress and Completed status, the current month ({currentMonthKey}) is automatically maintained as the live month, defaulting to the previous month's actual value until updated. The live month is the final row with Actual progress; Plan columns extend into future months.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 self-start md:self-auto">
