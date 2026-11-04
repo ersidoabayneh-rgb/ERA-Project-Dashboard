@@ -157,6 +157,22 @@ export interface KpiAllocatedItem {
   isOverridden?: boolean;
 }
 
+export interface KpiMonthlyRecord {
+  monthKey: string;           // e.g. "Oct-26", "Nov-26", "Sep-26"
+  monthLabel: string;         // e.g. "October 2026", "November 2026"
+  isLocked: boolean;          // true when locked after 10-day window or finalized
+  lockedAt?: string;          // ISO timestamp
+  lockedBy?: string;          // e.g. "Ersido (Master Admin)"
+  lockDeadline?: string;      // e.g. "2026-11-10T23:59:59"
+  overallScore: number;       // Composite KPI percentage (0-100)
+  overallGrade: string;       // Grade (A, B, C, D, F)
+  items: KpiAllocatedItem[];  // Frozen/saved criteria ratings for that month
+  groupScores?: Record<string, number>; // Sub-scores per Goal (G1..G14)
+  notes?: string;
+  evaluatedBy?: string;
+  evaluatedAt?: string;
+}
+
 export interface HistoryChangeDetail {
   field: string;
   label?: string;
@@ -722,6 +738,8 @@ export interface Project {
   kpiDeletedSubgroups?: string[];
   kpiDeletedItems?: string[];
   kpiGroupTargets?: Record<string, number>; // Target score % for each KPI category group (e.g., { G1: 90, G2: 85 })
+  kpiMonthlyRecords?: Record<string, KpiMonthlyRecord>; // Preserved historical and active monthly evaluation records
+  kpiActiveMonth?: string; // Currently active/selected evaluation month key (e.g., "Oct-26" or "Nov-26")
   history: HistoryItem[];
   workProgram: WorkProgramActivity[];
   bonds: BondGuarantee[];

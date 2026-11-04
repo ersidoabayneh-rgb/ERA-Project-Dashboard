@@ -18,6 +18,7 @@ import { parseLocalDate, addDaysToDate } from '../lib/dateUtils';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { resolveCurrentMonthKey, isSameMonth } from '../lib/monthlySync';
 import { getProjectConsultantEvaluation } from './consultantEvaluationMatrix';
+import { calculateProgressKpiScores } from '../lib/kpiProgressCalculator';
 
 export const MILLION = 1_000_000;
 
@@ -1039,7 +1040,8 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
       if (k.isOverridden && k.alloc !== undefined) {
         computedAlloc = k.alloc;
       } else {
-        computedAlloc = Math.min(100, Math.max(0, project.physicalProgress));
+        const progressCalc = calculateProgressKpiScores(project, project.kpiActiveMonth);
+        computedAlloc = progressCalc.pp1Score;
       }
     } else if (k.itemId === 'PT-1') {
       computedAlloc = Math.min(100, Math.max(0, ratio));

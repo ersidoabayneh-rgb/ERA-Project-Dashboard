@@ -1,10 +1,92 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { CheckCircle, Info, HelpCircle, Plus, Trash2, Edit, Save, X, Sliders, FolderPlus, Lock, Target } from 'lucide-react';
-import { Project, KpiAllocatedItem, User } from '../types';
+import { CheckCircle, Info, HelpCircle, Plus, Trash2, Edit, Save, X, Sliders, FolderPlus, Lock, Target, Calendar, Clock, AlertTriangle, Bell, Award, History, ArrowRight, ShieldCheck, TrendingUp, RefreshCw, BarChart2, Zap, Check, Activity } from 'lucide-react';
+import { Project, KpiAllocatedItem, User, KpiMonthlyRecord } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
+import { isKpiAuthorizedRole } from '../App';
+import { calculateProgressKpiScores, ProgressKpiCalculationResult } from '../lib/kpiProgressCalculator';
 import CircularGauge from './CircularGauge';
 import KpiProgressTrendsChart from './KpiProgressTrendsChart';
+
+export interface MonthLockInfo {
+  monthKey: string;
+  monthAbbr: string;
+  fullYear: number;
+  monthEnd: Date;
+  lockDeadline: Date;
+  nextMonthKey: string;
+  isMonthCompleted: boolean;
+  isPast10Days: boolean;
+  isInEvaluationWindow: boolean;
+  daysRemaining: number;
+  dayOfWindow: number;
+  deadlineFormatted: string;
+}
+
+export function getMonthLockInfo(monthStr: string): MonthLockInfo {
+  const parts = monthStr.split('-');
+  const monthAbbr = parts[0] || 'Oct';
+  const yearShort = parts[1] || '26';
+  
+  const MONTHS_MAP: Record<string, number> = {
+    Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+    Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11
+  };
+  
+  const monthIndex = MONTHS_MAP[monthAbbr] ?? 9;
+  const fullYear = 2000 + (parseInt(yearShort, 10) || 26);
+  
+  // Month ends on the last millisecond of the month (e.g., Oct 31, 2026, 23:59:59.999)
+  const monthEnd = new Date(fullYear, monthIndex + 1, 0, 23, 59, 59, 999);
+  
+  // 10 days after month completed:
+  // Month index + 1 (next month) on the 10th at 23:59:59
+  const nextMonthIndex = (monthIndex + 1) % 12;
+  const nextMonthYear = monthIndex === 11 ? fullYear + 1 : fullYear;
+  const lockDeadline = new Date(nextMonthYear, nextMonthIndex, 10, 23, 59, 59, 999);
+  
+  const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const nextMonthKey = `${MONTH_NAMES[nextMonthIndex]}-${String(nextMonthYear).slice(-2)}`;
+  
+  const now = new Date();
+  
+  const isMonthCompleted = now.getTime() >= monthEnd.getTime();
+  const isPast10Days = now.getTime() > lockDeadline.getTime();
+  const isInEvaluationWindow = isMonthCompleted && !isPast10Days;
+  
+  const msRemaining = Math.max(0, lockDeadline.getTime() - now.getTime());
+  const daysRemaining = Math.max(0, Math.ceil(msRemaining / (1000 * 60 * 60 * 24)));
+  
+  const msSinceMonthEnd = Math.max(0, now.getTime() - monthEnd.getTime());
+  const dayOfWindow = Math.min(10, Math.max(1, Math.ceil(msSinceMonthEnd / (1000 * 60 * 60 * 24))));
+  
+  return {
+    monthKey: monthStr,
+    monthAbbr,
+    fullYear,
+    monthEnd,
+    lockDeadline,
+    nextMonthKey,
+    isMonthCompleted,
+    isPast10Days,
+    isInEvaluationWindow,
+    daysRemaining,
+    dayOfWindow,
+    deadlineFormatted: lockDeadline.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    }) + ' at 23:59:59'
+  };
+}
+
+export const getKpiGradeLetter = (score: number): string => {
+  if (score >= 90) return 'A';
+  if (score >= 75) return 'B';
+  if (score >= 60) return 'C';
+  if (score >= 50) return 'D';
+  return 'F';
+};
 
 interface KpiEditorViewProps {
   project: Project;
@@ -14,9 +96,90 @@ interface KpiEditorViewProps {
 }
 
 export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, onProjectUpdate }: KpiEditorViewProps) {
+  // Access control guard: Only ERA approver, ERA editor, PMO admin, Directorate admin, CPM admin, and Master Admin
+  const isAuthorized = isKpiAuthorizedRole(currentUserObj);
+
   const [selectedGroupId, setSelectedGroupId] = React.useState<string>('all');
-  const [draftKpis, setDraftKpis] = React.useState<KpiAllocatedItem[]>(() => getIntegratedKpiAllocated(project));
+  const [selectedMonth, setSelectedMonth] = React.useState<string>(() => project.kpiActiveMonth || 'Oct-26');
+  const selectedMonthInfo = React.useMemo(() => getMonthLockInfo(selectedMonth), [selectedMonth]);
+
+  const [kpiProgressBasis, setKpiProgressBasis] = React.useState<'monthly' | 'cumulative'>('monthly');
+  const [showKpiDetailModal, setShowKpiDetailModal] = React.useState<boolean>(false);
+
+  // Dynamic automatic calculation of progress-based KPI score (PP-1) from Monthly Status Report
+  const progressKpiResult = React.useMemo<ProgressKpiCalculationResult>(() => {
+    return calculateProgressKpiScores(project, selectedMonth, kpiProgressBasis);
+  }, [project, selectedMonth, kpiProgressBasis]);
+
+  // Preserved historical records dictionary
+  const currentRecord = React.useMemo<KpiMonthlyRecord | null>(() => {
+    if (project.kpiMonthlyRecords && project.kpiMonthlyRecords[selectedMonth]) {
+      return project.kpiMonthlyRecords[selectedMonth];
+    }
+    // Baseline archives for preceding completed months
+    if (selectedMonth === 'Sep-26') {
+      return {
+        monthKey: 'Sep-26',
+        monthLabel: 'September 2026',
+        isLocked: true,
+        lockedAt: '2026-10-10T23:59:59.000Z',
+        lockedBy: 'Directorate Admin (ERA CPM)',
+        lockDeadline: '2026-10-10T23:59:59.000Z',
+        overallScore: 78.4,
+        overallGrade: 'B',
+        items: [],
+        evaluatedBy: 'Directorate Admin'
+      };
+    }
+    if (selectedMonth === 'Aug-26') {
+      return {
+        monthKey: 'Aug-26',
+        monthLabel: 'August 2026',
+        isLocked: true,
+        lockedAt: '2026-09-10T23:59:59.000Z',
+        lockedBy: 'ERA Approver',
+        lockDeadline: '2026-09-10T23:59:59.000Z',
+        overallScore: 76.1,
+        overallGrade: 'C',
+        items: [],
+        evaluatedBy: 'ERA Approver'
+      };
+    }
+    if (selectedMonth === 'Jul-26') {
+      return {
+        monthKey: 'Jul-26',
+        monthLabel: 'July 2026',
+        isLocked: true,
+        lockedAt: '2026-08-10T23:59:59.000Z',
+        lockedBy: 'CPM Admin',
+        lockDeadline: '2026-08-10T23:59:59.000Z',
+        overallScore: 74.8,
+        overallGrade: 'C',
+        items: [],
+        evaluatedBy: 'CPM Admin'
+      };
+    }
+    return null;
+  }, [project.kpiMonthlyRecords, selectedMonth]);
+
+  const isMonthLocked = Boolean(currentRecord?.isLocked || selectedMonthInfo.isPast10Days);
+  const isViewer = Boolean(currentUserObj?.role?.includes('viewer'));
+  const canEditKpis = isAuthorized && !isViewer && !isMonthLocked;
+
+  const [draftKpis, setDraftKpis] = React.useState<KpiAllocatedItem[]>(() => {
+    if (project.kpiMonthlyRecords && project.kpiMonthlyRecords[project.kpiActiveMonth || 'Oct-26']?.items?.length) {
+      return project.kpiMonthlyRecords[project.kpiActiveMonth || 'Oct-26'].items;
+    }
+    return getIntegratedKpiAllocated(project);
+  });
   const kpis = draftKpis;
+
+  const currentPp1Item = draftKpis.find(k => k.itemId === 'PP-1');
+  const isPp1Synced = Boolean(
+    currentPp1Item &&
+    !currentPp1Item.isOverridden &&
+    Math.abs((currentPp1Item.alloc ?? 0) - progressKpiResult.pp1Score) < 0.05
+  );
 
   const prevProjectKpiIdRef = React.useRef(project.id);
   const prevKpiAllocatedLengthRef = React.useRef(project.kpiAllocated?.length || 0);
@@ -25,9 +188,57 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
     if (prevProjectKpiIdRef.current !== project.id || prevKpiAllocatedLengthRef.current !== (project.kpiAllocated?.length || 0)) {
       prevProjectKpiIdRef.current = project.id;
       prevKpiAllocatedLengthRef.current = project.kpiAllocated?.length || 0;
-      setDraftKpis(getIntegratedKpiAllocated(project));
+      if (!isMonthLocked) {
+        setDraftKpis(getIntegratedKpiAllocated(project));
+      }
     }
-  }, [project.id, project.kpiAllocated]);
+  }, [project.id, project.kpiAllocated, isMonthLocked]);
+
+  const handleSelectMonth = (monthKey: string) => {
+    setSelectedMonth(monthKey);
+    const rec = project.kpiMonthlyRecords?.[monthKey];
+    if (rec && rec.items && rec.items.length > 0) {
+      setDraftKpis(rec.items);
+    } else {
+      const calc = calculateProgressKpiScores(project, monthKey);
+      const base = getIntegratedKpiAllocated({ ...project, kpiActiveMonth: monthKey });
+      const updated = base.map(k => {
+        if (k.itemId === 'PP-1' && !k.isOverridden) {
+          return { ...k, alloc: calc.pp1Score };
+        }
+        return k;
+      });
+      setDraftKpis(updated);
+    }
+    onProjectUpdate?.({ kpiActiveMonth: monthKey }, `Switched KPI evaluation month to ${monthKey}`);
+  };
+
+  const handleApplyProgressCalculatedScores = () => {
+    if (!canEditKpis) return;
+    const updated = draftKpis.map(k => {
+      if (k.itemId === 'PP-1') {
+        return {
+          ...k,
+          alloc: progressKpiResult.pp1Score,
+          isOverridden: false
+        };
+      }
+      return k;
+    });
+    setDraftKpis(updated);
+    onUpdateKpi(updated);
+    const basisLabel = kpiProgressBasis === 'monthly' ? 'Monthly' : 'Cumulative';
+    const planVal = kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan;
+    const actVal = kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment;
+    if (onProjectUpdate) {
+      onProjectUpdate(
+        { kpiAllocated: updated },
+        `Computed PP-1 score (${progressKpiResult.pp1Score.toFixed(2)}%) from ${selectedMonth} Monthly Status Report by dividing actual (${actVal} ${progressKpiResult.unit}) for ERA plan (${planVal} ${progressKpiResult.unit})`
+      );
+    }
+    setSaveMessage(`Applied PP-1 score (${progressKpiResult.pp1Score.toFixed(2)}%) computed from ${selectedMonth} Monthly Status Report (${basisLabel} Actual: ${actVal} ${progressKpiResult.unit} / ERA Plan: ${planVal} ${progressKpiResult.unit})!`);
+    setTimeout(() => setSaveMessage(null), 3500);
+  };
 
   const hasKpiChangesRef = React.useRef(false);
 
@@ -41,23 +252,51 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
   const [saveMessage, setSaveMessage] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!hasKpiChangesRef.current) return;
+    if (!hasKpiChangesRef.current || isMonthLocked) return;
 
     const timer = setTimeout(() => {
       onUpdateKpi(draftKpis);
       hasKpiChangesRef.current = false;
-      setSaveMessage('KPI scorecard drafting changes auto-saved successfully!');
+
+      // Auto-sync into kpiMonthlyRecords for this open month
+      const updatedRecords = {
+        ...(project.kpiMonthlyRecords || {}),
+        [selectedMonth]: {
+          monthKey: selectedMonth,
+          monthLabel: `${selectedMonthInfo.monthAbbr} ${selectedMonthInfo.fullYear}`,
+          isLocked: false,
+          lockDeadline: selectedMonthInfo.lockDeadline.toISOString(),
+          overallScore: overallScore,
+          overallGrade: getKpiGradeLetter(overallScore),
+          items: draftKpis,
+          evaluatedBy: currentUserObj?.fullName || currentUserObj?.username || 'ERA Evaluator',
+          evaluatedAt: new Date().toISOString()
+        }
+      };
+      onProjectUpdate?.({ kpiMonthlyRecords: updatedRecords, kpiActiveMonth: selectedMonth }, `Auto-saved ${selectedMonth} KPI evaluation draft`);
+      setSaveMessage(`${selectedMonth} KPI scorecard changes auto-saved successfully!`);
       setTimeout(() => setSaveMessage(null), 2500);
     }, 5000); // 5 seconds debounce
 
     return () => clearTimeout(timer);
-  }, [draftKpis, onUpdateKpi]);
+  }, [draftKpis, onUpdateKpi, isMonthLocked, selectedMonth, selectedMonthInfo, currentUserObj]);
 
   const hierarchy = React.useMemo(() => {
     return buildKpiHierarchy(project.contractType || 'DBB', project);
   }, [project.contractType, project.id, project.kpiAllocated?.length]);
 
-  const isAdmin = currentUserObj?.role === 'admin' || currentUserObj?.username === 'proj_1781786415663';
+  const roleStr = String(currentUserObj?.role || '').toLowerCase();
+  const usernameStr = String(currentUserObj?.username || '').toLowerCase();
+  const isAdmin = Boolean(
+    currentUserObj?.role === 'master_admin' || 
+    currentUserObj?.role === 'admin' || 
+    currentUserObj?.role === 'cpm_admin' || 
+    currentUserObj?.role === 'directorate_admin' || 
+    currentUserObj?.role === 'pmo_admin' || 
+    roleStr.includes('admin') ||
+    currentUserObj?.username === 'proj_1781786415663' ||
+    usernameStr.includes('ersido')
+  );
 
   // Subgroup creator panel states
   const [showAddSubForm, setShowAddSubForm] = React.useState(false);
@@ -407,7 +646,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
 
   const getKpiTooltip = (id: string, desc: string): string => {
     const kpiTooltips: Record<string, string> = {
-      'PP-1': 'Measures physical completion compared to the original S-curve plan for the specific month. Score = (Accomplishment % / Original Plan %) * 100 (taken as 100% when original plan reaches 100%).',
+      'PP-1': 'Computed from Monthly Status Report of the specific month by dividing actual accomplishment for ERA plan (% of Actual Divided by ERA Plan = (Actual / ERA Plan) * 100). Capped score is 100% when accomplishment meets or exceeds the ERA plan.',
       'PP-3': 'Tracks asphalt paving progress specifically. Score = (Actual km laid / Planned km) * 100.',
       'MS-1': 'Has the contractor completed initial mobilization? Yes = 1, No = 0.',
       'MS-2': "Are all key personnel deployed per contract? Yes = 1, No = 0.",
@@ -451,6 +690,13 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
   const handleResetToAuto = (itemId: string) => {
     const updated = kpis.map(k => {
       if (k.itemId === itemId) {
+        if (itemId === 'PP-1') {
+          return {
+            ...k,
+            alloc: progressKpiResult.pp1Score,
+            isOverridden: false
+          };
+        }
         return {
           ...k,
           isOverridden: false
@@ -459,6 +705,8 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
       return k;
     });
     setDraftKpis(updated);
+    onUpdateKpi(updated);
+    onProjectUpdate?.({ kpiAllocated: updated }, `Reset ${itemId} to automatic system calculation`);
   };
 
   // Autocalculate sub-scores for visual display inside the headers
@@ -497,6 +745,101 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
     return maxPossibleSum > 0 ? (earnedSum / maxPossibleSum) * 100 : 0;
   };
 
+  const overallScore = React.useMemo(() => {
+    if (currentRecord?.overallScore !== undefined && isMonthLocked) {
+      return currentRecord.overallScore;
+    }
+    let earnedSum = 0;
+    let totalWt = 0;
+
+    hierarchy.forEach(g => {
+      const gScore = getGoalScore(g.id);
+      earnedSum += (gScore || 0) * (g.wt / 100);
+      totalWt += g.wt;
+    });
+
+    return totalWt > 0 ? (earnedSum / totalWt) * 100 : 0;
+  }, [hierarchy, draftKpis, currentRecord, isMonthLocked]);
+
+  const overallGrade = React.useMemo(() => {
+    if (currentRecord?.overallGrade && isMonthLocked) {
+      return currentRecord.overallGrade;
+    }
+    return getKpiGradeLetter(overallScore);
+  }, [currentRecord, isMonthLocked, overallScore]);
+
+  const handleLockCurrentMonth = (monthKey: string) => {
+    if (!isAuthorized || isViewer) {
+      alert("You do not have authorization to lock KPI records.");
+      return;
+    }
+    const confirmMsg = `Are you sure you want to finalize and permanently lock the KPI evaluation record for ${monthKey}?\n\nOnce locked, this month's evaluation data is permanently preserved in historical audit records and further edits will be locked.`;
+    if (window.confirm(confirmMsg)) {
+      const mInfo = getMonthLockInfo(monthKey);
+      const score = overallScore;
+      const grade = getKpiGradeLetter(score);
+
+      const groupScores: Record<string, number> = {};
+      hierarchy.forEach(g => {
+        groupScores[g.id] = getGoalScore(g.id);
+      });
+
+      const lockedRecord: KpiMonthlyRecord = {
+        monthKey,
+        monthLabel: `${mInfo.monthAbbr} ${mInfo.fullYear}`,
+        isLocked: true,
+        lockedAt: new Date().toISOString(),
+        lockedBy: `${currentUserObj?.fullName || currentUserObj?.username || 'Authorized Evaluator'} (${currentUserObj?.role || 'ERA Approver'})`,
+        lockDeadline: mInfo.lockDeadline.toISOString(),
+        overallScore: score,
+        overallGrade: grade,
+        items: draftKpis,
+        groupScores,
+        evaluatedBy: currentUserObj?.fullName || currentUserObj?.username || 'ERA Evaluator',
+        evaluatedAt: new Date().toISOString()
+      };
+
+      const updatedRecords = {
+        ...(project.kpiMonthlyRecords || {}),
+        [monthKey]: lockedRecord
+      };
+
+      onProjectUpdate?.(
+        { kpiMonthlyRecords: updatedRecords, kpiActiveMonth: monthKey },
+        `Finalized & permanently locked ${monthKey} KPI evaluation record (${score.toFixed(1)}% Grade ${grade})`
+      );
+
+      setSaveMessage(`${monthKey} KPI evaluation record has been permanently locked and preserved in historical records.`);
+      setTimeout(() => setSaveMessage(null), 3500);
+    }
+  };
+
+  const quickMonths = ['Jul-26', 'Aug-26', 'Sep-26', 'Oct-26', 'Nov-26'];
+  const allMonthsList = React.useMemo(() => {
+    const defaultM = ['Jul-26', 'Aug-26', 'Sep-26', 'Oct-26', 'Nov-26', 'Dec-26'];
+    const projMonthly = (project.monthly || []).map(m => m.month).filter(Boolean);
+    const recMonthly = Object.keys(project.kpiMonthlyRecords || {});
+    return Array.from(new Set([...defaultM, ...projMonthly, ...recMonthly]));
+  }, [project.monthly, project.kpiMonthlyRecords]);
+
+  if (!isAuthorized) {
+    return (
+      <div className="bg-white dark:bg-slate-800 p-8 sm:p-12 rounded-2xl border border-slate-200 dark:border-slate-700/60 text-center space-y-4 my-8 shadow-sm">
+        <div className="w-16 h-16 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center mx-auto text-2xl font-black shadow-xs">
+          🔒
+        </div>
+        <div className="space-y-1">
+          <h3 className="text-lg font-black text-slate-850 dark:text-zinc-100 uppercase tracking-tight">
+            ERA KPI Performance Evaluation Access Restricted
+          </h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto font-medium">
+            This module is strictly restricted to <strong>ERA Approver, ERA Editor, PMO Admin, Directorate Admin, CPM Admin, and Master Admin</strong> credentials only. Your current role is not authorized to view or edit Contractor KPI data.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {saveMessage && (
@@ -509,6 +852,226 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
           <span>{saveMessage}</span>
         </motion.div>
       )}
+
+      {/* Monthly Evaluation Selector & Timeline */}
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 p-3.5 sm:p-4 rounded-2xl shadow-xs space-y-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+            <span className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider">
+              Evaluation Month:
+            </span>
+            <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+              {selectedMonth} ({selectedMonthInfo.monthAbbr} {selectedMonthInfo.fullYear})
+            </span>
+            {isMonthLocked ? (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 flex items-center gap-1">
+                <Lock className="w-3 h-3" /> Locked Historical Record
+              </span>
+            ) : selectedMonthInfo.isInEvaluationWindow ? (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
+                <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" /> 10-Day Window Open ({selectedMonthInfo.daysRemaining}d remaining)
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" /> Active Evaluation Cycle
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+            <button
+              type="button"
+              onClick={() => setShowKpiDetailModal(true)}
+              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer select-none"
+              title="View KPI Scoring Detail & Progress Factors Modal"
+            >
+              <BarChart2 className="w-3.5 h-3.5" />
+              <span>KPI Scoring Detail</span>
+            </button>
+
+            <span className="text-[10px] font-bold text-slate-400 uppercase">Archive History:</span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => handleSelectMonth(e.target.value)}
+              className="text-xs font-bold bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-xl text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
+            >
+              {allMonthsList.map((m) => {
+                const mInfo = getMonthLockInfo(m);
+                const isL = Boolean(project.kpiMonthlyRecords?.[m]?.isLocked || mInfo.isPast10Days);
+                return (
+                  <option key={m} value={m}>
+                    {m} {isL ? '(🔒 Locked Record)' : mInfo.isInEvaluationWindow ? '(⏳ Open • 10-Day)' : '(Active Cycle)'}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-750">
+          {quickMonths.map((m) => {
+            const mInfo = getMonthLockInfo(m);
+            const isL = Boolean(project.kpiMonthlyRecords?.[m]?.isLocked || mInfo.isPast10Days);
+            const isSelected = selectedMonth === m;
+            const rec = project.kpiMonthlyRecords?.[m] || (m === 'Sep-26' ? { overallScore: 78.4 } : m === 'Aug-26' ? { overallScore: 76.1 } : m === 'Jul-26' ? { overallScore: 74.8 } : null);
+            return (
+              <button
+                key={m}
+                onClick={() => {
+                  handleSelectMonth(m);
+                  setShowKpiDetailModal(true);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  isSelected
+                    ? 'bg-blue-600 text-white shadow-xs ring-2 ring-blue-400/40'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200/60 dark:border-slate-700'
+                }`}
+                title={`Click to view ${m} KPI Scoring Detail modal`}
+              >
+                {isL ? <Lock className="w-3 h-3 text-slate-400" /> : <Clock className="w-3 h-3 text-amber-500" />}
+                <span>{m}</span>
+                {rec && rec.overallScore !== undefined && (
+                  <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${isSelected ? 'bg-blue-700 text-white font-black' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                    {rec.overallScore.toFixed(0)}%
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 2. Official Reminder Banner for Authorized Users during 10-Day Window */}
+      {selectedMonthInfo.isInEvaluationWindow && !isMonthLocked && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 dark:from-amber-950/40 dark:via-orange-950/30 dark:to-amber-950/40 border-2 border-amber-400 dark:border-amber-600 rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-300/40 dark:border-amber-800/40 pb-2.5">
+            <div className="flex items-center gap-2 text-xs font-black text-amber-900 dark:text-amber-200 uppercase tracking-wider">
+              <Bell className="w-4 h-4 text-amber-600 dark:text-amber-400 animate-bounce shrink-0" />
+              <span>⏳ OFFICIAL REMINDER: MONTHLY KPI EVALUATION & UPDATE WINDOW ACTIVE</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="bg-amber-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs font-mono">
+                {selectedMonthInfo.daysRemaining} DAYS REMAINING (DAY {selectedMonthInfo.dayOfWindow} OF 10)
+              </span>
+              <span className="text-[10px] font-extrabold text-amber-800 dark:text-amber-300 bg-white/80 dark:bg-slate-900/80 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-700">
+                Locks {selectedMonthInfo.deadlineFormatted}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-1.5 text-xs text-amber-900 dark:text-amber-200">
+            <p className="font-bold">
+              Reminder for ERA Approver • ERA Editor • PMO Admin • Directorate Admin • CPM Admin • Master Admin:
+            </p>
+            <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+              The KPI evaluation and update period for completed month <strong>{selectedMonth} ({selectedMonthInfo.monthAbbr} {selectedMonthInfo.fullYear})</strong> is currently open. Evaluation data entry, score revisions, and weight allocations are strictly permitted within <strong>10 days following month completion</strong>. After the 10th day, this month's scorecard will be permanently locked and archived in historical records.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-amber-300/40 dark:border-amber-800/40">
+            <div className="flex items-center gap-2 text-[11px] text-amber-800 dark:text-amber-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <span>Next Month Evaluation: <strong>{selectedMonthInfo.nextMonthKey}</strong> evaluation cycle has started in parallel.</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleLockCurrentMonth(selectedMonth)}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer select-none"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                Finalize & Lock {selectedMonth} Record
+              </button>
+              <button
+                onClick={() => handleSelectMonth(selectedMonthInfo.nextMonthKey)}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer select-none"
+              >
+                Evaluate Next Month ({selectedMonthInfo.nextMonthKey}) &rarr;
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Official Locked Historical Record Banner */}
+      {isMonthLocked && (
+        <div className="bg-gradient-to-r from-slate-100 via-slate-50 to-slate-100 dark:from-slate-900/80 dark:via-slate-850 dark:to-slate-900/80 border-2 border-slate-300 dark:border-slate-700 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-slate-800 text-amber-400 flex items-center justify-center font-bold text-lg shadow-xs shrink-0">
+                🔒
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">
+                    Official ERA Historical KPI Record • {selectedMonth}
+                  </h3>
+                  <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                    Locked & Archived Record
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  This evaluation record was locked on {currentRecord?.lockedAt ? new Date(currentRecord.lockedAt).toLocaleDateString() : selectedMonthInfo.deadlineFormatted} (10-day post-month evaluation window completed). All criteria ratings, category weights, and composite scores are preserved in read-only audit mode.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 bg-white dark:bg-slate-800 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs shrink-0">
+              <div className="text-right">
+                <span className="text-[9px] uppercase font-extrabold text-slate-400 block">Certified Score</span>
+                <span className="text-lg font-black text-blue-600 dark:text-blue-400 font-mono">
+                  {(currentRecord?.overallScore ?? overallScore).toFixed(1)}%
+                </span>
+              </div>
+              <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 flex items-center justify-center font-black text-base border border-blue-200 dark:border-blue-800">
+                {currentRecord?.overallGrade || overallGrade}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-750 text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span>Evaluated / Locked By: <strong>{currentRecord?.lockedBy || currentRecord?.evaluatedBy || 'ERA CPM Directorate & Approver'}</strong></span>
+              <span>•</span>
+              <span>Audit Standard: <strong>ERA 10-Area Contractor Scorecard</strong></span>
+            </div>
+            <span className="bg-slate-200 dark:bg-slate-700/80 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded text-[10px] font-mono font-bold">
+              Read-Only Audit Archive
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Compact KPI Scoring Detail Trigger Banner (Inline engine hidden from page body per request) */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-3.5 sm:p-4 border border-indigo-700/50 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0">
+            <Activity className="w-5 h-5 text-indigo-300" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-xs sm:text-sm font-black uppercase tracking-tight text-white">
+                {selectedMonth} KPI Scoring & Physical Progress Evaluation
+              </h3>
+              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 font-mono">
+                Overall: {(currentRecord?.overallScore ?? overallScore).toFixed(1)}% (Grade {currentRecord?.overallGrade || overallGrade})
+              </span>
+            </div>
+            <p className="text-2xs text-indigo-200/80 mt-0.5">
+              PP-1 Actual / ERA Plan ratio: <strong className="text-amber-300">{progressKpiResult.performanceRatio.toFixed(2)}%</strong> &bull; PP-1 Score: <strong className="text-emerald-400">{progressKpiResult.pp1Score.toFixed(1)}%</strong> ({progressKpiResult.status})
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowKpiDetailModal(true)}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm border border-indigo-400/30 cursor-pointer shrink-0"
+        >
+          <BarChart2 className="w-4 h-4 text-indigo-200" />
+          <span>View KPI Scoring Detail Modal</span>
+        </button>
+      </div>
 
       {/* 1. Admin/Non-Admin mode banners */}
       {!isAdmin ? (
@@ -600,13 +1163,22 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
         </div>
         <div className="flex flex-wrap items-center gap-3 self-end md:self-auto">
           {/* Subgroup creation button */}
-          {isAdmin ? (
+          {isAdmin && !isMonthLocked ? (
             <button
               onClick={() => setShowAddSubForm(!showAddSubForm)}
               className="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-sm select-none"
             >
               <FolderPlus className="w-4 h-4" />
               {showAddSubForm ? 'Close Creator' : 'Add custom subgroup'}
+            </button>
+          ) : isMonthLocked ? (
+            <button
+              disabled
+              className="px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 cursor-not-allowed select-none opacity-60"
+              title="This month's KPI evaluation is locked in historical records"
+            >
+              <Lock className="w-4 h-4 text-slate-400" />
+              Subgroup Creator (Locked Month)
             </button>
           ) : (
             <button
@@ -623,9 +1195,9 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
             <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Contractor Grade:</span>
             <select
               value={project.contractorGrade || 'G1'}
-              disabled={!isAdmin}
+              disabled={!isAdmin || isMonthLocked}
               onChange={(e) => onProjectUpdate?.({ contractorGrade: e.target.value }, `Updated Contractor Grade to ${e.target.value}`)}
-              className={`bg-white dark:bg-slate-800 text-xs font-bold border border-slate-350 dark:border-slate-650 px-2.5 py-1 rounded-lg outline-none text-slate-850 dark:text-zinc-100 focus:border-blue-500 transition-colors ${!isAdmin ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}
+              className={`bg-white dark:bg-slate-800 text-xs font-bold border border-slate-350 dark:border-slate-650 px-2.5 py-1 rounded-lg outline-none text-slate-850 dark:text-zinc-100 focus:border-blue-500 transition-colors ${!isAdmin || isMonthLocked ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}
             >
               {Array.from({ length: 12 }, (_, i) => `G${i + 1}`).map((grade, idx) => (
                 <option key={`grade-${grade}-${idx}`} value={grade}>{grade} Contractor</option>
@@ -979,7 +1551,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                     </button>
                   </div>
                 ) : (
-                  isAdmin && (
+                  isAdmin && !isMonthLocked && (
                     <button
                       onClick={() => handleStartEditingWeights(goal.id, goal.sscs)}
                       className="flex items-center gap-1 bg-white hover:bg-slate-100 dark:bg-slate-800 text-slate-600 hover:text-slate-800 dark:text-zinc-300 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 transition cursor-pointer font-bold text-[9px]"
@@ -1031,7 +1603,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                               <span className="tracking-wide font-black text-slate-800 dark:text-zinc-100">
                                 {ssc.id}: {ssc.name}
                               </span>
-                              {isAdmin && (
+                              {isAdmin && !isMonthLocked && (
                                 <button
                                   onClick={() => handleStartRenameSubgroup(ssc.id, ssc.name)}
                                   className="p-1 text-slate-400 hover:text-blue-500 cursor-pointer flex items-center justify-center bg-slate-50/50 hover:bg-slate-100 dark:bg-slate-900/40 dark:hover:bg-slate-750 border border-slate-200/40 dark:border-slate-700/50 rounded-lg transition"
@@ -1069,7 +1641,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                           )}
 
                           {/* Delete option for subgroups (Admin only) */}
-                          {isAdmin && (
+                          {isAdmin && !isMonthLocked && (
                             <button
                               onClick={() => handleDeleteSubgroup(ssc.id, ssc.name)}
                               className="text-[9px] text-rose-500/80 hover:text-rose-600 cursor-pointer flex items-center gap-0.5 ml-1.5 font-bold select-none border border-rose-200/20 dark:border-rose-950/20 px-1.5 py-0.5 rounded-lg bg-rose-500/5 hover:bg-rose-500/10 transition"
@@ -1081,7 +1653,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                           )}
 
                           {/* Add Criteria option inside subgroup (Admin only) */}
-                          {isAdmin && (
+                          {isAdmin && !isMonthLocked && (
                             <button
                               type="button"
                               onClick={() => {
@@ -1241,11 +1813,41 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                                     </span>
                                   </span>
                                 </div>
+
+                                {it.id === 'PP-1' && (
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap pl-1">
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                      <Zap className="w-3 h-3 text-indigo-500" />
+                                      Monthly Status Report ({selectedMonth} {kpiProgressBasis === 'monthly' ? 'Month' : 'Cumulative'}): Actual {kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment} {progressKpiResult.unit} / ERA Plan {kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan} {progressKpiResult.unit}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                                      % Divided for ERA Plan: <strong>{progressKpiResult.performanceRatio.toFixed(2)}%</strong> &bull; Score: <strong className="text-indigo-600 dark:text-indigo-400 font-mono">{progressKpiResult.pp1Score.toFixed(1)}%</strong>
+                                    </span>
+                                  </div>
+                                )}
                               </div>
 
                               {/* Right Values / editing elements */}
                               <div className="flex items-center gap-3 self-end md:self-auto">
-                                {isAutoKpi(it.id) && (
+                                {it.id === 'PP-1' ? (
+                                  <div className="flex items-center">
+                                    {kpi.isOverridden ? (
+                                      <button
+                                        onClick={() => handleResetToAuto('PP-1')}
+                                        className="text-[9px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-900/40 transition cursor-pointer flex items-center gap-1"
+                                        title="Click to reset and sync with automatic progress plan calculation"
+                                      >
+                                        <RefreshCw className="w-2.5 h-2.5" />
+                                        Manual ({kpi.alloc}%) &rarr; Sync Auto ({progressKpiResult.pp1Score.toFixed(1)}%)
+                                      </button>
+                                    ) : (
+                                      <span className="text-[9px] font-bold bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-900/30 flex items-center gap-1">
+                                        <Check className="w-2.5 h-2.5 text-indigo-500" />
+                                        Progress Auto Active ({progressKpiResult.pp1Score.toFixed(1)}%)
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : isAutoKpi(it.id) && (
                                   <div className="flex items-center">
                                     {kpi.isOverridden ? (
                                       <button
@@ -1270,6 +1872,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                                 <div className="flex items-center gap-1.5">
                                   {it.type === 'yn' ? (
                                     <select
+                                      disabled={isMonthLocked || !canEditKpis}
                                       value={kpi.naActive ? 'na' : (it.id === 'RK-1' ? (kpi.alloc === 0 ? '0' : '1') : (kpi.alloc >= it.max ? '1' : '0'))}
                                       onChange={(e) => {
                                         const v = e.target.value;
@@ -1279,7 +1882,9 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                                           handleValueChange(it.id, parseInt(v, 10), false);
                                         }
                                       }}
-                                      className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-705 text-xs px-2.5 py-1 rounded-lg font-bold outline-none cursor-pointer text-slate-800 dark:text-zinc-50 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 shadow-sm"
+                                      className={`bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-705 text-xs px-2.5 py-1 rounded-lg font-bold outline-none text-slate-800 dark:text-zinc-50 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 shadow-sm ${
+                                        isMonthLocked || !canEditKpis ? 'cursor-not-allowed opacity-75 bg-slate-150 dark:bg-slate-950' : 'cursor-pointer'
+                                      }`}
                                     >
                                       {it.id === 'RK-1' ? (
                                         <>
@@ -1301,21 +1906,27 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                                         min="0"
                                         max={it.max}
                                         step="0.1"
+                                        disabled={isMonthLocked || !canEditKpis}
                                         value={kpi.naActive ? '' : kpi.alloc}
                                         placeholder="0.0"
                                         onChange={(e) => {
                                           const val = parseFloat(e.target.value);
                                           handleValueChange(it.id, isNaN(val) ? 0 : val, false);
                                         }}
-                                        className="w-16 bg-slate-50 dark:bg-slate-900 text-center text-xs font-mono font-extrabold px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-705 outline-none text-slate-800 dark:text-zinc-50 placeholder-slate-400 dark:placeholder-slate-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 shadow-sm"
+                                        className={`w-16 bg-slate-50 dark:bg-slate-900 text-center text-xs font-mono font-extrabold px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-705 outline-none text-slate-800 dark:text-zinc-50 placeholder-slate-400 dark:placeholder-slate-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 focus:bg-white dark:focus:bg-slate-950 transition-all duration-150 shadow-sm ${
+                                          isMonthLocked || !canEditKpis ? 'cursor-not-allowed opacity-75 bg-slate-150 dark:bg-slate-950' : ''
+                                        }`}
                                       />
                                       <span className="text-[10px] text-slate-400 font-mono select-none">/ {it.max}</span>
                                       
                                       <button
+                                        disabled={isMonthLocked || !canEditKpis}
                                         onClick={() => {
                                           handleValueChange(it.id, 0, !kpi.naActive);
                                         }}
-                                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition border cursor-pointer ${
+                                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition border ${
+                                          isMonthLocked || !canEditKpis ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                                        } ${
                                           kpi.naActive 
                                             ? 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30' 
                                             : 'bg-slate-100 hover:bg-slate-200 text-slate-500 dark:bg-slate-850 dark:hover:bg-slate-750 border-slate-200 dark:border-slate-755'
@@ -1327,13 +1938,19 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                                   )}
                                 </div>
 
+                                {isMonthLocked && (
+                                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold flex items-center gap-1 select-none" title="Locked historical record">
+                                    <Lock className="w-3 h-3 text-slate-400" />
+                                  </span>
+                                )}
+
                                 {kpi.naActive && (
                                   <span className="text-[9px] font-bold bg-amber-500 text-slate-900 rounded-md px-1.5 py-0.5 border border-amber-400">
                                     N/A Tracked
                                   </span>
                                 )}
 
-                                {isAdmin && (
+                                {isAdmin && !isMonthLocked && (
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteCriteria(it.id, it.desc)}
@@ -1367,6 +1984,351 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
         onProjectUpdate={onProjectUpdate}
       />
       
+      {/* KPI Scoring Detail Modal */}
+      {showKpiDetailModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto flex flex-col my-auto"
+          >
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white p-5 rounded-t-2xl border-b border-indigo-700/50 flex items-center justify-between gap-4 sticky top-0 z-20">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0">
+                  <BarChart2 className="w-6 h-6 text-indigo-300" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-base sm:text-lg font-black tracking-tight text-white uppercase">
+                      KPI Scoring Detail • {selectedMonth}
+                    </h2>
+                    {isMonthLocked ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
+                        <Lock className="w-3 h-3" /> Locked Historical Record
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" /> Active Evaluation Cycle
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-indigo-200/80 mt-0.5">
+                    Breakdown of Planned vs. Actual Physical Progress Calculation Factors (PP-1) & Goal Scorecard
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="text-right hidden sm:block">
+                  <span className="text-[9px] uppercase font-extrabold text-indigo-300/80 block">Certified Overall Score</span>
+                  <span className="text-lg font-black text-amber-300 font-mono">
+                    {(currentRecord?.overallScore ?? overallScore).toFixed(1)}%
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowKpiDetailModal(false)}
+                  className="p-2 text-indigo-300 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer"
+                  title="Close KPI Scoring Detail Modal"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 sm:p-6 space-y-6 text-slate-800 dark:text-zinc-100 flex-1">
+              
+              {/* SECTION 1: Planned vs Actual Physical Progress Factors (PP-1 Engine) */}
+              <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-950 text-white rounded-2xl p-4 sm:p-5 border border-indigo-700/50 shadow-md space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/50 pb-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="p-1 rounded-lg bg-indigo-500/20 text-indigo-400">
+                        <Activity className="w-4 h-4 text-indigo-300" />
+                      </span>
+                      <h3 className="text-xs sm:text-sm font-black tracking-tight text-white uppercase">
+                        Monthly Status Report Progress Engine • PP-1 Breakdown
+                      </h3>
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                        progressKpiResult.status === 'Ahead' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
+                        progressKpiResult.status === 'On Track' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' :
+                        progressKpiResult.status === 'Minor Lag' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' :
+                        'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      }`}>
+                        {progressKpiResult.status}
+                      </span>
+                    </div>
+                    <p className="text-2xs text-indigo-200/90 leading-relaxed">
+                      <strong>PP-1 (Planned vs actual physical completion)</strong> is computed directly from the Monthly Status Report of <strong>{selectedMonth}</strong> by dividing <strong>actual accomplishment for ERA plan</strong> (<em>% of Actual Divided by ERA Plan</em>).
+                    </p>
+                  </div>
+
+                  {/* Basis selector & action */}
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <div className="flex items-center bg-indigo-950/90 p-0.5 rounded-xl border border-indigo-700/60">
+                      <button
+                        type="button"
+                        onClick={() => setKpiProgressBasis('monthly')}
+                        className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer text-[10px] uppercase tracking-wide flex items-center gap-1 ${
+                          kpiProgressBasis === 'monthly'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-indigo-300 hover:text-white'
+                        }`}
+                      >
+                        <span>Specific Month ({progressKpiResult.monthlyPerformanceRatio.toFixed(1)}%)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setKpiProgressBasis('cumulative')}
+                        className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer text-[10px] uppercase tracking-wide flex items-center gap-1 ${
+                          kpiProgressBasis === 'cumulative'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-indigo-300 hover:text-white'
+                        }`}
+                      >
+                        <span>To-Date ({progressKpiResult.cumulativePerformanceRatio.toFixed(1)}%)</span>
+                      </button>
+                    </div>
+
+                    {canEditKpis && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleApplyProgressCalculatedScores();
+                        }}
+                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm cursor-pointer border border-indigo-400/30"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 text-indigo-200" />
+                        <span>Apply Score ({progressKpiResult.pp1Score.toFixed(1)}%)</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Metric Telemetry Cards Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-indigo-200/70 block">
+                      {kpiProgressBasis === 'monthly' ? 'ERA Month Plan' : 'ERA To-Date Plan'}
+                    </span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-base font-black font-mono text-white">
+                        {(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(2)}
+                      </span>
+                      <span className="text-[10px] text-indigo-300/80 font-mono">{progressKpiResult.unit}</span>
+                    </div>
+                    <span className="text-[9px] text-indigo-300/80 block truncate">Status Report target</span>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-indigo-200/70 block">
+                      {kpiProgressBasis === 'monthly' ? 'Actual Month' : 'Actual To-Date'}
+                    </span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-base font-black font-mono text-white">
+                        {(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(2)}
+                      </span>
+                      <span className="text-[10px] text-indigo-300/80 font-mono">{progressKpiResult.unit}</span>
+                    </div>
+                    <span className="text-[9px] text-indigo-300/80 block truncate">Road Completed</span>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-indigo-200/70 block">Actual / ERA Plan</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-base font-black font-mono text-amber-300">
+                        {progressKpiResult.performanceRatio.toFixed(2)}%
+                      </span>
+                    </div>
+                    <span className="text-[9px] text-indigo-300/80 block truncate">% Divided for ERA Plan</span>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-indigo-200/70 block">Variance (Km)</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className={`text-base font-black font-mono ${progressKpiResult.variancePctPoints >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {progressKpiResult.variancePctPoints >= 0 ? '+' : ''}{progressKpiResult.variancePctPoints.toFixed(2)}
+                      </span>
+                      <span className="text-[10px] text-indigo-300/80 font-mono">{progressKpiResult.unit}</span>
+                    </div>
+                    <span className="text-[9px] text-indigo-300/80 block truncate">
+                      {progressKpiResult.variancePctPoints >= 0 ? 'Ahead of ERA plan' : 'Behind ERA plan'}
+                    </span>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-indigo-200/70 block">Schedule Index (SPI)</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-base font-black font-mono text-white">
+                        {progressKpiResult.spi.toFixed(3)}
+                      </span>
+                    </div>
+                    <span className="text-[9px] text-indigo-300/80 block truncate">
+                      {progressKpiResult.spi >= 1.0 ? 'SPI ≥ 1.0 (On schedule)' : 'SPI < 1.0 (Slippage)'}
+                    </span>
+                  </div>
+
+                  <div className="bg-indigo-950/80 border border-indigo-500/50 rounded-xl p-2.5 space-y-1 shadow-inner">
+                    <span className="text-[10px] uppercase font-bold text-indigo-200 block">PP-1 Score</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-base font-black font-mono text-emerald-400">
+                        {progressKpiResult.pp1Score.toFixed(1)}%
+                      </span>
+                      <span className="text-[10px] text-indigo-300 font-mono">/ 100%</span>
+                    </div>
+                    <span className="text-[9px] text-emerald-300/90 font-bold block truncate">
+                      Grade {getKpiGradeLetter(progressKpiResult.pp1Score)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Dual Comparison Audit Breakdown */}
+                <div className="bg-white/5 rounded-xl p-3 border border-white/10 space-y-2 text-xs">
+                  <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-indigo-300 border-b border-white/10 pb-1.5 flex-wrap gap-2">
+                    <span>Monthly Status Report (% of Actual Divided by ERA Plan)</span>
+                    <span className="font-mono text-[10px] text-slate-400">Data Source: {progressKpiResult.sourceDescription}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                    <div 
+                      onClick={() => setKpiProgressBasis('monthly')}
+                      className={`p-2.5 rounded-lg border cursor-pointer transition ${
+                        kpiProgressBasis === 'monthly' ? 'bg-indigo-900/60 border-indigo-400 shadow-xs' : 'bg-black/20 border-white/5 hover:border-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-bold">
+                        <span className="text-indigo-200 flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${kpiProgressBasis === 'monthly' ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                          Specific Month ({progressKpiResult.monthLabel})
+                        </span>
+                        <span className="font-mono text-amber-300 font-black">{progressKpiResult.monthlyPerformanceRatio.toFixed(2)}%</span>
+                      </div>
+                      <div className="text-[10px] text-slate-300 mt-1">
+                        Actual: <strong>{progressKpiResult.actualMonthAccomplishment.toFixed(2)} {progressKpiResult.unit}</strong> / ERA Plan: <strong>{progressKpiResult.eraMonthPlan.toFixed(2)} {progressKpiResult.unit}</strong> &bull; Score: <strong className="text-emerald-400">{progressKpiResult.monthlyPp1Score.toFixed(1)}%</strong>
+                      </div>
+                    </div>
+
+                    <div 
+                      onClick={() => setKpiProgressBasis('cumulative')}
+                      className={`p-2.5 rounded-lg border cursor-pointer transition ${
+                        kpiProgressBasis === 'cumulative' ? 'bg-indigo-900/60 border-indigo-400 shadow-xs' : 'bg-black/20 border-white/5 hover:border-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-bold">
+                        <span className="text-indigo-200 flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${kpiProgressBasis === 'cumulative' ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                          Cumulative To-Date
+                        </span>
+                        <span className="font-mono text-amber-300 font-black">{progressKpiResult.cumulativePerformanceRatio.toFixed(2)}%</span>
+                      </div>
+                      <div className="text-[10px] text-slate-300 mt-1">
+                        Actual: <strong>{progressKpiResult.actualTodateAccomplishment.toFixed(2)} {progressKpiResult.unit}</strong> / ERA Plan: <strong>{progressKpiResult.eraTodatePlan.toFixed(2)} {progressKpiResult.unit}</strong> &bull; Score: <strong className="text-emerald-400">{progressKpiResult.cumulativePp1Score.toFixed(1)}%</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-indigo-200/90 pt-1 border-t border-indigo-800/50">
+                  <strong>Audit Formula:</strong> {progressKpiResult.formulaExplanation}
+                </div>
+              </div>
+
+              {/* SECTION 2: Goal Category Scorecard Breakdown */}
+              <div className="space-y-3">
+                <h3 className="text-xs sm:text-sm font-black uppercase text-slate-700 dark:text-zinc-200 flex items-center gap-2">
+                  <Award className="w-4 h-4 text-blue-500" />
+                  10-Area Category Score Breakdown ({selectedMonth})
+                </h3>
+                
+                <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-750 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-100 dark:bg-slate-800 uppercase font-extrabold text-[10px] text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                        <tr>
+                          <th className="px-3.5 py-2.5">Category Code & Goal Name</th>
+                          <th className="px-3 py-2.5 text-center">Category Weight</th>
+                          <th className="px-3 py-2.5 text-center">Calculated Score</th>
+                          <th className="px-3 py-2.5 text-center">Grade</th>
+                          <th className="px-3.5 py-2.5 text-right">Contribution Points</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-150 dark:divide-slate-700/60 font-medium">
+                        {hierarchy.map((goal) => {
+                          const goalScore = getGoalScore(goal.id);
+                          const grade = getKpiGradeLetter(goalScore);
+                          const contribution = (goalScore * goal.wt) / 100;
+                          return (
+                            <tr key={`modal-goal-${goal.id}`} className="hover:bg-white dark:hover:bg-slate-800/80 transition">
+                              <td className="px-3.5 py-2.5">
+                                <div className="font-bold text-slate-800 dark:text-zinc-100">{goal.id}: {goal.name}</div>
+                                <div className="text-[10px] text-slate-400">{goal.sscs.length} Subgroups &bull; {goal.sscs.reduce((acc, s) => acc + s.items.length, 0)} Indicators</div>
+                              </td>
+                              <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-600 dark:text-slate-300">
+                                {goal.wt}%
+                              </td>
+                              <td className="px-3 py-2.5 text-center font-mono font-bold">
+                                <span className={goalScore >= 90 ? 'text-emerald-600 dark:text-emerald-400' : goalScore >= 75 ? 'text-blue-600 dark:text-blue-400' : goalScore >= 60 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}>
+                                  {goalScore.toFixed(1)}%
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5 text-center font-bold">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-mono ${
+                                  grade === 'A' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
+                                  grade === 'B' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' :
+                                  grade === 'C' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
+                                  'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                }`}>
+                                  Grade {grade}
+                                </span>
+                              </td>
+                              <td className="px-3.5 py-2.5 text-right font-mono font-black text-slate-800 dark:text-zinc-100">
+                                {contribution.toFixed(2)} pts
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="bg-slate-100 dark:bg-slate-800 font-black text-xs border-t-2 border-slate-300 dark:border-slate-700">
+                        <tr>
+                          <td className="px-3.5 py-2.5 text-slate-800 dark:text-zinc-100 uppercase">Composite Total Scorecard</td>
+                          <td className="px-3 py-2.5 text-center font-mono">100%</td>
+                          <td className="px-3 py-2.5 text-center font-mono text-blue-600 dark:text-blue-400 text-sm">
+                            {(currentRecord?.overallScore ?? overallScore).toFixed(1)}%
+                          </td>
+                          <td className="px-3 py-2.5 text-center font-mono">
+                            Grade {currentRecord?.overallGrade || overallGrade}
+                          </td>
+                          <td className="px-3.5 py-2.5 text-right font-mono text-blue-600 dark:text-blue-400 text-sm">
+                            {(currentRecord?.overallScore ?? overallScore).toFixed(2)} pts
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 dark:bg-slate-850 p-4 border-t border-slate-200 dark:border-slate-800 rounded-b-2xl flex items-center justify-between gap-3">
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                Audit Reference: <strong>ERA 10-Area Contractor Scorecard &bull; {selectedMonth}</strong>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowKpiDetailModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white dark:bg-slate-700 dark:hover:bg-slate-600 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                Close Detail Window
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* CSS Injected styling for tooltip */}
       <style>{`
         .tooltip-trigger:hover .tooltip-box {

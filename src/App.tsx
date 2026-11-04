@@ -146,8 +146,71 @@ export function isProjectApprover(user: User | null, projectId: string, project?
   return false;
 }
 
+export function isKpiAuthorizedRole(user: User | null): boolean {
+  if (!user) return false;
+  const roleStr = String(user.role || '').toLowerCase();
+  const usernameStr = String(user.username || '').toLowerCase();
+
+  const isMasterAdmin = Boolean(
+    user.role === 'master_admin' || 
+    user.role === 'admin' ||
+    roleStr === 'master admin' ||
+    roleStr === 'master_admin' ||
+    roleStr === 'admin' ||
+    user.username === 'proj_1781786415663' ||
+    usernameStr.includes('ersido')
+  );
+
+  const isCpmAdmin = Boolean(
+    user.role === 'cpm_admin' ||
+    roleStr === 'cpm_admin' ||
+    roleStr === 'cpm admin'
+  );
+
+  const isDirectorateAdmin = Boolean(
+    user.role === 'directorate_admin' ||
+    roleStr === 'directorate_admin' ||
+    roleStr === 'directorate admin'
+  );
+
+  const isPmoAdmin = Boolean(
+    user.role === 'pmo_admin' ||
+    roleStr === 'pmo_admin' ||
+    roleStr === 'pmo admin'
+  );
+
+  const isEraApprover = Boolean(
+    user.role === 'era_approver' ||
+    user.role === 'approver' ||
+    roleStr === 'era_approver' ||
+    roleStr === 'era approver' ||
+    roleStr === 'approver'
+  );
+
+  const isEraEditor = Boolean(
+    user.role === 'era_editor' ||
+    roleStr === 'era_editor' ||
+    roleStr === 'era editor'
+  );
+
+  return Boolean(
+    isMasterAdmin ||
+    isCpmAdmin ||
+    isDirectorateAdmin ||
+    isPmoAdmin ||
+    isEraApprover ||
+    isEraEditor
+  );
+}
+
 export function canUserViewPage(user: User | null, pageId: string): boolean {
   if (!user) return false;
+
+  // Strict RBAC: KPI page only for ERA approver, ERA editor, PMO admin, Directorate admin, CPM admin, and Master Admin
+  if (pageId === 'kpiEditor') {
+    return isKpiAuthorizedRole(user);
+  }
+
   const roleStr = String(user.role || '').toLowerCase();
   const usernameStr = String(user.username || '').toLowerCase();
 
@@ -197,6 +260,12 @@ export function canUserEditPage(user: User | null, pageId: string): boolean {
   if (!user) return false;
   const roleStr = String(user.role || '').toLowerCase();
   const usernameStr = String(user.username || '').toLowerCase();
+
+  // Strict RBAC: KPI page editing only for ERA approver, ERA editor, PMO admin, Directorate admin, CPM admin, and Master Admin
+  if (pageId === 'kpiEditor') {
+    if (roleStr.includes('viewer')) return false;
+    return isKpiAuthorizedRole(user);
+  }
 
   const isAdmin = 
     user.role === 'master_admin' || 
