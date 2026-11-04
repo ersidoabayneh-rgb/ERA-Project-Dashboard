@@ -1267,6 +1267,15 @@ export interface ContractCondition1Data {
     contingency: number;
     vat: number;
     subTotal: number;
+    feesUsd?: number;
+    feesConstruction?: number;
+    feesConstructionUsd?: number;
+    feesDlp?: number;
+    feesDlpUsd?: number;
+    reimbursableUsd?: number;
+    contingencyUsd?: number;
+    vatUsd?: number;
+    subTotalUsd?: number;
   };
   // Currency split settings panel configuration
   currencySplitSettings?: {

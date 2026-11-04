@@ -441,6 +441,12 @@ export default function SupervisionConsultantView({
     const baseBeforeVat = fees + reimb + contingency;
     const vat = baseBeforeVat * (vatPct / 100);
     const grandTotal = baseBeforeVat + vat;
+    const feesUsd = (scheduleData.staffFees || []).reduce((sum, r) => sum + (Number(r.totalUsd) || 0), 0);
+    const reimbUsd = (scheduleData.reimbursableList || []).reduce((sum, r) => sum + (Number(r.amountUsd) || 0), 0);
+    const contingencyUsd = (feesUsd + reimbUsd) * (contingencyPct / 100);
+    const baseBeforeVatUsd = feesUsd + reimbUsd + contingencyUsd;
+    const vatUsd = baseBeforeVatUsd * (vatPct / 100);
+    const grandTotalUsd = baseBeforeVatUsd + vatUsd;
     const totalManMonths = (scheduleData.staffFees || []).reduce((sum, r) => sum + (Number(r.totalMm) || 0), 0);
 
     return {
@@ -453,7 +459,8 @@ export default function SupervisionConsultantView({
         reimbursableExpenses: reimb,
         contingency,
         vat,
-        subTotal: grandTotal
+        subTotal: grandTotal,
+        subTotalUsd: grandTotalUsd
       }
     };
   };

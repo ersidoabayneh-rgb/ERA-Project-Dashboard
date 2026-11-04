@@ -243,6 +243,29 @@ export default function DashboardView({
 
   const currentMonthKey = resolveCurrentMonthKey(project);
   const lastActualInfo = getLastActualProgress(project.monthly, currentMonthKey);
+  const isClosed = isProjectClosed(project.status);
+
+  // Inserting data on Project Progress gauge is allowed for:
+  // - Supervision Consultant approver (consultant_approver)
+  // - ERA editor (era_editor)
+  // - ERA Approver (era_approver)
+  // - PMO admin (pmo_admin)
+  // Other users only view.
+  const userRoleStr = String(currentUserObj?.role || '').toLowerCase().trim();
+  const canEditProgressGauge = Boolean(
+    currentUserObj && (
+      userRoleStr === 'consultant_approver' ||
+      userRoleStr === 'consultant approver' ||
+      userRoleStr === 'supervision consultant approver' ||
+      userRoleStr === 'era_editor' ||
+      userRoleStr === 'era editor' ||
+      userRoleStr === 'era_approver' ||
+      userRoleStr === 'era approver' ||
+      userRoleStr === 'approver' ||
+      userRoleStr === 'pmo_admin' ||
+      userRoleStr === 'pmo admin'
+    )
+  );
 
   // Synchronize local input state with project prop updates
   React.useEffect(() => {
@@ -251,6 +274,7 @@ export default function DashboardView({
   }, [project.physicalProgress]);
 
   const handleApplyPhysical = () => {
+    if (!canEditProgressGauge || isClosed) return;
     const val = parseFloat(physicalInput);
     if (isNaN(val)) return;
 
@@ -286,8 +310,6 @@ export default function DashboardView({
     setSelectedEfySource('current');
     setSelectedCumulativeSource('current');
   }, [project.id]);
-
-  const isClosed = isProjectClosed(project.status);
 
   // Calculates elapsed progress ratio (capped strictly at 100% when completed or duration reached)
   const getElapsedPercent = () => {
@@ -1675,8 +1697,8 @@ export default function DashboardView({
             onKpiClick={() => onSwitchTab && onSwitchTab('seriesEditor')}
             variant="master"
           />
-          {/* Inline Editor (Disabled when project is closed) */}
-          {!isClosed && (
+          {/* Inline Editor (Allowed for Supervision Consultant approver, ERA editor, ERA Approver, and PMO admin only when project is not closed) */}
+          {!isClosed && canEditProgressGauge && (
             <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 flex flex-col items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-2xl shadow-xl transition-all duration-200 z-20 gap-1 text-[10px] min-w-[180px]">
               <div className="flex items-center justify-center gap-1.5 w-full">
                 <input 

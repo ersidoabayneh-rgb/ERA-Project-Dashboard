@@ -61,40 +61,10 @@ export const PIPE_CONSTRUCTION_STAGES = [
 export type PipeConstructionStage = typeof PIPE_CONSTRUCTION_STAGES[number];
 
 export const PRESET_PIPE_LOCATIONS = [
-  '199+700',
-  '200+313',
-  '200+940',
-  '201+610',
-  '205+702',
-  '208+646',
-  '209+185',
-  '210+200',
-  '211+101',
-  '211+827',
-  '212+198',
-  '212+647',
-  '214+297',
-  '216+750',
-  '217+415'
+ 
 ];
 
-export const SAMPLE_ERA_PIPE_RECORDS: Partial<DailyActivityRecord>[] = [
-  { pipeLocation: '199+700', pipeSelectedStage: 'Paved Water way', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 50, pipeInstallationPct: 100, pipeBackfillPct: 100, pipePreviousPct: 93, pipeDailyProgressPct: 0, pipeToDatePct: 93, metricKm: 0.05 },
-  { pipeLocation: '200+313', pipeSelectedStage: 'Back fill', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 100, pipeInstallationPct: 100, pipeBackfillPct: 100, pipePreviousPct: 100, pipeDailyProgressPct: 0, pipeToDatePct: 100, metricKm: 0.0 },
-  { pipeLocation: '200+940', pipeSelectedStage: 'Paved Water way', pipeExcavationPct: 100, pipeMasonryPct: 85, pipePavedWaterwayPct: 60, pipeInstallationPct: 100, pipeBackfillPct: 95, pipePreviousPct: 89, pipeDailyProgressPct: 0, pipeToDatePct: 89, metricKm: 0.0 },
-  { pipeLocation: '201+610', pipeSelectedStage: 'Masonry inlet/outlet', pipeExcavationPct: 100, pipeMasonryPct: 70, pipePavedWaterwayPct: 100, pipeInstallationPct: 100, pipeBackfillPct: 95, pipePreviousPct: 95, pipeDailyProgressPct: 0, pipeToDatePct: 95, metricKm: 0.0 },
-  { pipeLocation: '205+702', pipeSelectedStage: 'Back fill', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 100, pipeInstallationPct: 100, pipeBackfillPct: 100, pipePreviousPct: 100, pipeDailyProgressPct: 0, pipeToDatePct: 100, metricKm: 0.0 },
-  { pipeLocation: '208+646', pipeSelectedStage: 'Pipe Installation', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 100, pipeInstallationPct: 100, pipeBackfillPct: 100, pipePreviousPct: 100, pipeDailyProgressPct: 0, pipeToDatePct: 100, metricKm: 0.0 },
-  { pipeLocation: '209+185', pipeSelectedStage: 'Back fill', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 100, pipeInstallationPct: 100, pipeBackfillPct: 100, pipePreviousPct: 100, pipeDailyProgressPct: 0, pipeToDatePct: 100, metricKm: 0.0 },
-  { pipeLocation: '210+200', pipeSelectedStage: 'Back fill', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 100, pipeInstallationPct: 100, pipeBackfillPct: 100, pipePreviousPct: 100, pipeDailyProgressPct: 0, pipeToDatePct: 100, metricKm: 0.0 },
-  { pipeLocation: '211+101', pipeSelectedStage: 'Masonry inlet/outlet', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 85, pipeInstallationPct: 100, pipeBackfillPct: 100, pipePreviousPct: 98, pipeDailyProgressPct: 0, pipeToDatePct: 98, metricKm: 0.0 },
-  { pipeLocation: '211+827', pipeSelectedStage: 'Masonry inlet/outlet', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 85, pipeInstallationPct: 100, pipeBackfillPct: 100, pipePreviousPct: 98, pipeDailyProgressPct: 0, pipeToDatePct: 98, metricKm: 0.0 },
-  { pipeLocation: '212+198', pipeSelectedStage: 'Back fill', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 100, pipeInstallationPct: 100, pipeBackfillPct: 100, pipePreviousPct: 100, pipeDailyProgressPct: 0, pipeToDatePct: 100, metricKm: 0.0 },
-  { pipeLocation: '212+647', pipeSelectedStage: 'Back fill', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 100, pipeInstallationPct: 100, pipeBackfillPct: 100, pipePreviousPct: 100, pipeDailyProgressPct: 0, pipeToDatePct: 100, metricKm: 0.0 },
-  { pipeLocation: '214+297', pipeSelectedStage: 'Back fill', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 100, pipeInstallationPct: 100, pipeBackfillPct: 85, pipePreviousPct: 99, pipeDailyProgressPct: 0, pipeToDatePct: 99, metricKm: 0.0 },
-  { pipeLocation: '216+750', pipeSelectedStage: 'Back fill', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 100, pipeInstallationPct: 100, pipeBackfillPct: 10, pipePreviousPct: 91, pipeDailyProgressPct: 0, pipeToDatePct: 91, metricKm: 0.0 },
-  { pipeLocation: '217+415', pipeSelectedStage: 'Pipe Installation', pipeExcavationPct: 100, pipeMasonryPct: 100, pipePavedWaterwayPct: 100, pipeInstallationPct: 100, pipeBackfillPct: 100, pipePreviousPct: 100, pipeDailyProgressPct: 0, pipeToDatePct: 100, metricKm: 0.0 }
-];
+export const SAMPLE_ERA_PIPE_RECORDS: Partial<DailyActivityRecord>[] = [];
 
 // BRIDGE CONSTRUCTION STAGES & PRESETS
 export const BRIDGE_CONSTRUCTION_STAGES = [
@@ -109,16 +79,11 @@ export const BRIDGE_CONSTRUCTION_STAGES = [
 export type BridgeConstructionStage = typeof BRIDGE_CONSTRUCTION_STAGES[number];
 
 export const PRESET_BRIDGE_LOCATIONS = [
-  'Bridge @ Km 198+450 (River Dermi)',
-  'Bridge @ Km 204+120 (Chiri River)',
-  'Bridge @ Km 215+800 (Nansebo River)',
-  'Bridge @ Km 221+300 (Wabe River)'
+  
 ];
 
 export const SAMPLE_ERA_BRIDGE_RECORDS: Partial<DailyActivityRecord>[] = [
-  { bridgeLocation: 'Bridge @ Km 198+450 (River Dermi)', bridgeSelectedStage: 'Box girder / T-girder', bridgeFoundationPct: 100, bridgeAbutmentPct: 100, bridgePierPct: 100, bridgeGirderPct: 75, bridgeSlabPct: 40, bridgeApproachPct: 20, bridgePrevious: 72, bridgeDailyProgress: 0.5, bridgeToDate: 72.5, metricKm: 0.02 },
-  { bridgeLocation: 'Bridge @ Km 204+120 (Chiri River)', bridgeSelectedStage: 'Pier', bridgeFoundationPct: 100, bridgeAbutmentPct: 85, bridgePierPct: 60, bridgeGirderPct: 0, bridgeSlabPct: 0, bridgeApproachPct: 0, bridgePrevious: 40, bridgeDailyProgress: 0.8, bridgeToDate: 40.8, metricKm: 0.01 },
-  { bridgeLocation: 'Bridge @ Km 215+800 (Nansebo River)', bridgeSelectedStage: 'Foundation', bridgeFoundationPct: 65, bridgeAbutmentPct: 0, bridgePierPct: 0, bridgeGirderPct: 0, bridgeSlabPct: 0, bridgeApproachPct: 0, bridgePrevious: 10, bridgeDailyProgress: 0.8, bridgeToDate: 10.8, metricKm: 0.0 }
+ 
 ];
 
 // BOX CULVERT CONSTRUCTION STAGES & PRESETS
@@ -134,16 +99,11 @@ export const BOX_CULVERT_STAGES = [
 export type BoxCulvertStage = typeof BOX_CULVERT_STAGES[number];
 
 export const PRESET_BOX_CULVERT_LOCATIONS = [
-  'Box Culvert @ Km 195+600 (2x2m)',
-  'Box Culvert @ Km 202+340 (Double Cell 3x2.5m)',
-  'Box Culvert @ Km 207+850 (3x3m)',
-  'Box Culvert @ Km 213+420 (Triple Cell 2.5x2m)'
+  
 ];
 
 export const SAMPLE_ERA_BOX_CULVERT_RECORDS: Partial<DailyActivityRecord>[] = [
-  { boxCulvertLocation: 'Box Culvert @ Km 195+600 (2x2m)', boxCulvertSelectedStage: 'Top Slab', boxExcavationPct: 100, boxBottomSlabPct: 100, boxWallsPct: 100, boxTopSlabPct: 80, boxWingwallsPct: 60, boxBackfillPct: 30, pipePreviousPct: 78, pipeDailyProgressPct: 0, pipeToDatePct: 78.3, metricKm: 0.015 },
-  { boxCulvertLocation: 'Box Culvert @ Km 202+340 (Double Cell 3x2.5m)', boxCulvertSelectedStage: 'Walls & Stem', boxExcavationPct: 100, boxBottomSlabPct: 100, boxWallsPct: 70, boxTopSlabPct: 0, boxWingwallsPct: 0, boxBackfillPct: 0, pipePreviousPct: 45, pipeDailyProgressPct: 0, pipeToDatePct: 45.0, metricKm: 0.01 },
-  { boxCulvertLocation: 'Box Culvert @ Km 207+850 (3x3m)', boxCulvertSelectedStage: 'Bottom Slab', boxExcavationPct: 100, boxBottomSlabPct: 85, boxWallsPct: 0, boxTopSlabPct: 0, boxWingwallsPct: 0, boxBackfillPct: 0, pipePreviousPct: 30, pipeDailyProgressPct: 0, pipeToDatePct: 30.8, metricKm: 0.0 }
+  
 ];
 
 // SLAB CULVERT CONSTRUCTION STAGES & PRESETS
@@ -159,15 +119,11 @@ export const SLAB_CULVERT_STAGES = [
 export type SlabCulvertStage = typeof SLAB_CULVERT_STAGES[number];
 
 export const PRESET_SLAB_CULVERT_LOCATIONS = [
-  'Slab Culvert @ Km 197+200 (Span 4m)',
-  'Slab Culvert @ Km 206+500 (Span 6m)',
-  'Slab Culvert @ Km 211+350 (Span 5m)',
-  'Slab Culvert @ Km 218+100 (Span 4m)'
+  
 ];
 
 export const SAMPLE_ERA_SLAB_CULVERT_RECORDS: Partial<DailyActivityRecord>[] = [
-  { slabCulvertLocation: 'Slab Culvert @ Km 197+200 (Span 4m)', slabCulvertSelectedStage: 'RC Deck Slab', slabExcavationPct: 100, slabAbutmentPct: 100, slabDeckPct: 80, slabWingwallsPct: 50, slabPitchingPct: 30, slabBackfillPct: 20, pipePreviousPct: 63, pipeDailyProgressPct: 0, pipeToDatePct: 63.3, metricKm: 0.01 },
-  { slabCulvertLocation: 'Slab Culvert @ Km 206+500 (Span 6m)', slabCulvertSelectedStage: 'Abutment Walls', slabExcavationPct: 100, slabAbutmentPct: 75, slabDeckPct: 0, slabWingwallsPct: 0, slabPitchingPct: 0, slabBackfillPct: 0, pipePreviousPct: 29, pipeDailyProgressPct: 0, pipeToDatePct: 29.2, metricKm: 0.005 }
+  
 ];
 
 export interface ActivityTemplate {
