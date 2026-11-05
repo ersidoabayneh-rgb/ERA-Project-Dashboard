@@ -5,9 +5,10 @@ export interface EvmMetrics {
   AC: number;  // Actual Cost (ETB)
   EV: number;  // Earned Value (ETB)
   PV: number;  // Planned Value (ETB)
-  plannedPct: number; // Planned physical progress % (Active S-Curve Plan)
+  plannedPct: number; // Planned physical progress % (Original cumulative plan %)
   originalPlannedPct?: number; // Baseline Original Plan %
-  planLabel?: string; // "Revised Plan" | "Original Plan" | "Plan"
+  revisedPlannedPct?: number; // Optional Revised Plan % for reference
+  planLabel?: string; // "Original Plan"
   actualPct: number;  // Actual physical progress %
   CPI: number; // Cost Performance Index (EV / AC)
   SPI: number; // Schedule Performance Index (EV / PV)
@@ -93,12 +94,14 @@ export function calculateProjectEvm(project: Project): EvmMetrics {
   // 3. Earned Value (EV) = BAC * Physical Progress %
   const EV = BAC * (actualPct / 100);
 
-  // 4. Planned Value (PV) based on Monthly Cumulative S-Curve Plan %
-  // The comparison is between the active Plan (Revised Plan from S-curve analysis, or Original Plan if no revision) and Actual, NOT the expired original plan
+  // 4. Planned Value (PV) based on Monthly Cumulative S-Curve Original Plan %
+  // Rule: Planned Value (PV) = original cumulative planned % * original contract amount (BAC).
+  // If the original cumulative % reached 100% before that month, take 100% as original cumulative %.
   const monthlyList = project.monthly || [];
   let plannedPct = 100;
   let originalPlannedPct = 100;
-  let planLabel = 'Plan';
+  let revisedPlannedPct: number | undefined = undefined;
+  let planLabel = 'Original Plan';
 
   const parseNum = (val: any): number | null => {
     if (val === null || val === undefined || val === '') return null;
@@ -107,74 +110,81 @@ export function calculateProjectEvm(project: Project): EvmMetrics {
   };
 
   if (monthlyList.length > 0) {
-    // Find reporting months with active actual progress
-    const reportingMonths = monthlyList.filter(m => {
-      const act = parseNum(m.actual);
-      return act !== null && act > 0;
-    });
-
     let targetIdx = -1;
-    if (reportingMonths.length > 0) {
-      targetIdx = monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]);
-    } else {
-      // If no actual progress is recorded yet, find the first month where revisedPlan or originalPlan > 0
-      targetIdx = monthlyList.findIndex(m => {
-        const rp = parseNum(m.revisedPlan);
-        const op = parseNum(m.originalPlan);
-        return (rp !== null && rp > 0) || (op !== null && op > 0);
+
+    // Check if project has an explicit active evaluation month selected
+    if (project.kpiActiveMonth) {
+      const activeIdx = monthlyList.findIndex(
+        m => m.month && m.month.toLowerCase().trim() === project.kpiActiveMonth?.toLowerCase().trim()
+      );
+      if (activeIdx !== -1) {
+        targetIdx = activeIdx;
+      }
+    }
+
+    // Otherwise, find reporting month with latest active actual progress
+    if (targetIdx === -1) {
+      const reportingMonths = monthlyList.filter(m => {
+        const act = parseNum(m.actual);
+        return act !== null && act > 0;
       });
-      if (targetIdx === -1) targetIdx = 0;
+      if (reportingMonths.length > 0) {
+        targetIdx = monthlyList.indexOf(reportingMonths[reportingMonths.length - 1]);
+      } else {
+        // Fallback: first month where originalPlan or revisedPlan > 0
+        targetIdx = monthlyList.findIndex(m => {
+          const op = parseNum(m.originalPlan);
+          const rp = parseNum(m.revisedPlan);
+          return (op !== null && op > 0) || (rp !== null && rp > 0);
+        });
+        if (targetIdx === -1) targetIdx = 0;
+      }
     }
 
     if (targetIdx !== -1) {
       const targetMonth = monthlyList[targetIdx];
-      const rawRevisedPlan = parseNum(targetMonth?.revisedPlan);
       const rawOriginalPlan = parseNum(targetMonth?.originalPlan);
+      const rawRevisedPlan = parseNum(targetMonth?.revisedPlan);
 
-      // Track original planned percentage baseline
-      const hasOrigReached100 = monthlyList.slice(0, targetIdx + 1).some(m => {
+      if (rawRevisedPlan !== null) {
+        revisedPlannedPct = Math.max(0, rawRevisedPlan);
+      }
+
+      // Check if original cumulative % reached 100% before that month (or at that month)
+      const hasOrigReached100BeforeMonth = monthlyList.slice(0, targetIdx).some(m => {
         const op = parseNum(m.originalPlan);
         return op !== null && op >= 100;
       });
-      if (hasOrigReached100 || (rawOriginalPlan !== null && rawOriginalPlan >= 100)) {
+      const isCurrentMonthOrig100 = rawOriginalPlan !== null && rawOriginalPlan >= 100;
+
+      if (hasOrigReached100BeforeMonth || isCurrentMonthOrig100) {
+        // If original cumulative % reached 100% before or at that month, take 100% as original cumulative %
         originalPlannedPct = 100;
       } else if (rawOriginalPlan !== null) {
         originalPlannedPct = Math.max(0, rawOriginalPlan);
+      } else {
+        // If target month has no raw original plan entry, check if prior months reached 100% or take the latest prior original plan
+        const priorOps = monthlyList
+          .slice(0, targetIdx)
+          .map(m => parseNum(m.originalPlan))
+          .filter((v): v is number => v !== null);
+
+        if (priorOps.length > 0 && Math.max(...priorOps) >= 100) {
+          originalPlannedPct = 100;
+        } else if (priorOps.length > 0) {
+          originalPlannedPct = priorOps[priorOps.length - 1];
+        } else {
+          originalPlannedPct = 100;
+        }
       }
 
-      // Check whether project has an active revised work program (Plan) on the S-Curve
-      const hasActiveRevisedPlan = monthlyList.some(m => {
-        const rp = parseNum(m.revisedPlan);
-        return rp !== null && rp > 0;
-      });
-
-      if (hasActiveRevisedPlan && rawRevisedPlan !== null) {
-        planLabel = 'Revised Plan';
-        const hasRevReached100 = monthlyList.slice(0, targetIdx + 1).some(m => {
-          const rp = parseNum(m.revisedPlan);
-          return rp !== null && rp >= 100;
-        });
-
-        if (hasRevReached100 || rawRevisedPlan >= 100) {
-          plannedPct = 100;
-        } else {
-          plannedPct = Math.max(0, rawRevisedPlan);
-        }
-      } else if (rawOriginalPlan !== null) {
-        planLabel = 'Original Plan';
-        if (hasOrigReached100 || rawOriginalPlan >= 100) {
-          plannedPct = 100;
-        } else {
-          plannedPct = Math.max(0, rawOriginalPlan);
-        }
-      } else if (rawRevisedPlan !== null) {
-        planLabel = 'Revised Plan';
-        plannedPct = Math.min(100, Math.max(0, rawRevisedPlan));
-      }
+      // Enforce: planned value on EVM must be the original cumulative planned % times the original contract amount
+      plannedPct = originalPlannedPct;
+      planLabel = 'Original Plan';
     }
   }
 
-  // Planned Value (PV) = Planned % * Original Contract Amount (BAC)
+  // Planned Value (PV) = Planned % (Original Plan Cumulative %) * Original Contract Amount (BAC)
   const PV = BAC * (plannedPct / 100);
 
   const isClosed = isProjectClosed(project.status);
@@ -258,6 +268,7 @@ export function calculateProjectEvm(project: Project): EvmMetrics {
     PV,
     plannedPct,
     originalPlannedPct,
+    revisedPlannedPct,
     planLabel,
     actualPct,
     CPI,

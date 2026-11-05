@@ -2053,6 +2053,9 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
               <strong>Inspect Factor Analysis & Category Scores:</strong> Review the 10-Area Category Scorecard table, Schedule Performance Index (SPI), and S-Curve alignment factor analysis.
             </li>
             <li>
+              <strong>Audit via 'Compliance & Performance Audit' Section:</strong> Review the comprehensive weighted scoring audit panel and tabular breakdown evaluating the Contractor across eight dimensions: <strong>Progress vs. Original Contractor's Plan (25%)</strong>, <strong>EVM & Project Controls (15%)</strong>, <strong>Technical Quality & Standards (25%)</strong>, <strong>Linear Layer Progress (10%)</strong> based on planned vs. actually executed pavement layers, <strong>Resource Mobilization (5%)</strong> evaluated from the average six-month data of equipment availability, material production, and material supply, <strong>Management & Contract Administration (10%)</strong>, <strong>Financial & Cost Control (5%)</strong>, and <strong>HSE & Social Safeguards (5%)</strong>. The audit calculates individual category scores, earned contribution points, and the overall weighted total mapped to predefined rating bands: <em>Unsatisfactory (&lt;45%, 1.00–1.49)</em>, <em>Marginal (45–59.9%, 1.50–2.49)</em>, <em>Satisfactory (60–74.9%, 2.50–3.49)</em>, <em>Good (75–89.9%, 3.50–4.49)</em>, and <em>Excellent (&ge;90%, 4.50–5.00)</em>.
+            </li>
+            <li>
               <strong>Audit via 'Source Data Explorer' Panel:</strong> Scroll to the bottom of the modal to view the side-by-side comparison table matching active KPI parameters against raw Monthly Status Report source data points with 0.00% delta logic verification.
             </li>
             <li>
@@ -2881,6 +2884,7 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
           <ol className="space-y-1.5 list-decimal list-inside">
             <li><strong>Open EVM Module:</strong> Select "Comprehensive analysis" from the main navigation menu.</li>
             <li><strong>Audit Core Metrics:</strong> Verify Budget at Completion (BAC), current Planned Value (PV), Earned Value (EV), and Actual Cost (AC).</li>
+            <li><strong>Audit Planned Value (PV) Formulation:</strong> In accordance with project controls guidelines, Planned Value (PV) is computed as the original cumulative planned % times the original contract amount (BAC). If the original cumulative % reached 100% before or at that month, 100% is strictly taken as the original cumulative % (PV = BAC), measuring the contractor's SPI directly against the original contract baseline (SPI = EV / PV = Actual Progress / 100%).</li>
             <li><strong>Examine Efficiency Indices:</strong> A CPI &gt; 1.0 confirms expenditures are yielding more work value than budgeted; an SPI &lt; 1.0 identifies time slippage requiring schedule recovery.</li>
             <li><strong>Analyze Bottom-Line Forecast:</strong> Check EAC and VAC values to anticipate whether contingency reserves will absorb outstanding scopes.</li>
           </ol>

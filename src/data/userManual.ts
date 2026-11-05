@@ -1736,6 +1736,7 @@ export function downloadUserManual() {
 
   const glossaryTerms = [
     { term: 'EVM (Earned Value Management):', def: 'Integrates scope, schedule, and cost metrics to measure project performance.' },
+    { term: 'PV (Planned Value):', def: 'Original cumulative planned % times original contract amount (BAC). Capped at 100% (PV = BAC) if original plan reached 100% before that month.' },
     { term: 'CPI (Cost Performance Index):', def: 'Ratio of Earned Value to Actual Cost (EV / AC). Values > 1.0 indicate under-budget performance.' },
     { term: 'SPI (Schedule Performance Index):', def: 'Ratio of Earned Value to Planned Value (EV / PV). Values > 1.0 indicate ahead-of-schedule performance.' },
     { term: 'IPC (Interim Payment Certificate):', def: 'Official progress payment valuation issued periodically by the Resident Engineer.' },
