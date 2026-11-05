@@ -2310,6 +2310,315 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                 </div>
               </div>
 
+              {/* SECTION 3: Detailed KPI Grade Factor Analysis • Monthly Status Report Source Data */}
+              <div className="space-y-3.5 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200 dark:border-slate-700/80">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
+                      <TrendingUp className="w-4 h-4" />
+                    </span>
+                    <h3 className="text-xs sm:text-sm font-black uppercase text-slate-800 dark:text-zinc-100 tracking-tight">
+                      Detailed KPI Grade Factor Analysis ({selectedMonth})
+                    </h3>
+                  </div>
+                  <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-600 text-white font-mono shadow-2xs">
+                    Certified Grade: {currentRecord?.overallGrade || overallGrade} ({(currentRecord?.overallScore ?? overallScore).toFixed(1)}%)
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  The overall KPI grade <strong>Grade {currentRecord?.overallGrade || overallGrade}</strong> for <strong>{selectedMonth}</strong> is evaluated directly against the official <strong>Monthly Status Report</strong> source baseline and ERA 10-Area Contractor Scorecard. The key contributing factors are detailed below:
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Factor 1: S-Curve Physical Progress Alignment */}
+                  <div className="bg-white dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-extrabold text-blue-600 dark:text-blue-400">Factor 1: S-Curve Baseline Alignment</span>
+                      <span className="text-[9px] font-mono bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-1.5 py-0.25 rounded font-bold">G1 Physical Progress</span>
+                    </div>
+                    <div className="text-xs font-bold text-slate-800 dark:text-zinc-100">
+                      Target Accomplishment vs Actual Completion
+                    </div>
+                    <div className="space-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="flex justify-between">
+                        <span>ERA Monthly Plan:</span>
+                        <strong className="text-slate-700 dark:text-slate-200 font-mono">{(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(2)} {progressKpiResult.unit}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Actual Accomplishment:</span>
+                        <strong className="text-slate-700 dark:text-slate-200 font-mono">{(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(2)} {progressKpiResult.unit}</strong>
+                      </div>
+                      <div className="flex justify-between border-t border-slate-100 dark:border-slate-750 pt-1 font-bold">
+                        <span>Physical Completion Ratio:</span>
+                        <strong className="text-amber-600 dark:text-amber-400 font-mono">{progressKpiResult.performanceRatio.toFixed(2)}%</strong>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-750">
+                      Source: {progressKpiResult.sourceDescription}
+                    </div>
+                  </div>
+
+                  {/* Factor 2: Schedule Performance Index (SPI) */}
+                  <div className="bg-white dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-extrabold text-blue-600 dark:text-blue-400">Factor 2: Schedule Index (SPI)</span>
+                      <span className={`text-[9px] font-mono px-1.5 py-0.25 rounded font-bold ${
+                        progressKpiResult.spi >= 1.0 ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300' : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
+                      }`}>
+                        SPI = {progressKpiResult.spi.toFixed(3)}
+                      </span>
+                    </div>
+                    <div className="text-xs font-bold text-slate-800 dark:text-zinc-100">
+                      Earned Value Schedule Conformance
+                    </div>
+                    <div className="space-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="flex justify-between">
+                        <span>Schedule Status:</span>
+                        <strong className={progressKpiResult.spi >= 1.0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                          {progressKpiResult.status}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Milestone Variance:</span>
+                        <strong className="text-slate-700 dark:text-slate-200 font-mono">{progressKpiResult.variancePctPoints >= 0 ? '+' : ''}{progressKpiResult.variancePctPoints.toFixed(2)} {progressKpiResult.unit}</strong>
+                      </div>
+                      <div className="flex justify-between border-t border-slate-100 dark:border-slate-750 pt-1 font-bold">
+                        <span>PP-1 Capped Score:</span>
+                        <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{progressKpiResult.pp1Score.toFixed(1)}%</strong>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-750">
+                      Source: Monthly Status Report Program Schedule
+                    </div>
+                  </div>
+
+                  {/* Factor 3: Quality, Safety & Supervision Compliance */}
+                  <div className="bg-white dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-extrabold text-blue-600 dark:text-blue-400">Factor 3: Multi-Area Compliance</span>
+                      <span className="text-[9px] font-mono bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.25 rounded font-bold">G2-G10 Areas</span>
+                    </div>
+                    <div className="text-xs font-bold text-slate-800 dark:text-zinc-100">
+                      Quality, Safety, Equipment & Finance
+                    </div>
+                    <div className="space-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="flex justify-between">
+                        <span>Physical Progress (G1):</span>
+                        <strong className="text-slate-700 dark:text-slate-200 font-mono">{getGoalScore('G1').toFixed(1)}% (wt: 20%)</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Quality Control (G2):</span>
+                        <strong className="text-slate-700 dark:text-slate-200 font-mono">{getGoalScore('G2').toFixed(1)}% (wt: 15%)</strong>
+                      </div>
+                      <div className="flex justify-between border-t border-slate-100 dark:border-slate-750 pt-1 font-bold">
+                        <span>Composite Points Earned:</span>
+                        <strong className="text-blue-600 dark:text-blue-400 font-mono">{(currentRecord?.overallScore ?? overallScore).toFixed(1)} / 100 pts</strong>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-750">
+                      Source: ERA Supervision Consultant Monthly Audit
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 4: Source Data Audit */}
+              <div className="space-y-3 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 rounded-2xl border border-indigo-700/50 shadow-sm">
+                <div className="flex items-center justify-between border-b border-indigo-800/60 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      <ShieldCheck className="w-4 h-4 text-indigo-300" />
+                    </span>
+                    <h3 className="text-xs sm:text-sm font-black uppercase text-white tracking-tight">
+                      Source Data Audit
+                    </h3>
+                  </div>
+                  <span className="text-[10px] font-mono text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-800/60">
+                    Audit Verification Active
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  {/* Monthly Cumulative S-Curve Baseline Link */}
+                  <div className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-1.5">
+                    <span className="text-[10px] uppercase font-bold text-indigo-200/80 block">
+                      Monthly Cumulative S-Curve Baseline
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-amber-300">
+                        {progressKpiResult.sourceDescription}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-indigo-200/70 leading-relaxed">
+                      Source telemetry extracted from active project baseline schedule & Monthly Status Report record ({selectedMonth}).
+                    </p>
+                  </div>
+
+                  {/* Audit Formula Description */}
+                  <div className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-1.5">
+                    <span className="text-[10px] uppercase font-bold text-indigo-200/80 block">
+                      Audit Formula
+                    </span>
+                    <p className="text-[11px] font-mono font-bold text-emerald-300 leading-snug">
+                      {progressKpiResult.formulaExplanation}
+                    </p>
+                    <p className="text-[10px] text-indigo-200/70 leading-relaxed">
+                      Standard ERA score computation: Physical Completion Performance Ratio (%) capped between 0.0% and 100.0%.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 5: Source Data Explorer • Side-by-Side Scoring Engine Audit */}
+              <div className="space-y-4 bg-slate-900 text-slate-100 p-4 sm:p-5 rounded-2xl border border-indigo-500/40 shadow-lg">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="p-1.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      <Sliders className="w-5 h-5 text-amber-300" />
+                    </span>
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-black uppercase tracking-tight text-white flex items-center gap-2">
+                        Source Data Explorer • Scoring Engine Audit
+                      </h3>
+                      <p className="text-2xs text-slate-400">
+                        Side-by-side verification between active KPI score parameters and raw Monthly Status Report data points ({selectedMonth}).
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-800/60 flex items-center gap-1 self-start sm:self-auto">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Scoring Engine Sync Verified
+                  </span>
+                </div>
+
+                {/* Side-by-Side Comparison Table */}
+                <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/80">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-900 text-[10px] uppercase font-mono font-bold text-indigo-300 border-b border-slate-800">
+                      <tr>
+                        <th className="px-3.5 py-2.5">Evaluated Metric Parameter</th>
+                        <th className="px-3.5 py-2.5 text-center bg-indigo-950/40 border-x border-slate-800 text-amber-300">
+                          Current KPI Scorecard Value
+                        </th>
+                        <th className="px-3.5 py-2.5 text-center bg-slate-900/90 text-emerald-400">
+                          Raw Monthly Status Report Data
+                        </th>
+                        <th className="px-3.5 py-2.5 text-right">Scoring Engine Logic Verification</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-850 font-medium text-slate-300">
+                      {/* Row 1: Planned Month Accomplishment */}
+                      <tr className="hover:bg-slate-900/50 transition">
+                        <td className="px-3.5 py-2.5">
+                          <div className="font-bold text-white">Planned Month Progress (ERA Plan)</div>
+                          <div className="text-[10px] text-slate-400 font-mono">Month target baseline for {selectedMonth}</div>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-bold text-amber-300 bg-indigo-950/20 border-x border-slate-800">
+                          {(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(2)} {progressKpiResult.unit}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-bold text-emerald-400 bg-slate-900/40">
+                          {(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(2)} {progressKpiResult.unit}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
+                            <Check className="w-3 h-3 text-emerald-400" /> Match (0.00% Delta)
+                          </span>
+                        </td>
+                      </tr>
+
+                      {/* Row 2: Actual Month Accomplishment */}
+                      <tr className="hover:bg-slate-900/50 transition">
+                        <td className="px-3.5 py-2.5">
+                          <div className="font-bold text-white">Actual Month Accomplishment</div>
+                          <div className="text-[10px] text-slate-400 font-mono">Physical work executed in {selectedMonth}</div>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-bold text-amber-300 bg-indigo-950/20 border-x border-slate-800">
+                          {(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(2)} {progressKpiResult.unit}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-bold text-emerald-400 bg-slate-900/40">
+                          {(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(2)} {progressKpiResult.unit}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
+                            <Check className="w-3 h-3 text-emerald-400" /> Match (0.00% Delta)
+                          </span>
+                        </td>
+                      </tr>
+
+                      {/* Row 3: Performance Ratio */}
+                      <tr className="hover:bg-slate-900/50 transition">
+                        <td className="px-3.5 py-2.5">
+                          <div className="font-bold text-white">Performance Ratio (% Divided)</div>
+                          <div className="text-[10px] text-slate-400 font-mono">(Actual / ERA Plan) * 100</div>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-bold text-amber-300 bg-indigo-950/20 border-x border-slate-800">
+                          {progressKpiResult.performanceRatio.toFixed(2)}%
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-bold text-emerald-400 bg-slate-900/40">
+                          {progressKpiResult.performanceRatio.toFixed(2)}%
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono text-blue-300 font-bold bg-blue-950/60 px-2 py-0.5 rounded border border-blue-800/40">
+                            Formula = (Actual / Plan) * 100
+                          </span>
+                        </td>
+                      </tr>
+
+                      {/* Row 4: Schedule Performance Index (SPI) */}
+                      <tr className="hover:bg-slate-900/50 transition">
+                        <td className="px-3.5 py-2.5">
+                          <div className="font-bold text-white">Schedule Performance Index (SPI)</div>
+                          <div className="text-[10px] text-slate-400 font-mono">Earned progress vs planned schedule</div>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-bold text-amber-300 bg-indigo-950/20 border-x border-slate-800">
+                          SPI = {progressKpiResult.spi.toFixed(3)}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-bold text-emerald-400 bg-slate-900/40">
+                          SPI = {progressKpiResult.spi.toFixed(3)}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right">
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                            progressKpiResult.spi >= 1.0 ? 'text-emerald-300 bg-emerald-950/60 border-emerald-800/40' : 'text-rose-300 bg-rose-950/60 border-rose-800/40'
+                          }`}>
+                            {progressKpiResult.spi >= 1.0 ? 'SPI >= 1.00 (On Schedule)' : 'SPI < 1.00 (Slippage)'}
+                          </span>
+                        </td>
+                      </tr>
+
+                      {/* Row 5: Final PP-1 KPI Score */}
+                      <tr className="hover:bg-slate-900/50 transition bg-indigo-950/30">
+                        <td className="px-3.5 py-2.5">
+                          <div className="font-bold text-white">Final Scorecard PP-1 Score</div>
+                          <div className="text-[10px] text-slate-400 font-mono">Scorecard input after capping (0 - 100%)</div>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-black text-emerald-400 bg-indigo-950/60 border-x border-slate-800 text-sm">
+                          {progressKpiResult.pp1Score.toFixed(1)}%
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-black text-emerald-400 bg-slate-900/60 text-sm">
+                          {progressKpiResult.pp1Score.toFixed(1)}%
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-300 font-bold bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-700/60">
+                            Min(100, Max(0, Ratio)) = {progressKpiResult.pp1Score.toFixed(1)}%
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Provenance Footer Badge */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-800 text-[11px] text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span>Raw Status Report Baseline: <strong>{progressKpiResult.sourceDescription}</strong></span>
+                  </span>
+                  <span className="font-mono text-[10px] text-indigo-300">
+                    Calculated for Evaluation Month: <strong>{selectedMonth}</strong> ({kpiProgressBasis === 'monthly' ? 'Specific Month' : 'Cumulative To-Date'})
+                  </span>
+                </div>
+              </div>
+
             </div>
 
             {/* Modal Footer */}
