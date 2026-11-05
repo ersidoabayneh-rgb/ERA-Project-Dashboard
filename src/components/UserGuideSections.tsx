@@ -1989,17 +1989,75 @@ export default function UserGuideSections({ onScrollToSection, onDownloadPdf }: 
           <strong>Figure 13.2 — Monthly KPI Historical Radar Chart & Risk Categorization:</strong> Identifies lagging performance dimensions, comparing monthly scores against the minimum acceptable ERA threshold of 75%.
         </p>
 
-        {/* Step-by-Step Instructions */}
-        <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2 text-xs text-slate-700 dark:text-slate-300 font-medium">
-          <h4 className="font-bold text-slate-900 dark:text-white uppercase text-2xs tracking-wide">
-            How to Conduct Monthly KPI Performance Audits
+        {/* Enhanced Feature Guide: 10-Day Evaluation Window, Auto PP-1 Calculation, & KPI Scoring Detail Modal */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div className="p-4 bg-indigo-950/80 text-white rounded-2xl border border-indigo-700/60 space-y-2.5">
+            <div className="flex items-center justify-between border-b border-indigo-800/60 pb-2">
+              <span className="font-black text-amber-300 uppercase tracking-wide text-2xs">
+                ⏳ 10-Day Post-Month Evaluation Window & Audit Lock
+              </span>
+              <span className="px-2 py-0.5 rounded bg-indigo-800 text-indigo-200 text-[10px] font-mono font-bold">
+                Role Guarded
+              </span>
+            </div>
+            <p className="text-[11px] text-indigo-200/90 leading-relaxed font-medium">
+              Monthly KPI evaluations automatically open on the last day of each calendar month and remain active for exactly <strong>10 calendar days</strong>. During this window, authorized evaluators enter category scores and adjust weights. On the 10th day at 23:59:59, the scorecard is <strong>permanently locked</strong> and archived in historical records.
+            </p>
+            <div className="p-2.5 bg-black/30 rounded-xl border border-indigo-800/40 text-[10px] space-y-1 font-mono text-indigo-300">
+              <div>&bull; Authorized Credentials: <strong>ERA Approver, ERA Editor, PMO Admin, Directorate Admin, CPM Admin, Master Admin</strong></div>
+              <div>&bull; Countdown Timer: Live banner shows remaining days & deadline date.</div>
+              <div>&bull; Historical Archive: Preserved read-only with auditor timestamp & certified grade.</div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-750 space-y-2.5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <span className="font-black text-emerald-400 uppercase tracking-wide text-2xs">
+                ⚡ Automatic S-Curve Progress Engine (PP-1)
+              </span>
+              <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[10px] font-mono font-bold">
+                100% Data Integrity
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-relaxed font-medium">
+              Physical completion (Item <strong>PP-1</strong>) is dynamically calculated directly from the official <strong>Monthly Status Report</strong> S-Curve baseline using the formula:
+            </p>
+            <div className="p-2 bg-slate-950 rounded-xl border border-slate-800 text-center font-mono font-bold text-amber-300 text-xs">
+              Performance Ratio (%) = (Actual Accomplishment / ERA Plan) &times; 100
+            </div>
+            <p className="text-[10px] text-slate-400 leading-relaxed">
+              Calculates both <strong>Specific Month</strong> and <strong>Cumulative To-Date</strong> performance ratios, capped between 0% and 100% for standard ERA scorecard contribution points.
+            </p>
+          </div>
+        </div>
+
+        {/* Step-by-Step Instructions & Source Data Explorer Guide */}
+        <div className="p-5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3 text-xs text-slate-700 dark:text-slate-300 font-medium">
+          <h4 className="font-black text-slate-900 dark:text-white uppercase text-2xs tracking-wider flex items-center gap-2">
+            <span>How to Conduct Monthly KPI Audits & Use the Source Data Explorer</span>
           </h4>
-          <ol className="space-y-1.5 list-decimal list-inside">
-            <li><strong>Access KPI Module:</strong> Navigate to "KPIs" on the project navigation sub-menu.</li>
-            <li><strong>Select Evaluation Profile:</strong> Choose Contractor Grade profile (G1, G2, etc.). The system pre-loads standard ERA weight distributions.</li>
-            <li><strong>Score Categories:</strong> Enter raw scores (0–100%) for each of the 10 evaluation categories based on joint consultant inspection logs.</li>
-            <li><strong>Verify Total Weights:</strong> The platform validates that weights sum to exactly 100%.</li>
-            <li><strong>Submit Evaluation:</strong> Click "Save KPI Allocation" to generate the official score certificate and composite grade rating.</li>
+          <ol className="space-y-2 list-decimal list-inside leading-relaxed">
+            <li>
+              <strong>Access KPI Module & Verify Role Credentials:</strong> Navigate to "KPIs" on the project sub-menu. Access is granted exclusively to ERA Approvers, ERA Editors, PMO Admins, Directorate Admins, CPM Admins, and Master Admins.
+            </li>
+            <li>
+              <strong>Select Active Evaluation Month:</strong> Click on any month pill (e.g., <code>Oct-26</code>, <code>Nov-26</code>). Open months display an active 10-day evaluation banner; completed past months display a locked archive badge.
+            </li>
+            <li>
+              <strong>Launch 'KPI Scoring Detail' Modal:</strong> Click any monthly KPI score button, certified grade badge, or the <code>KPI Scoring Detail</code> button to open the audit modal.
+            </li>
+            <li>
+              <strong>Toggle Evaluation Basis:</strong> In the modal, switch between <strong>Specific Month</strong> (Actual Month / ERA Month Plan) and <strong>Cumulative To-Date</strong> (Actual To-Date / ERA To-Date Plan).
+            </li>
+            <li>
+              <strong>Inspect Factor Analysis & Category Scores:</strong> Review the 10-Area Category Scorecard table, Schedule Performance Index (SPI), and S-Curve alignment factor analysis.
+            </li>
+            <li>
+              <strong>Audit via 'Source Data Explorer' Panel:</strong> Scroll to the bottom of the modal to view the side-by-side comparison table matching active KPI parameters against raw Monthly Status Report source data points with 0.00% delta logic verification.
+            </li>
+            <li>
+              <strong>Finalize & Lock Evaluation:</strong> Click "Apply Calculated PP-1 Score" and "Finalize & Lock Record" to lock the evaluation into the permanent ERA audit archive.
+            </li>
           </ol>
         </div>
       </section>

@@ -1088,10 +1088,11 @@ export function downloadUserManual() {
     },
     'PAGE 10 PURPOSE & UI FEATURE EXPLANATIONS',
     [
-      { label: '1. 5-Goal KPI Hierarchy:', detail: 'Evaluates G1 Physical Progress, G2 Schedule Efficiency, G3 Cost Control, G4 Time Management, G5 Quality.' },
-      { label: '2. Sub-Category Breakdown:', detail: 'Breaks down goals into specific sub-criteria (Monthly progress, Milestones, QA/QC manuals, NCR closures).' },
-      { label: '3. Override Audit Trail:', detail: 'Supports authorized manual overrides with mandatory auditor justification notes.' },
-      { label: '4. Dynamic Weighted Scoring:', detail: 'Calculates the project’s overall letter grade (A, B, C, D) dynamically.' }
+      { label: '1. 10-Area KPI Matrix & RBAC:', detail: 'Restricted to ERA Approver, ERA Editor, PMO Admin, Directorate Admin, CPM Admin, and Master Admin.' },
+      { label: '2. 10-Day Evaluation Window:', detail: 'Evaluations unlock on month end for 10 calendar days with countdown timer before permanent historical lock.' },
+      { label: '3. Auto S-Curve PP-1 Engine:', detail: 'Computes physical completion (PP-1) from Monthly Status Report using (Actual / ERA Plan) * 100.' },
+      { label: '4. KPI Scoring Detail Modal:', detail: 'Features Specific vs Cumulative basis toggle, metric telemetry cards, factor analysis, and Source Data Explorer.' },
+      { label: '5. Source Data Explorer Audit:', detail: 'Provides side-by-side verification between active KPI score inputs and raw Monthly Status Report data points.' }
     ]
   );
 
