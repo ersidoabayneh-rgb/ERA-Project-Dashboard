@@ -77,51 +77,6 @@ export default function ComprehensiveAnalysisView({ project }: ComprehensiveAnal
   return (
     <div className="space-y-4 text-xs text-slate-700 dark:text-slate-200">
       
-      {/* FIDIC Contract & Delivery Method Header Banner */}
-      <div className="p-4 bg-white dark:bg-slate-800 text-slate-850 dark:text-zinc-100 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/60 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700/60 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800/50">
-              <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            </div>
-            <div>
-              <h2 className="text-sm font-extrabold tracking-tight text-slate-850 dark:text-zinc-100 flex items-center gap-2">
-                FIDIC Contract & Delivery Method Framework
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/40">
-                  {fidicInfo.contractType}
-                </span>
-              </h2>
-              <p className="text-2xs text-slate-500 dark:text-slate-400">
-                Grounding project EVM, claims, variations, and performance analysis in exact FIDIC Conditions of Contract and delivery responsibilities.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-2xs">
-            <span className="px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 font-medium border border-slate-200 dark:border-slate-700/60">
-              Edition: <strong className="text-slate-900 dark:text-white">{fidicInfo.fidicName}</strong>
-            </span>
-            <span className="px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 font-medium border border-slate-200 dark:border-slate-700/60">
-              Delivery: <strong className="text-slate-900 dark:text-white">{fidicInfo.deliveryMethodName}</strong>
-            </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-2xs pt-1">
-          <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60">
-            <span className="text-indigo-600 dark:text-indigo-400 font-semibold block uppercase tracking-wider text-[9px]">Design Responsibility</span>
-            <span className="text-slate-800 dark:text-slate-200 font-medium block mt-0.5">{fidicInfo.designResponsibility}</span>
-          </div>
-          <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60">
-            <span className="text-indigo-600 dark:text-indigo-400 font-semibold block uppercase tracking-wider text-[9px]">Engineer Authority & Role</span>
-            <span className="text-slate-800 dark:text-slate-200 font-medium block mt-0.5">{fidicInfo.engineerRole}</span>
-          </div>
-          <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60">
-            <span className="text-indigo-600 dark:text-indigo-400 font-semibold block uppercase tracking-wider text-[9px]">Governing Law & Jurisdiction</span>
-            <span className="text-slate-100 font-medium block mt-0.5">{fidicInfo.governingLaw}</span>
-          </div>
-        </div>
-      </div>
-
       {/* Overview EVM Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Status Callout */}
@@ -175,6 +130,129 @@ export default function ComprehensiveAnalysisView({ project }: ComprehensiveAnal
           </p>
         </div>
       </div>
+
+      {/* EVM spreadsheet variables layout */}
+      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
+        <div className="p-3 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700/50 font-bold flex items-center gap-1.5 text-slate-700 dark:text-slate-100">
+          <Activity className="w-4 h-4 text-blue-500" />
+          EVM Metric Computations Table (Birr)
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs text-slate-700 dark:text-slate-200">
+            <thead>
+              <tr className="bg-slate-100/30 dark:bg-slate-850 border-b border-slate-100 dark:border-slate-700 text-slate-400 font-bold">
+                <th className="p-2.5">EVM Factor Definition</th>
+                <th className="p-2.5 text-center w-16">Acronym</th>
+                <th className="p-2.5 text-right w-44">Value (Birr)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 dark:divide-slate-750/30 font-medium">
+              <tr>
+                <td className="p-2.5">Budget At Completion</td>
+                <td className="p-2.5 text-center font-bold">BAC</td>
+                <td className="p-2.5 text-right font-mono font-bold">{formatBr(BAC)}</td>
+              </tr>
+              <tr>
+                <td className="p-2.5">Planned Value</td>
+                <td className="p-2.5 text-center font-bold">PV</td>
+                <td className="p-2.5 text-right font-mono">{formatBr(PV)}</td>
+              </tr>
+              <tr>
+                <td className="p-2.5">Earned Value</td>
+                <td className="p-2.5 text-center font-bold">EV</td>
+                <td className="p-2.5 text-right font-mono font-bold text-blue-600 dark:text-blue-400">{formatBr(EV)}</td>
+              </tr>
+              <tr>
+                <td className="p-2.5">Actual Cost</td>
+                <td className="p-2.5 text-center font-bold">AC</td>
+                <td className="p-2.5 text-right font-mono font-semibold">{formatBr(AC)}</td>
+              </tr>
+              <tr className={CV >= 0 ? 'bg-emerald-500/5 text-emerald-800 dark:text-emerald-400' : 'bg-rose-500/5 text-rose-800 dark:text-rose-400'}>
+                <td className="p-2.5">Cost Variance</td>
+                <td className="p-2.5 text-center font-bold">CV</td>
+                <td className="p-2.5 text-right font-mono font-bold">{formatBr(CV)}</td>
+              </tr>
+              <tr className={SV >= 0 ? 'bg-emerald-500/5 text-emerald-800 dark:text-emerald-400' : 'bg-rose-500/5 text-rose-800 dark:text-rose-400'}>
+                <td className="p-2.5">Schedule Variance</td>
+                <td className="p-2.5 text-center font-bold">SV</td>
+                <td className="p-2.5 text-right font-mono font-bold">{formatBr(SV)}</td>
+              </tr>
+              <tr className="bg-slate-50 dark:bg-slate-900/50">
+                <td className="p-2.5">Estimate At Completion</td>
+                <td className="p-2.5 text-center font-bold">EAC</td>
+                <td className="p-2.5 text-right font-mono font-extrabold">{formatBr(EAC)}</td>
+              </tr>
+              <tr className="bg-slate-50 dark:bg-slate-900/50">
+                <td className="p-2.5">Variance At Completion</td>
+                <td className="p-2.5 text-center font-bold">VAC</td>
+                <td className={`p-2.5 text-right font-mono font-bold ${VAC >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{formatBr(VAC)}</td>
+              </tr>
+              <tr className="bg-slate-50 dark:bg-slate-900/50">
+                <td className="p-2.5">To-Complete Performance Index</td>
+                <td className="p-2.5 text-center font-bold">TCPI</td>
+                <td className="p-2.5 text-right font-mono font-black text-rose-500">{TCPI.toFixed(3)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Enhanced Multi-Year Fiscal Year Cost Forecast & Price Escalation Modeler */}
+      <YearlyCostForecastSection
+        project={project}
+        BAC={BAC}
+        EV={EV}
+        formatBr={formatBr}
+      />
+
+      {/* Integrated CPM vs. Linear Progress Scheduling Analysis */}
+      <CpmLinearComparison project={project} />
+
+      {/* FIDIC Contract & Delivery Method Header Banner */}
+      <div className="p-4 bg-white dark:bg-slate-800 text-slate-850 dark:text-zinc-100 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/60 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700/60 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800/50">
+              <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h2 className="text-sm font-extrabold tracking-tight text-slate-850 dark:text-zinc-100 flex items-center gap-2">
+                FIDIC Contract & Delivery Method Framework
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/40">
+                  {fidicInfo.contractType}
+                </span>
+              </h2>
+              <p className="text-2xs text-slate-500 dark:text-slate-400">
+                Grounding project EVM, claims, variations, and performance analysis in exact FIDIC Conditions of Contract and delivery responsibilities.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-2xs">
+            <span className="px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 font-medium border border-slate-200 dark:border-slate-700/60">
+              Edition: <strong className="text-slate-900 dark:text-white">{fidicInfo.fidicName}</strong>
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 font-medium border border-slate-200 dark:border-slate-700/60">
+              Delivery: <strong className="text-slate-900 dark:text-white">{fidicInfo.deliveryMethodName}</strong>
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-2xs pt-1">
+          <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60">
+            <span className="text-indigo-600 dark:text-indigo-400 font-semibold block uppercase tracking-wider text-[9px]">Design Responsibility</span>
+            <span className="text-slate-800 dark:text-slate-200 font-medium block mt-0.5">{fidicInfo.designResponsibility}</span>
+          </div>
+          <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60">
+            <span className="text-indigo-600 dark:text-indigo-400 font-semibold block uppercase tracking-wider text-[9px]">Engineer Authority & Role</span>
+            <span className="text-slate-800 dark:text-slate-200 font-medium block mt-0.5">{fidicInfo.engineerRole}</span>
+          </div>
+          <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60">
+            <span className="text-indigo-600 dark:text-indigo-400 font-semibold block uppercase tracking-wider text-[9px]">Governing Law & Jurisdiction</span>
+            <span className="text-slate-100 font-medium block mt-0.5">{fidicInfo.governingLaw}</span>
+          </div>
+        </div>
+      </div>
+
 
       {/* Unified 3-Party Contractual Breach & Compliance Analysis Matrix */}
       <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
@@ -366,82 +444,6 @@ export default function ComprehensiveAnalysisView({ project }: ComprehensiveAnal
         </div>
       </div>
 
-      {/* EVM spreadsheet variables layout */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
-        <div className="p-3 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700/50 font-bold flex items-center gap-1.5 text-slate-700 dark:text-slate-100">
-          <Activity className="w-4 h-4 text-blue-500" />
-          EVM Metric Computations Table (Birr)
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs text-slate-700 dark:text-slate-200">
-            <thead>
-              <tr className="bg-slate-100/30 dark:bg-slate-850 border-b border-slate-100 dark:border-slate-700 text-slate-400 font-bold">
-                <th className="p-2.5">EVM Factor Definition</th>
-                <th className="p-2.5 text-center w-16">Acronym</th>
-                <th className="p-2.5 text-right w-44">Value (Birr)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50 dark:divide-slate-750/30 font-medium">
-              <tr>
-                <td className="p-2.5">Budget At Completion</td>
-                <td className="p-2.5 text-center font-bold">BAC</td>
-                <td className="p-2.5 text-right font-mono font-bold">{formatBr(BAC)}</td>
-              </tr>
-              <tr>
-                <td className="p-2.5">Planned Value</td>
-                <td className="p-2.5 text-center font-bold">PV</td>
-                <td className="p-2.5 text-right font-mono">{formatBr(PV)}</td>
-              </tr>
-              <tr>
-                <td className="p-2.5">Earned Value</td>
-                <td className="p-2.5 text-center font-bold">EV</td>
-                <td className="p-2.5 text-right font-mono font-bold text-blue-600 dark:text-blue-400">{formatBr(EV)}</td>
-              </tr>
-              <tr>
-                <td className="p-2.5">Actual Cost</td>
-                <td className="p-2.5 text-center font-bold">AC</td>
-                <td className="p-2.5 text-right font-mono font-semibold">{formatBr(AC)}</td>
-              </tr>
-              <tr className={CV >= 0 ? 'bg-emerald-500/5 text-emerald-800 dark:text-emerald-400' : 'bg-rose-500/5 text-rose-800 dark:text-rose-400'}>
-                <td className="p-2.5">Cost Variance</td>
-                <td className="p-2.5 text-center font-bold">CV</td>
-                <td className="p-2.5 text-right font-mono font-bold">{formatBr(CV)}</td>
-              </tr>
-              <tr className={SV >= 0 ? 'bg-emerald-500/5 text-emerald-800 dark:text-emerald-400' : 'bg-rose-500/5 text-rose-800 dark:text-rose-400'}>
-                <td className="p-2.5">Schedule Variance</td>
-                <td className="p-2.5 text-center font-bold">SV</td>
-                <td className="p-2.5 text-right font-mono font-bold">{formatBr(SV)}</td>
-              </tr>
-              <tr className="bg-slate-50 dark:bg-slate-900/50">
-                <td className="p-2.5">Estimate At Completion</td>
-                <td className="p-2.5 text-center font-bold">EAC</td>
-                <td className="p-2.5 text-right font-mono font-extrabold">{formatBr(EAC)}</td>
-              </tr>
-              <tr className="bg-slate-50 dark:bg-slate-900/50">
-                <td className="p-2.5">Variance At Completion</td>
-                <td className="p-2.5 text-center font-bold">VAC</td>
-                <td className={`p-2.5 text-right font-mono font-bold ${VAC >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{formatBr(VAC)}</td>
-              </tr>
-              <tr className="bg-slate-50 dark:bg-slate-900/50">
-                <td className="p-2.5">To-Complete Performance Index</td>
-                <td className="p-2.5 text-center font-bold">TCPI</td>
-                <td className="p-2.5 text-right font-mono font-black text-rose-500">{TCPI.toFixed(3)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Enhanced Multi-Year Fiscal Year Cost Forecast & Price Escalation Modeler */}
-      <YearlyCostForecastSection
-        project={project}
-        BAC={BAC}
-        EV={EV}
-        formatBr={formatBr}
-      />
-
-      {/* Integrated CPM vs. Linear Progress Scheduling Analysis */}
-      <CpmLinearComparison project={project} />
     </div>
   );
 }
