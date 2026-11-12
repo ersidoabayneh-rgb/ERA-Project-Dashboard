@@ -1,13 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { Activity, ShieldAlert, Award, TrendingUp, HelpCircle, FileText, CheckCircle, Clock, Scale, BookOpen, AlertCircle, ShieldCheck, UserCheck, HardHat, Compass, Landmark, Filter } from 'lucide-react';
+import { 
+  Activity, ShieldAlert, Award, TrendingUp, HelpCircle, FileText, CheckCircle, Clock, 
+  Scale, BookOpen, AlertCircle, ShieldCheck, UserCheck, HardHat, Compass, Landmark, 
+  Filter, Calendar, DollarSign, ArrowRight, BarChart3, Sliders, ChevronDown, ChevronUp, 
+  Copy, Check, Download, Layers, Sparkles, RefreshCw, Info, Percent, Eye, EyeOff
+} from 'lucide-react';
+import { 
+  ResponsiveContainer, 
+  ComposedChart, 
+  LineChart, 
+  Line, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip as RechartsTooltip, 
+  Legend 
+} from 'recharts';
 import { Project, formatAccounting } from '../types';
+import { parseMonthKey } from '../lib/monthlySync';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { 
   getFidicContractInfo, 
   generateFidicContractualAnalysis
 } from '../lib/fidicClauseEngine';
 import CpmLinearComparison from './CpmLinearComparison';
+import YearlyCostForecastSection from './YearlyCostForecastSection';
 
 interface ComprehensiveAnalysisViewProps {
   project: Project;
@@ -412,6 +431,14 @@ export default function ComprehensiveAnalysisView({ project }: ComprehensiveAnal
           </table>
         </div>
       </div>
+
+      {/* Enhanced Multi-Year Fiscal Year Cost Forecast & Price Escalation Modeler */}
+      <YearlyCostForecastSection
+        project={project}
+        BAC={BAC}
+        EV={EV}
+        formatBr={formatBr}
+      />
 
       {/* Integrated CPM vs. Linear Progress Scheduling Analysis */}
       <CpmLinearComparison project={project} />
