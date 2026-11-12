@@ -15,6 +15,7 @@ import {
   Clock,
   TrendingUp,
   ChevronDown,
+  ChevronUp,
   Copy,
   BarChart3,
   AlertTriangle,
@@ -398,6 +399,10 @@ export default function ResourceMobilizationView({
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'supplies' | 'production' | 'equipment' | 'personnel' | 'history'>('supplies');
+
+  // Toggle Section States
+  const [showExecutiveKpis, setShowExecutiveKpis] = useState(true);
+  const [showCategorySummary, setShowCategorySummary] = useState(true);
 
   // Search States
   const [supplySearch, setSupplySearch] = useState('');
@@ -931,169 +936,182 @@ export default function ResourceMobilizationView({
                 <Download className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
                 Export CSV
               </button>
+
+              {/* Show/Hide KPI Summary Toggle Button */}
+              <button
+                onClick={() => setShowExecutiveKpis(prev => !prev)}
+                className="bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/50 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 text-xs font-bold px-3 py-1.5 rounded-xl transition border border-teal-200 dark:border-teal-800/60 flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                {showExecutiveKpis ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                <span>{showExecutiveKpis ? 'Hide KPI Summary' : 'Show KPI Summary'}</span>
+              </button>
             </div>
           </div>
 
           {/* Upfront Key Performance Indicator (KPI) Metric Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            
-            {/* KPI 1: Material Supply Target Completion */}
-            <div className="bg-slate-50/70 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700/60 shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <Package className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-                    Material Supply Completion
-                  </span>
-                  <span className={`text-xs font-black px-2 py-0.5 rounded-md border ${getProgressStatus(overallSupplyPct).badgeBg}`}>
-                    {overallSupplyPct}%
-                  </span>
-                </div>
-                <div className="mt-3 flex items-baseline justify-between">
+          {showExecutiveKpis && (
+            <div className="space-y-4 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                
+                {/* KPI 1: Material Supply Target Completion */}
+                <div className="bg-slate-50/70 dark:bg-slate-900/50 rounded-xl p-3 border border-slate-200 dark:border-slate-700/60 shadow-xs flex flex-col justify-between">
                   <div>
-                    <span className="text-2xl font-black text-slate-900 dark:text-white">{overallSupplyActual.toLocaleString()}</span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400 ml-1.5 font-medium">delivered</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                        <Package className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                        Material Supply Completion
+                      </span>
+                      <span className={`text-[11px] font-black px-1.5 py-0.5 rounded border ${getProgressStatus(overallSupplyPct).badgeBg}`}>
+                        {overallSupplyPct}%
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-baseline justify-between">
+                      <div>
+                        <span className="text-xl font-black text-slate-900 dark:text-white">{overallSupplyActual.toLocaleString()}</span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 ml-1 font-medium">delivered</span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">Target: {overallSupplyTarget.toLocaleString()}</span>
+                    </div>
                   </div>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">Target: {overallSupplyTarget.toLocaleString()}</span>
-                </div>
-              </div>
 
-              {/* Visual Progress Bar */}
-              <div className="mt-3">
-                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
-                  <div 
-                    className={`h-full rounded-full transition-all duration-500 ${getProgressStatus(overallSupplyPct).barColor}`}
-                    style={{ width: `${Math.min(100, Math.max(3, overallSupplyPct))}%` }}
-                  />
+                  {/* Visual Progress Bar */}
+                  <div className="mt-2">
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${getProgressStatus(overallSupplyPct).barColor}`}
+                        style={{ width: `${Math.min(100, Math.max(3, overallSupplyPct))}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                      <span>{getProgressStatus(overallSupplyPct).label}</span>
+                      <span>{overallSupplyTarget - overallSupplyActual > 0 ? `${(overallSupplyTarget - overallSupplyActual).toLocaleString()} to target` : 'Target Exceeded'}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
-                  <span>{getProgressStatus(overallSupplyPct).label}</span>
-                  <span>{overallSupplyTarget - overallSupplyActual > 0 ? `${(overallSupplyTarget - overallSupplyActual).toLocaleString()} to target` : 'Target Exceeded'}</span>
-                </div>
-              </div>
-            </div>
 
-            {/* KPI 2: Equipment Fleet Mobilization */}
-            <div className="bg-slate-50/70 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700/60 shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    Equipment Fleet Readiness
-                  </span>
-                  <span className={`text-xs font-black px-2 py-0.5 rounded-md border ${totalEquipmentDeficiency === 0 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/50'}`}>
-                    {equipmentReadinessPct}%
-                  </span>
-                </div>
-                <div className="mt-3 flex items-baseline justify-between">
+                {/* KPI 2: Equipment Fleet Mobilization */}
+                <div className="bg-slate-50/70 dark:bg-slate-900/50 rounded-xl p-3 border border-slate-200 dark:border-slate-700/60 shadow-xs flex flex-col justify-between">
                   <div>
-                    <span className="text-2xl font-black text-slate-900 dark:text-white">{totalEquipmentAvailable}</span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400 ml-1.5 font-medium">active machines</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                        <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        Equipment Fleet Readiness
+                      </span>
+                      <span className={`text-[11px] font-black px-1.5 py-0.5 rounded border ${totalEquipmentDeficiency === 0 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/50'}`}>
+                        {equipmentReadinessPct}%
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-baseline justify-between">
+                      <div>
+                        <span className="text-xl font-black text-slate-900 dark:text-white">{totalEquipmentAvailable}</span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 ml-1 font-medium">active machines</span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">Plan: {totalEquipmentPlan}</span>
+                    </div>
                   </div>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">Plan: {totalEquipmentPlan}</span>
-                </div>
-              </div>
 
-              <div className="mt-3">
-                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
-                  <div 
-                    className={`h-full rounded-full transition-all duration-500 ${totalEquipmentDeficiency === 0 ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                    style={{ width: `${Math.min(100, equipmentReadinessPct)}%` }}
-                  />
+                  <div className="mt-2">
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${totalEquipmentDeficiency === 0 ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                        style={{ width: `${Math.min(100, equipmentReadinessPct)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                      <span>{totalEquipmentDeficiency > 0 ? `${totalEquipmentDeficiency} machines deficient` : 'Full fleet mobilized'}</span>
+                      <span>{totalEquipmentAvailable} / {totalEquipmentPlan}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
-                  <span>{totalEquipmentDeficiency > 0 ? `${totalEquipmentDeficiency} machines deficient` : 'Full fleet mobilized'}</span>
-                  <span>{totalEquipmentAvailable} / {totalEquipmentPlan}</span>
-                </div>
-              </div>
-            </div>
 
-            {/* KPI 3: Key Personnel Deployment */}
-            <div className="bg-slate-50/70 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700/60 shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                    Key Personnel Site Presence
-                  </span>
-                  <span className="text-xs font-black px-2 py-0.5 rounded-md border bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/50">
-                    {personnelPresencePct}%
-                  </span>
-                </div>
-                <div className="mt-3 flex items-baseline justify-between">
+                {/* KPI 3: Key Personnel Deployment */}
+                <div className="bg-slate-50/70 dark:bg-slate-900/50 rounded-xl p-3 border border-slate-200 dark:border-slate-700/60 shadow-xs flex flex-col justify-between">
                   <div>
-                    <span className="text-2xl font-black text-slate-900 dark:text-white">{totalPersonnelAvailable}</span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400 ml-1.5 font-medium">experts on site</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                        <Users className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                        Key Personnel Site Presence
+                      </span>
+                      <span className="text-[11px] font-black px-1.5 py-0.5 rounded border bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/50">
+                        {personnelPresencePct}%
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-baseline justify-between">
+                      <div>
+                        <span className="text-xl font-black text-slate-900 dark:text-white">{totalPersonnelAvailable}</span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 ml-1 font-medium">experts on site</span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">Plan: {totalPersonnelPlan}</span>
+                    </div>
                   </div>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">Plan: {totalPersonnelPlan}</span>
-                </div>
-              </div>
 
-              <div className="mt-3">
-                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
-                  <div 
-                    className="h-full rounded-full bg-indigo-500 transition-all duration-500"
-                    style={{ width: `${Math.min(100, personnelPresencePct)}%` }}
-                  />
+                  <div className="mt-2">
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                      <div 
+                        className="h-full rounded-full bg-indigo-500 transition-all duration-500"
+                        style={{ width: `${Math.min(100, personnelPresencePct)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                      <span>Resident engineers & specialists</span>
+                      <span>{totalPersonnelAvailable} / {totalPersonnelPlan}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
-                  <span>Resident engineers & specialists</span>
-                  <span>{totalPersonnelAvailable} / {totalPersonnelPlan}</span>
-                </div>
-              </div>
-            </div>
 
-            {/* KPI 4: Material Production Volume */}
-            <div className="bg-slate-50/70 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700/60 shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                    Own Plant Production
-                  </span>
-                  <span className={`text-xs font-black px-2 py-0.5 rounded-md border ${getProgressStatus(productionPct).badgeBg}`}>
-                    {productionPct}%
-                  </span>
-                </div>
-                <div className="mt-3 flex items-baseline justify-between">
+                {/* KPI 4: Material Production Volume */}
+                <div className="bg-slate-50/70 dark:bg-slate-900/50 rounded-xl p-3 border border-slate-200 dark:border-slate-700/60 shadow-xs flex flex-col justify-between">
                   <div>
-                    <span className="text-2xl font-black text-slate-900 dark:text-white">{totalProductionActual.toLocaleString()}</span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400 ml-1.5 font-medium">produced</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                        <Building2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                        Own Plant Production
+                      </span>
+                      <span className={`text-[11px] font-black px-1.5 py-0.5 rounded border ${getProgressStatus(productionPct).badgeBg}`}>
+                        {productionPct}%
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-baseline justify-between">
+                      <div>
+                        <span className="text-xl font-black text-slate-900 dark:text-white">{totalProductionActual.toLocaleString()}</span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 ml-1 font-medium">produced</span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">Target: {totalProductionTarget.toLocaleString()}</span>
+                    </div>
                   </div>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">Target: {totalProductionTarget.toLocaleString()}</span>
+
+                  <div className="mt-2">
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${getProgressStatus(productionPct).barColor}`}
+                        style={{ width: `${Math.min(100, Math.max(3, productionPct))}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                      <span>Crusher & batching stations</span>
+                      <span>{productionItems.length} active stations</span>
+                    </div>
+                  </div>
                 </div>
+
               </div>
 
-              <div className="mt-3">
-                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
-                  <div 
-                    className={`h-full rounded-full transition-all duration-500 ${getProgressStatus(productionPct).barColor}`}
-                    style={{ width: `${Math.min(100, Math.max(3, productionPct))}%` }}
-                  />
+              {/* Month Meta Info & Remarks */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200 dark:border-slate-700/60">
+                <div className="flex items-center gap-3 flex-wrap text-[11px]">
+                  <span><strong>Period:</strong> {activeRecord.monthName} ({activeRecord.month})</span>
+                  <span><strong>Status:</strong> <span className="text-teal-600 dark:text-teal-400 font-semibold">{activeRecord.status}</span></span>
+                  <span><strong>Previous Month Reference:</strong> {previousRecord ? `${previousRecord.monthName} (${previousRecord.month})` : 'Earliest Recorded Baseline'}</span>
+                  <span><strong>Logged by:</strong> {activeRecord.recordedBy || 'ERA Project Unit'}</span>
                 </div>
-                <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
-                  <span>Crusher & batching stations</span>
-                  <span>{productionItems.length} active stations</span>
-                </div>
+                {activeRecord.notes && (
+                  <div className="italic text-slate-600 dark:text-slate-300 text-[11px] truncate max-w-lg">
+                    "{activeRecord.notes}"
+                  </div>
+                )}
               </div>
             </div>
-
-          </div>
-
-          {/* Month Meta Info & Remarks */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400 pt-3 border-t border-slate-200 dark:border-slate-700/60">
-            <div className="flex items-center gap-4 flex-wrap">
-              <span><strong>Period:</strong> {activeRecord.monthName} ({activeRecord.month})</span>
-              <span><strong>Status:</strong> <span className="text-teal-600 dark:text-teal-400 font-semibold">{activeRecord.status}</span></span>
-              <span><strong>Previous Month Reference:</strong> {previousRecord ? `${previousRecord.monthName} (${previousRecord.month})` : 'Earliest Recorded Baseline'}</span>
-              <span><strong>Logged by:</strong> {activeRecord.recordedBy || 'ERA Project Unit'}</span>
-            </div>
-            {activeRecord.notes && (
-              <div className="italic text-slate-600 dark:text-slate-300 text-xs truncate max-w-lg">
-                "{activeRecord.notes}"
-              </div>
-            )}
-          </div>
+          )}
 
         </div>
       </div>
@@ -1209,117 +1227,129 @@ export default function ResourceMobilizationView({
         <div className="space-y-6">
 
           {/* User Requirement Highlight: Visual Progress Bar for Each Material Supply Category */}
-          <div className="bg-white dark:bg-slate-855 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-4">
+          <div className="bg-white dark:bg-slate-855 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-3">
               <div>
                 <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+                  <TrendingUp className="w-4 h-4 text-teal-600 dark:text-teal-400" />
                   Material Supply Category Completion Against Monthly Targets
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   Visual progress bars measuring delivered quantities vs planned monthly procurement targets across each material category.
                 </p>
               </div>
 
-              {/* Category Quick Filter */}
-              <div className="flex items-center gap-2">
-                <Filter className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold">Filter:</span>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer"
+              {/* Controls: Category Filter & Hide/Show Toggle */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs">
+                  <Filter className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">Filter:</span>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="bg-transparent text-slate-700 dark:text-slate-300 font-semibold cursor-pointer outline-none"
+                  >
+                    <option value="All">All Categories ({categoryProgressSummaries.length})</option>
+                    {categoryProgressSummaries.map(c => (
+                      <option key={c.category} value={c.category}>{c.category}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  onClick={() => setShowCategorySummary(prev => !prev)}
+                  className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 transition cursor-pointer"
                 >
-                  <option value="All">All Categories ({categoryProgressSummaries.length})</option>
-                  {categoryProgressSummaries.map(c => (
-                    <option key={c.category} value={c.category}>{c.category}</option>
-                  ))}
-                </select>
+                  {showCategorySummary ? <ChevronUp className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" /> : <ChevronDown className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />}
+                  <span>{showCategorySummary ? 'Hide Progress Bars' : 'Show Progress Bars'}</span>
+                </button>
               </div>
             </div>
 
             {/* Visual Progress Bar Cards Grid for Each Material Supply Category */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {categoryProgressSummaries
-                .filter(c => categoryFilter === 'All' || c.category === categoryFilter)
-                .map((catSummary) => {
-                  const status = getProgressStatus(catSummary.completionPct);
-                  return (
-                    <div 
-                      key={catSummary.category}
-                      className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 shadow-2xs hover:border-teal-500/50 transition-all duration-200 flex flex-col justify-between"
-                    >
-                      <div>
-                        {/* Card Header: Category Name & Status Badge */}
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-teal-600 dark:text-teal-400 shadow-2xs">
-                              {catSummary.category.includes('Fuel') ? (
-                                <Fuel className="w-4 h-4" />
-                              ) : catSummary.category.includes('Steel') ? (
-                                <Hammer className="w-4 h-4" />
-                              ) : catSummary.category.includes('Cement') ? (
-                                <Boxes className="w-4 h-4" />
-                              ) : (
-                                <Package className="w-4 h-4" />
-                              )}
+            {showCategorySummary && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+                {categoryProgressSummaries
+                  .filter(c => categoryFilter === 'All' || c.category === categoryFilter)
+                  .map((catSummary) => {
+                    const status = getProgressStatus(catSummary.completionPct);
+                    return (
+                      <div 
+                        key={catSummary.category}
+                        className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-3 shadow-2xs hover:border-teal-500/50 transition-all duration-200 flex flex-col justify-between"
+                      >
+                        <div>
+                          {/* Card Header: Category Name & Status Badge */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="p-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-teal-600 dark:text-teal-400 shadow-2xs">
+                                {catSummary.category.includes('Fuel') ? (
+                                  <Fuel className="w-3.5 h-3.5" />
+                                ) : catSummary.category.includes('Steel') ? (
+                                  <Hammer className="w-3.5 h-3.5" />
+                                ) : catSummary.category.includes('Cement') ? (
+                                  <Boxes className="w-3.5 h-3.5" />
+                                ) : (
+                                  <Package className="w-3.5 h-3.5" />
+                                )}
+                              </span>
+                              <div>
+                                <h4 className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
+                                  {catSummary.category}
+                                </h4>
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                  {catSummary.itemCount} supply item{catSummary.itemCount > 1 ? 's' : ''}
+                                </span>
+                              </div>
+                            </div>
+
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${status.badgeBg}`}>
+                              {catSummary.completionPct}%
                             </span>
+                          </div>
+
+                          {/* Numeric Deliveries vs Monthly Target */}
+                          <div className="mt-2.5 flex items-baseline justify-between">
                             <div>
-                              <h4 className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
-                                {catSummary.category}
-                              </h4>
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                                {catSummary.itemCount} supply item{catSummary.itemCount > 1 ? 's' : ''}
+                              <span className="text-lg font-black text-slate-900 dark:text-white">
+                                {catSummary.totalActual.toLocaleString()}
+                              </span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 ml-1">supplied</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                Target: {catSummary.totalTarget.toLocaleString()}
                               </span>
                             </div>
                           </div>
 
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${status.badgeBg}`}>
-                            {catSummary.completionPct}%
+                          {/* VISUAL PROGRESS BAR FOR THIS MATERIAL SUPPLY CATEGORY */}
+                          <div className="mt-2">
+                            <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                              <div 
+                                className={`h-full rounded-full transition-all duration-500 ${status.barColor}`}
+                                style={{ width: `${Math.min(100, Math.max(3, catSummary.completionPct))}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Footer Info: Deficit / Status */}
+                        <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between text-[10px]">
+                          <span className={`font-semibold ${status.textColor}`}>
+                            {status.label}
+                          </span>
+                          <span className="text-slate-500 dark:text-slate-400">
+                            {catSummary.remainingDeficit > 0 
+                              ? `${catSummary.remainingDeficit.toLocaleString()} deficit` 
+                              : `+${(catSummary.totalActual - catSummary.totalTarget).toLocaleString()} surplus`}
                           </span>
                         </div>
-
-                        {/* Numeric Deliveries vs Monthly Target */}
-                        <div className="mt-4 flex items-baseline justify-between">
-                          <div>
-                            <span className="text-xl font-black text-slate-900 dark:text-white">
-                              {catSummary.totalActual.toLocaleString()}
-                            </span>
-                            <span className="text-2xs text-slate-500 dark:text-slate-400 ml-1">supplied</span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-xs font-bold text-slate-600 dark:text-slate-400">
-                              Target: {catSummary.totalTarget.toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* VISUAL PROGRESS BAR FOR THIS MATERIAL SUPPLY CATEGORY */}
-                        <div className="mt-2.5">
-                          <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-3 overflow-hidden p-0.5">
-                            <div 
-                              className={`h-full rounded-full transition-all duration-500 ${status.barColor}`}
-                              style={{ width: `${Math.min(100, Math.max(3, catSummary.completionPct))}%` }}
-                            />
-                          </div>
-                        </div>
                       </div>
-
-                      {/* Footer Info: Deficit / Status */}
-                      <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between text-[10px]">
-                        <span className={`font-semibold ${status.textColor}`}>
-                          {status.label}
-                        </span>
-                        <span className="text-slate-500 dark:text-slate-400">
-                          {catSummary.remainingDeficit > 0 
-                            ? `${catSummary.remainingDeficit.toLocaleString()} deficit` 
-                            : `+${(catSummary.totalActual - catSummary.totalTarget).toLocaleString()} surplus`}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
+                    );
+                  })}
+              </div>
+            )}
           </div>
 
           {/* Material Supply Detail Table with Target & Row-level Visual Progress Bar */}
