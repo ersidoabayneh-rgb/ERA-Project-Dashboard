@@ -1,25 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { motion } from 'motion/react';
+import React, { useState } from 'react';
 import { 
-  Activity, ShieldAlert, Award, TrendingUp, HelpCircle, FileText, CheckCircle, Clock, 
-  Scale, BookOpen, AlertCircle, ShieldCheck, UserCheck, HardHat, Compass, Landmark, 
-  Filter, Calendar, DollarSign, ArrowRight, BarChart3, Sliders, ChevronDown, ChevronUp, 
-  Copy, Check, Download, Layers, Sparkles, RefreshCw, Info, Percent, Eye, EyeOff
+  Activity, CheckCircle, Scale, BookOpen, AlertCircle, HardHat, Compass, Landmark, Filter
 } from 'lucide-react';
-import { 
-  ResponsiveContainer, 
-  ComposedChart, 
-  LineChart, 
-  Line, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip as RechartsTooltip, 
-  Legend 
-} from 'recharts';
 import { Project, formatAccounting } from '../types';
-import { parseMonthKey } from '../lib/monthlySync';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { 
   getFidicContractInfo, 
@@ -27,12 +10,19 @@ import {
 } from '../lib/fidicClauseEngine';
 import CpmLinearComparison from './CpmLinearComparison';
 import YearlyCostForecastSection from './YearlyCostForecastSection';
+import DataIntegrityDashboard from './DataIntegrityDashboard';
 
 interface ComprehensiveAnalysisViewProps {
   project: Project;
+  onUpdateProject?: (updatedProject: Partial<Project>, actionDescription?: string) => void;
+  isReadonly?: boolean;
 }
 
-export default function ComprehensiveAnalysisView({ project }: ComprehensiveAnalysisViewProps) {
+export default function ComprehensiveAnalysisView({ 
+  project,
+  onUpdateProject,
+  isReadonly = false
+}: ComprehensiveAnalysisViewProps) {
   // Use centralized, unified EVM metrics calculation
   const evm = calculateProjectEvm(project);
   const { BAC, AC, EV, PV, CPI, SPI, CV, SV, EAC, VAC, TCPI } = evm;
@@ -207,6 +197,13 @@ export default function ComprehensiveAnalysisView({ project }: ComprehensiveAnal
 
       {/* Integrated CPM vs. Linear Progress Scheduling Analysis */}
       <CpmLinearComparison project={project} />
+
+      {/* Automated Data Integrity Dashboard Widget */}
+      <DataIntegrityDashboard
+        project={project}
+        onUpdateProject={onUpdateProject}
+        isReadonly={isReadonly}
+      />
 
       {/* FIDIC Contract & Delivery Method Header Banner */}
       <div className="p-4 bg-white dark:bg-slate-800 text-slate-850 dark:text-zinc-100 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/60 space-y-3">

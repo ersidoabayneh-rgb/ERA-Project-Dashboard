@@ -776,30 +776,26 @@ export default function ResourceMobilizationView({
       {/* ---------------------------------------------------------------- */}
       {/* 1. UPFRONT LATEST MONTH SHOWCASE & EXECUTIVE LOGISTICS BANNER   */}
       {/* ---------------------------------------------------------------- */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-indigo-950 text-white rounded-3xl p-6 sm:p-7 shadow-xl border border-slate-700/50 relative overflow-hidden">
-        {/* Subtle background glow effect */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-        <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-
+      <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl p-5 sm:p-6 shadow-sm text-slate-800 dark:text-slate-100 relative overflow-hidden">
         <div className="relative z-10 space-y-6">
           
           {/* Top Row: Title, Month Selector & Action Toolbar */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 border-b border-slate-700/60 pb-5">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 border-b border-slate-200 dark:border-slate-700/60 pb-5">
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
-                <span className="p-2 bg-teal-500/20 text-teal-300 border border-teal-500/30 rounded-xl">
+                <span className="p-2.5 bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-800/50 rounded-2xl shadow-xs">
                   <Layers className="w-5 h-5" />
                 </span>
-                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-3">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
                   Logistics, Material Production & Supply Portal
                 </h1>
                 {isLatestMonth ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                     LATEST ACTIVE MONTH UP FRONT
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50">
                     <Clock className="w-3.5 h-3.5" />
                     HISTORICAL MONTH ARCHIVE
                   </span>
@@ -807,8 +803,8 @@ export default function ResourceMobilizationView({
               </div>
 
               {/* Automatic Calculation Guidance Formula */}
-              <div className="flex items-center gap-2 mt-2 text-xs text-teal-300 font-mono bg-teal-950/50 border border-teal-800/60 px-3 py-1 rounded-lg w-fit">
-                <Calculator className="w-3.5 h-3.5 text-teal-400" />
+              <div className="flex items-center gap-2 mt-2 text-xs text-teal-700 dark:text-teal-300 font-mono bg-teal-50/80 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800/60 px-3 py-1 rounded-lg w-fit">
+                <Calculator className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
                 <span>
                   <strong>Autocalculated Cumulative Formula:</strong> Total Todate = Previous Month Total + This Month Production / Supply
                 </span>
@@ -818,16 +814,16 @@ export default function ResourceMobilizationView({
             {/* Month Selector & Controls */}
             <div className="flex items-center gap-3 flex-wrap">
               {/* Month Dropdown */}
-              <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-600/80 rounded-xl px-3 py-1.5 text-xs shadow-inner">
-                <Calendar className="w-4 h-4 text-teal-400" />
-                <span className="text-slate-400 font-medium">Reporting Month:</span>
+              <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs shadow-xs">
+                <Calendar className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                <span className="text-slate-500 dark:text-slate-400 font-medium">Reporting Month:</span>
                 <select
                   value={selectedMonthId}
                   onChange={(e) => setSelectedMonthId(e.target.value)}
-                  className="bg-transparent text-white font-bold focus:outline-none cursor-pointer pr-2"
+                  className="bg-transparent text-slate-800 dark:text-slate-100 font-bold focus:outline-none cursor-pointer pr-2"
                 >
                   {monthlyRecords.map((r, idx) => (
-                    <option key={r.id} value={r.id} className="bg-slate-900 text-white">
+                    <option key={r.id} value={r.id} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100">
                       {r.monthName} {idx === 0 ? '★ (Latest)' : ''} — [{r.status}]
                     </option>
                   ))}
@@ -838,7 +834,7 @@ export default function ResourceMobilizationView({
               {!isLatestMonth && (
                 <button
                   onClick={() => setSelectedMonthId(latestRecord.id)}
-                  className="bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-md"
+                  className="bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/50 dark:hover:bg-teal-900/60 text-teal-700 dark:text-teal-300 text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 border border-teal-200 dark:border-teal-800/60 shadow-xs cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   Jump to Latest Month
@@ -862,7 +858,7 @@ export default function ResourceMobilizationView({
                     setNewMonthName(dateObj.toLocaleString('en-US', { month: 'long', year: 'numeric' }));
                     setIsRecordModalOpen(true);
                   }}
-                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-emerald-500/20"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   Record New Month
@@ -873,9 +869,9 @@ export default function ResourceMobilizationView({
               <button
                 onClick={handleExportCSV}
                 title="Export current month data to CSV"
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-xl transition border border-slate-700 flex items-center gap-1.5"
+                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-xl transition border border-slate-200 dark:border-slate-600 flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
-                <Download className="w-3.5 h-3.5 text-teal-400" />
+                <Download className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
                 Export CSV
               </button>
             </div>
@@ -885,35 +881,35 @@ export default function ResourceMobilizationView({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             
             {/* KPI 1: Material Supply Target Completion */}
-            <div className="bg-slate-800/80 backdrop-blur-md rounded-2xl p-4 border border-slate-700/80 shadow-md flex flex-col justify-between">
+            <div className="bg-slate-50/70 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700/60 shadow-xs flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <Package className="w-3.5 h-3.5 text-teal-400" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Package className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
                     Material Supply Completion
                   </span>
-                  <span className={`text-xs font-black px-2 py-0.5 rounded-md ${getProgressStatus(overallSupplyPct).badgeBg}`}>
+                  <span className={`text-xs font-black px-2 py-0.5 rounded-md border ${getProgressStatus(overallSupplyPct).badgeBg}`}>
                     {overallSupplyPct}%
                   </span>
                 </div>
                 <div className="mt-3 flex items-baseline justify-between">
                   <div>
-                    <span className="text-2xl font-black text-white">{overallSupplyActual.toLocaleString()}</span>
-                    <span className="text-xs text-slate-400 ml-1.5 font-medium">delivered</span>
+                    <span className="text-2xl font-black text-slate-900 dark:text-white">{overallSupplyActual.toLocaleString()}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 ml-1.5 font-medium">delivered</span>
                   </div>
-                  <span className="text-xs text-slate-400">Target: {overallSupplyTarget.toLocaleString()}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Target: {overallSupplyTarget.toLocaleString()}</span>
                 </div>
               </div>
 
               {/* Visual Progress Bar */}
               <div className="mt-3">
-                <div className="w-full bg-slate-700/80 rounded-full h-2.5 overflow-hidden">
+                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
                   <div 
                     className={`h-full rounded-full transition-all duration-500 ${getProgressStatus(overallSupplyPct).barColor}`}
                     style={{ width: `${Math.min(100, Math.max(3, overallSupplyPct))}%` }}
                   />
                 </div>
-                <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-400">
+                <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
                   <span>{getProgressStatus(overallSupplyPct).label}</span>
                   <span>{overallSupplyTarget - overallSupplyActual > 0 ? `${(overallSupplyTarget - overallSupplyActual).toLocaleString()} to target` : 'Target Exceeded'}</span>
                 </div>
@@ -921,34 +917,34 @@ export default function ResourceMobilizationView({
             </div>
 
             {/* KPI 2: Equipment Fleet Mobilization */}
-            <div className="bg-slate-800/80 backdrop-blur-md rounded-2xl p-4 border border-slate-700/80 shadow-md flex flex-col justify-between">
+            <div className="bg-slate-50/70 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700/60 shadow-xs flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <Truck className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     Equipment Fleet Readiness
                   </span>
-                  <span className={`text-xs font-black px-2 py-0.5 rounded-md ${totalEquipmentDeficiency === 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}`}>
+                  <span className={`text-xs font-black px-2 py-0.5 rounded-md border ${totalEquipmentDeficiency === 0 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/50'}`}>
                     {equipmentReadinessPct}%
                   </span>
                 </div>
                 <div className="mt-3 flex items-baseline justify-between">
                   <div>
-                    <span className="text-2xl font-black text-white">{totalEquipmentAvailable}</span>
-                    <span className="text-xs text-slate-400 ml-1.5 font-medium">active machines</span>
+                    <span className="text-2xl font-black text-slate-900 dark:text-white">{totalEquipmentAvailable}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 ml-1.5 font-medium">active machines</span>
                   </div>
-                  <span className="text-xs text-slate-400">Plan: {totalEquipmentPlan}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Plan: {totalEquipmentPlan}</span>
                 </div>
               </div>
 
               <div className="mt-3">
-                <div className="w-full bg-slate-700/80 rounded-full h-2.5 overflow-hidden">
+                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
                   <div 
                     className={`h-full rounded-full transition-all duration-500 ${totalEquipmentDeficiency === 0 ? 'bg-emerald-500' : 'bg-amber-500'}`}
                     style={{ width: `${Math.min(100, equipmentReadinessPct)}%` }}
                   />
                 </div>
-                <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-400">
+                <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
                   <span>{totalEquipmentDeficiency > 0 ? `${totalEquipmentDeficiency} machines deficient` : 'Full fleet mobilized'}</span>
                   <span>{totalEquipmentAvailable} / {totalEquipmentPlan}</span>
                 </div>
@@ -956,34 +952,34 @@ export default function ResourceMobilizationView({
             </div>
 
             {/* KPI 3: Key Personnel Deployment */}
-            <div className="bg-slate-800/80 backdrop-blur-md rounded-2xl p-4 border border-slate-700/80 shadow-md flex flex-col justify-between">
+            <div className="bg-slate-50/70 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700/60 shadow-xs flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                     Key Personnel Site Presence
                   </span>
-                  <span className="text-xs font-black px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300">
+                  <span className="text-xs font-black px-2 py-0.5 rounded-md border bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/50">
                     {personnelPresencePct}%
                   </span>
                 </div>
                 <div className="mt-3 flex items-baseline justify-between">
                   <div>
-                    <span className="text-2xl font-black text-white">{totalPersonnelAvailable}</span>
-                    <span className="text-xs text-slate-400 ml-1.5 font-medium">experts on site</span>
+                    <span className="text-2xl font-black text-slate-900 dark:text-white">{totalPersonnelAvailable}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 ml-1.5 font-medium">experts on site</span>
                   </div>
-                  <span className="text-xs text-slate-400">Plan: {totalPersonnelPlan}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Plan: {totalPersonnelPlan}</span>
                 </div>
               </div>
 
               <div className="mt-3">
-                <div className="w-full bg-slate-700/80 rounded-full h-2.5 overflow-hidden">
+                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
                   <div 
                     className="h-full rounded-full bg-indigo-500 transition-all duration-500"
                     style={{ width: `${Math.min(100, personnelPresencePct)}%` }}
                   />
                 </div>
-                <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-400">
+                <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
                   <span>Resident engineers & specialists</span>
                   <span>{totalPersonnelAvailable} / {totalPersonnelPlan}</span>
                 </div>
@@ -991,34 +987,34 @@ export default function ResourceMobilizationView({
             </div>
 
             {/* KPI 4: Material Production Volume */}
-            <div className="bg-slate-800/80 backdrop-blur-md rounded-2xl p-4 border border-slate-700/80 shadow-md flex flex-col justify-between">
+            <div className="bg-slate-50/70 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700/60 shadow-xs flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                     Own Plant Production
                   </span>
-                  <span className={`text-xs font-black px-2 py-0.5 rounded-md ${getProgressStatus(productionPct).badgeBg}`}>
+                  <span className={`text-xs font-black px-2 py-0.5 rounded-md border ${getProgressStatus(productionPct).badgeBg}`}>
                     {productionPct}%
                   </span>
                 </div>
                 <div className="mt-3 flex items-baseline justify-between">
                   <div>
-                    <span className="text-2xl font-black text-white">{totalProductionActual.toLocaleString()}</span>
-                    <span className="text-xs text-slate-400 ml-1.5 font-medium">produced</span>
+                    <span className="text-2xl font-black text-slate-900 dark:text-white">{totalProductionActual.toLocaleString()}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 ml-1.5 font-medium">produced</span>
                   </div>
-                  <span className="text-xs text-slate-400">Target: {totalProductionTarget.toLocaleString()}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Target: {totalProductionTarget.toLocaleString()}</span>
                 </div>
               </div>
 
               <div className="mt-3">
-                <div className="w-full bg-slate-700/80 rounded-full h-2.5 overflow-hidden">
+                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
                   <div 
                     className={`h-full rounded-full transition-all duration-500 ${getProgressStatus(productionPct).barColor}`}
                     style={{ width: `${Math.min(100, Math.max(3, productionPct))}%` }}
                   />
                 </div>
-                <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-400">
+                <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
                   <span>Crusher & batching stations</span>
                   <span>{productionItems.length} active stations</span>
                 </div>
@@ -1028,15 +1024,15 @@ export default function ResourceMobilizationView({
           </div>
 
           {/* Month Meta Info & Remarks */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-400 pt-1 border-t border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400 pt-3 border-t border-slate-200 dark:border-slate-700/60">
             <div className="flex items-center gap-4 flex-wrap">
               <span><strong>Period:</strong> {activeRecord.monthName} ({activeRecord.month})</span>
-              <span><strong>Status:</strong> <span className="text-teal-300 font-semibold">{activeRecord.status}</span></span>
+              <span><strong>Status:</strong> <span className="text-teal-600 dark:text-teal-400 font-semibold">{activeRecord.status}</span></span>
               <span><strong>Previous Month Reference:</strong> {previousRecord ? `${previousRecord.monthName} (${previousRecord.month})` : 'Earliest Recorded Baseline'}</span>
               <span><strong>Logged by:</strong> {activeRecord.recordedBy || 'ERA Project Unit'}</span>
             </div>
             {activeRecord.notes && (
-              <div className="italic text-slate-300 text-xs truncate max-w-lg">
+              <div className="italic text-slate-600 dark:text-slate-300 text-xs truncate max-w-lg">
                 "{activeRecord.notes}"
               </div>
             )}

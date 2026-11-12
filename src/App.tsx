@@ -5986,7 +5986,11 @@ let isBatchSyncRunning = false;
               )}
 
               {activeTab === 'analysis' && (
-                <ComprehensiveAnalysisView project={currentProject} />
+                <ComprehensiveAnalysisView 
+                  project={currentProject} 
+                  onUpdateProject={(updProj, actionDesc) => handleProjectUpdate(updProj, actionDesc)}
+                  isReadonly={!canUserEditPage(currentUserObj, 'analysis')}
+                />
               )}
 
               {activeTab === 'documentation' && (

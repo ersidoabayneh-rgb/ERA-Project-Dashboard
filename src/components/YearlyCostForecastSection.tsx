@@ -44,18 +44,18 @@ const HeaderTooltip: React.FC<HeaderTooltipProps> = ({
       align === 'right' ? 'justify-end w-full' : align === 'center' ? 'justify-center w-full' : 'justify-start'
     }`}>
       <span className="truncate">{title}</span>
-      <Info className="w-3.5 h-3.5 text-indigo-400 group-hover:text-amber-300 transition-colors shrink-0" />
+      <Info className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 group-hover:text-amber-500 dark:group-hover:text-amber-300 transition-colors shrink-0" />
       
       {/* Tooltip Card */}
-      <div className={`absolute bottom-full mb-2.5 hidden group-hover:block w-72 sm:w-80 p-3 bg-slate-950/95 text-slate-100 text-left text-xs rounded-xl shadow-2xl border border-indigo-500/70 z-50 pointer-events-none backdrop-blur-md transition-all ${
+      <div className={`absolute bottom-full mb-2.5 hidden group-hover:block w-72 sm:w-80 p-3 bg-slate-900 dark:bg-slate-950 text-slate-100 text-left text-xs rounded-xl shadow-2xl border border-slate-700 dark:border-indigo-500/70 z-50 pointer-events-none backdrop-blur-md transition-all ${
         align === 'right' ? 'right-0' : align === 'center' ? 'left-1/2 -translate-x-1/2' : 'left-0'
       }`}>
-        <div className="flex items-center gap-1.5 font-bold text-amber-300 text-2xs uppercase tracking-wider pb-1.5 border-b border-indigo-900/60">
+        <div className="flex items-center gap-1.5 font-bold text-amber-300 text-2xs uppercase tracking-wider pb-1.5 border-b border-slate-800 dark:border-indigo-900/60">
           <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
           <span>{tooltipTitle}</span>
         </div>
         {formula && (
-          <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-indigo-950/90 border border-indigo-700/60 font-mono text-emerald-300 text-[11px] font-bold tracking-tight">
+          <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-slate-800 dark:bg-indigo-950/90 border border-slate-700 dark:border-indigo-700/60 font-mono text-emerald-400 dark:text-emerald-300 text-[11px] font-bold tracking-tight">
             {formula}
           </div>
         )}
@@ -69,7 +69,7 @@ const HeaderTooltip: React.FC<HeaderTooltipProps> = ({
           </div>
         )}
         {/* Pointer Arrow */}
-        <div className={`absolute top-full -mt-1 border-4 border-transparent border-t-slate-950/95 ${
+        <div className={`absolute top-full -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-950 ${
           align === 'right' ? 'right-4' : align === 'center' ? 'left-1/2 -translate-x-1/2' : 'left-4'
         }`} />
       </div>
@@ -97,10 +97,10 @@ const CustomForecastTooltip: React.FC<CustomForecastTooltipProps> = ({
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
-      <div className="bg-slate-950/95 p-3 rounded-xl border border-indigo-500/60 shadow-2xl text-xs space-y-1.5 text-white backdrop-blur-md min-w-[250px]">
-        <div className="flex items-center justify-between border-b border-indigo-900 pb-1.5">
+      <div className="bg-slate-900/95 dark:bg-slate-950/95 p-3 rounded-xl border border-slate-700 dark:border-indigo-500/60 shadow-2xl text-xs space-y-1.5 text-white backdrop-blur-md min-w-[250px]">
+        <div className="flex items-center justify-between border-b border-slate-800 dark:border-indigo-900 pb-1.5">
           <span className="font-bold text-amber-300">{data.fullPeriod || label}</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-950 border border-indigo-700/60 text-indigo-300">
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 dark:bg-indigo-950 border border-slate-700 dark:border-indigo-700/60 text-indigo-300">
             Pn: {data.pnFactor.toFixed(4)}
           </span>
         </div>
@@ -113,7 +113,7 @@ const CustomForecastTooltip: React.FC<CustomForecastTooltipProps> = ({
             <span>PA Escalation Adder:</span>
             <span className="font-bold">+{formatBr(data.paAdder)}</span>
           </div>
-          <div className="flex justify-between items-center text-emerald-300 font-bold border-t border-slate-800/80 pt-1">
+          <div className="flex justify-between items-center text-emerald-300 font-bold border-t border-slate-800 pt-1">
             <span>Escalated Outlay:</span>
             <span>{formatBr(data.escalatedCost)}</span>
           </div>
@@ -121,7 +121,7 @@ const CustomForecastTooltip: React.FC<CustomForecastTooltipProps> = ({
             <span>Cumulative Outlay:</span>
             <span>{formatBr(data.cumulativeEscalated)}</span>
           </div>
-          <div className="flex justify-between items-center text-amber-300 text-[10px] pt-1 border-t border-slate-800/80">
+          <div className="flex justify-between items-center text-amber-300 text-[10px] pt-1 border-t border-slate-800">
             <span>June-July S-Curve Plan:</span>
             <span>+{data.fyPlanIncrement.toFixed(1)}% ({data.sharePct.toFixed(1)}% of rem.)</span>
           </div>
@@ -274,10 +274,6 @@ export default function YearlyCostForecastSection({
   }
 
   // Calculate the June-to-July plan increment for each future fiscal year
-  // In Ethiopian Fiscal Year, EFY Y = July (Y+7) to June/July (Y+8).
-  // For each future Gregorian year Y_gc (e.g. 2026 G.C. -> EFY 2019):
-  // Start plan: June/July of Y_gc
-  // End plan: June/July of Y_gc + 1
   const futurePlansRaw = futureYears.map((yr) => {
     const yrNum = parseInt(yr, 10);
     const startRef = getPlanAtJuneJuly(yrNum);
@@ -299,7 +295,7 @@ export default function YearlyCostForecastSection({
     if (totalFuturePlanInc > 0 && item.planInc > 0) {
       return (item.planInc / totalFuturePlanInc) * 100;
     }
-    // Fallback: velocity-based or balanced distribution across remaining years
+    // Fallback: balanced distribution across remaining years
     if (futureYears.length === 1) return 100;
     if (futureYears.length === 2) return idx === 0 ? 58 : 42;
     if (futureYears.length === 3) return idx === 0 ? 45 : idx === 1 ? 35 : 20;
@@ -509,23 +505,24 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
   };
 
   return (
-    <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-4 sm:p-6 rounded-2xl border-2 border-indigo-500/50 shadow-2xl space-y-5">
+    <div className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl shadow-sm space-y-5 p-4 sm:p-6 text-slate-800 dark:text-slate-100">
+      
       {/* Top Banner: Title & Primary Action Utilities */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-indigo-800/60 pb-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-700/60 pb-4">
         <div className="flex items-start sm:items-center gap-3">
-          <div className="p-2.5 bg-indigo-500/20 text-indigo-300 rounded-2xl border border-indigo-500/30 shadow-inner">
-            <Landmark className="w-6 h-6 text-indigo-300" />
+          <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-2xl border border-indigo-200 dark:border-indigo-800/50 shadow-xs">
+            <Landmark className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-sm sm:text-base font-black uppercase text-white tracking-tight">
+              <h3 className="text-sm sm:text-base font-black uppercase text-slate-900 dark:text-white tracking-tight">
                 Yearly Estimated Cost Forecast Table
               </h3>
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+              <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50">
                 June-to-July Plan & Price Escalation
               </span>
             </div>
-            <p className="text-2xs text-indigo-200/80 mt-0.5">
+            <p className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
               Multi-year fiscal expenditures driven by the monthly cumulative plan (June to July), compounding price escalation factors, and remaining unexecuted BOQ balance.
             </p>
           </div>
@@ -536,7 +533,9 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
           <button
             onClick={() => setShowChart(!showChart)}
             className={`px-3 py-1.5 rounded-xl font-bold text-2xs transition flex items-center gap-1.5 border shadow-xs cursor-pointer ${
-              showChart ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-slate-900/90 hover:bg-slate-800 text-indigo-200 border-indigo-700/60'
+              showChart 
+                ? 'bg-indigo-600 text-white border-indigo-500' 
+                : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600'
             }`}
             title="Toggle Visual Forecast Line Chart"
           >
@@ -546,26 +545,26 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
 
           <button
             onClick={() => setShowDivisionBreakdown(!showDivisionBreakdown)}
-            className="px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-indigo-200 font-bold text-2xs transition flex items-center gap-1.5 border border-indigo-700/60 shadow-xs cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-200 font-bold text-2xs transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-600 shadow-xs cursor-pointer"
             title="Toggle Division Work Quantities (Series 1000-11000) breakdown"
           >
-            <Layers className="w-3.5 h-3.5 text-indigo-400" />
+            <Layers className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
             <span>BOQ Divisions</span>
             {showDivisionBreakdown ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
 
           <button
             onClick={handleCopySummary}
-            className="px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-200 font-bold text-2xs transition flex items-center gap-1.5 border border-slate-700 shadow-xs cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-200 font-bold text-2xs transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-600 shadow-xs cursor-pointer"
             title="Copy executive financial summary to clipboard"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-300" />}
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />}
             <span>{copied ? 'Copied!' : 'Copy Summary'}</span>
           </button>
 
           <button
             onClick={handleExportCsv}
-            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-2xs transition flex items-center gap-1.5 shadow-md cursor-pointer border border-indigo-400"
+            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-2xs transition flex items-center gap-1.5 shadow-sm cursor-pointer border border-indigo-500"
             title="Export complete Yearly Cost Forecast ledger as CSV"
           >
             <Download className="w-3.5 h-3.5" />
@@ -577,22 +576,22 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
       {/* Executive Financial KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Metric 1: Remaining Unexecuted Balance */}
-        <div className="bg-slate-950/70 p-3.5 rounded-xl border border-indigo-500/30 space-y-2 relative overflow-hidden shadow-sm">
+        <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2 relative overflow-hidden shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-indigo-300 uppercase font-extrabold tracking-wide">Remaining Contract Balance</span>
-            <DollarSign className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 uppercase font-extrabold tracking-wide">Remaining Contract Balance</span>
+            <DollarSign className="w-3.5 h-3.5 text-amber-500" />
           </div>
-          <div className="text-base sm:text-lg font-mono font-black text-white">
+          <div className="text-base sm:text-lg font-mono font-black text-slate-900 dark:text-white">
             {formatBr(remainingBalance)}
           </div>
           <div className="space-y-1">
-            <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+            <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-mono">
               <span>Unexecuted Share:</span>
-              <strong className="text-amber-300 font-bold">{remainingPct.toFixed(1)}% of BOQ</strong>
+              <strong className="text-amber-600 dark:text-amber-400 font-bold">{remainingPct.toFixed(1)}% of BOQ</strong>
             </div>
-            <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
               <div 
-                className="bg-amber-400 h-full rounded-full transition-all duration-300"
+                className="bg-amber-500 h-full rounded-full transition-all duration-300"
                 style={{ width: `${Math.min(100, Math.max(0, remainingPct))}%` }}
               />
             </div>
@@ -600,48 +599,48 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
         </div>
 
         {/* Metric 2: Empirical Pn Escalation Index */}
-        <div className="bg-slate-950/70 p-3.5 rounded-xl border border-indigo-500/30 space-y-2 relative overflow-hidden shadow-sm">
+        <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2 relative overflow-hidden shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-emerald-400 uppercase font-extrabold tracking-wide">Empirical $P_n$ Index</span>
-            <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-extrabold tracking-wide">Empirical $P_n$ Index</span>
+            <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
           </div>
-          <div className="text-base sm:text-lg font-mono font-black text-emerald-300 flex items-baseline gap-1.5">
+          <div className="text-base sm:text-lg font-mono font-black text-emerald-600 dark:text-emerald-400 flex items-baseline gap-1.5">
             <span>{basePaFactor.toFixed(4)}</span>
-            <span className="text-[10px] font-normal text-slate-400 font-sans">
+            <span className="text-[10px] font-normal text-slate-500 dark:text-slate-400 font-sans">
               ({((basePaFactor - 1.0) * 100).toFixed(1)}% inflation)
             </span>
           </div>
-          <div className="text-[10px] text-slate-400 leading-tight">
-            Derived from <strong className="text-slate-200">{ipcTracker.length} certified IPCs</strong> ({formatBr(totalPa)} PA / {formatBr(totalGross)} Gross).
+          <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+            Derived from <strong className="text-slate-700 dark:text-slate-200">{ipcTracker.length} certified IPCs</strong> ({formatBr(totalPa)} PA / {formatBr(totalGross)} Gross).
           </div>
         </div>
 
         {/* Metric 3: Future Escalation Adder */}
-        <div className="bg-slate-950/70 p-3.5 rounded-xl border border-indigo-500/30 space-y-2 relative overflow-hidden shadow-sm">
+        <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2 relative overflow-hidden shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-rose-300 uppercase font-extrabold tracking-wide">Projected Price Escalation</span>
-            <Activity className="w-3.5 h-3.5 text-rose-400" />
+            <span className="text-[10px] text-rose-600 dark:text-rose-400 uppercase font-extrabold tracking-wide">Projected Price Escalation</span>
+            <Activity className="w-3.5 h-3.5 text-rose-500" />
           </div>
-          <div className="text-base sm:text-lg font-mono font-black text-rose-400">
+          <div className="text-base sm:text-lg font-mono font-black text-rose-600 dark:text-rose-400">
             +{formatBr(totalFuturePaAdder)}
           </div>
-          <div className="text-[10px] text-slate-400 leading-tight">
-            Estimated escalation adder above base rates at <strong className="text-slate-200 font-mono">{(annualInflation * 100).toFixed(1)}% p.a.</strong>
+          <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+            Estimated escalation adder above base rates at <strong className="text-slate-700 dark:text-slate-200 font-mono">{(annualInflation * 100).toFixed(1)}% p.a.</strong>
           </div>
         </div>
 
         {/* Metric 4: Total Escalated Outlay */}
-        <div className="bg-indigo-600/30 p-3.5 rounded-xl border border-indigo-400/50 space-y-2 relative overflow-hidden shadow-md">
+        <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 space-y-2 relative overflow-hidden shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-indigo-200 uppercase font-black tracking-wide">Total Escalated Commitment</span>
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
+            <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-black tracking-wide">Total Escalated Commitment</span>
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <div className="text-base sm:text-lg font-mono font-black text-emerald-300">
+          <div className="text-base sm:text-lg font-mono font-black text-indigo-700 dark:text-indigo-300">
             {formatBr(totalProjectedEscalated)}
           </div>
-          <div className="text-[10px] text-indigo-200/90 leading-tight flex items-center justify-between">
+          <div className="text-[10px] text-indigo-600/80 dark:text-indigo-300/80 leading-tight flex items-center justify-between">
             <span>Target Finish:</span>
-            <strong className="font-mono text-white font-bold">
+            <strong className="font-mono text-indigo-900 dark:text-white font-bold">
               {calendarView === 'EFY' ? futureProjections[futureProjections.length - 1]?.efy : `${futureProjections[futureProjections.length - 1]?.year} G.C.`}
             </strong>
           </div>
@@ -650,20 +649,20 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
 
       {/* Visual Line Chart for Multi-Year Forecast (Recharts) */}
       {showChart && (
-        <div className="p-4 bg-slate-950/85 rounded-2xl border border-indigo-500/40 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-indigo-850">
+        <div className="p-4 bg-slate-50/70 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-200 dark:border-slate-700/60">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">
                 <BarChart3 className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="text-xs font-black uppercase tracking-wide text-white flex items-center gap-2">
+                <h4 className="text-xs font-black uppercase tracking-wide text-slate-900 dark:text-white flex items-center gap-2">
                   Yearly Estimated Cost Forecast Trajectory
-                  <span className="text-[9px] font-mono font-normal px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/50">
+                  <span className="text-[9px] font-mono font-normal px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50">
                     Recharts Multi-Year Model
                   </span>
                 </h4>
-                <p className="text-[10px] text-indigo-300/80">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
                   Visual breakdown of Base Planned Work Value, Price Escalation Adder, and Total Escalated Outlays across remaining fiscal years.
                 </p>
               </div>
@@ -671,11 +670,11 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
             
             <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
               {/* Unit Toggle */}
-              <div className="flex items-center bg-slate-900 rounded-lg p-0.5 border border-indigo-700/60 text-[10px] font-bold">
+              <div className="flex items-center bg-white dark:bg-slate-800 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700 text-[10px] font-bold">
                 <button
                   onClick={() => setChartUnit('millions')}
                   className={`px-2 py-0.5 rounded transition cursor-pointer ${
-                    chartUnit === 'millions' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                    chartUnit === 'millions' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   Millions (M ETB)
@@ -683,7 +682,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                 <button
                   onClick={() => setChartUnit('full')}
                   className={`px-2 py-0.5 rounded transition cursor-pointer ${
-                    chartUnit === 'full' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                    chartUnit === 'full' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   Full (ETB)
@@ -691,11 +690,11 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
               </div>
               
               {/* Chart Style Toggle */}
-              <div className="flex items-center bg-slate-900 rounded-lg p-0.5 border border-indigo-700/60 text-[10px] font-bold">
+              <div className="flex items-center bg-white dark:bg-slate-800 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700 text-[10px] font-bold">
                 <button
                   onClick={() => setChartType('line')}
                   className={`px-2 py-0.5 rounded transition cursor-pointer ${
-                    chartType === 'line' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                    chartType === 'line' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   Multi-Line
@@ -703,7 +702,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                 <button
                   onClick={() => setChartType('area')}
                   className={`px-2 py-0.5 rounded transition cursor-pointer ${
-                    chartType === 'area' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                    chartType === 'area' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   Stacked Area
@@ -716,23 +715,23 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
             <ResponsiveContainer width="100%" height="100%">
               {chartType === 'line' ? (
                 <LineChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#312e81" opacity={0.35} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.6} />
                   <XAxis 
                     dataKey="periodLabel" 
                     stroke="#94a3b8" 
-                    tick={{ fill: '#cbd5e1', fontSize: 11 }} 
+                    tick={{ fill: '#64748b', fontSize: 11 }} 
                   />
                   <YAxis 
                     yAxisId="left"
                     stroke="#94a3b8" 
-                    tick={{ fill: '#cbd5e1', fontSize: 10 }}
+                    tick={{ fill: '#64748b', fontSize: 10 }}
                     tickFormatter={(val) => chartUnit === 'millions' ? `${val.toFixed(1)}M` : `${(val / 1e6).toFixed(0)}M`}
                   />
                   <YAxis 
                     yAxisId="right"
                     orientation="right"
-                    stroke="#c084fc" 
-                    tick={{ fill: '#c084fc', fontSize: 10 }}
+                    stroke="#a855f7" 
+                    tick={{ fill: '#a855f7', fontSize: 10 }}
                     tickFormatter={(val) => chartUnit === 'millions' ? `${val.toFixed(1)}M` : `${(val / 1e6).toFixed(0)}M`}
                   />
                   <RechartsTooltip content={<CustomForecastTooltip chartUnit={chartUnit} formatBr={formatBr} />} />
@@ -742,9 +741,9 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     type="monotone" 
                     dataKey={chartUnit === 'millions' ? 'baseCostM' : 'baseCost'} 
                     name="Base Planned Work Value" 
-                    stroke="#818cf8" 
+                    stroke="#6366f1" 
                     strokeWidth={2.5}
-                    dot={{ r: 4, fill: '#818cf8', strokeWidth: 1.5, stroke: '#1e1b4b' }}
+                    dot={{ r: 4, fill: '#6366f1', strokeWidth: 1.5, stroke: '#ffffff' }}
                     activeDot={{ r: 6 }}
                   />
                   <Line 
@@ -755,7 +754,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     stroke="#f43f5e" 
                     strokeWidth={2.5}
                     strokeDasharray="4 4"
-                    dot={{ r: 4, fill: '#f43f5e', strokeWidth: 1.5, stroke: '#1e1b4b' }}
+                    dot={{ r: 4, fill: '#f43f5e', strokeWidth: 1.5, stroke: '#ffffff' }}
                     activeDot={{ r: 6 }}
                   />
                   <Line 
@@ -763,9 +762,9 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     type="monotone" 
                     dataKey={chartUnit === 'millions' ? 'escalatedCostM' : 'escalatedCost'} 
                     name="Escalated Estimated Outlay" 
-                    stroke="#34d399" 
+                    stroke="#10b981" 
                     strokeWidth={3.5}
-                    dot={{ r: 5, fill: '#34d399', strokeWidth: 2, stroke: '#064e3b' }}
+                    dot={{ r: 5, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }}
                     activeDot={{ r: 7 }}
                   />
                   <Line 
@@ -773,23 +772,23 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     type="monotone" 
                     dataKey={chartUnit === 'millions' ? 'cumulativeEscalatedM' : 'cumulativeEscalated'} 
                     name="Cumulative Outlay (Right Axis)" 
-                    stroke="#c084fc" 
+                    stroke="#a855f7" 
                     strokeWidth={2}
                     strokeDasharray="2 2"
-                    dot={{ r: 3, fill: '#c084fc' }}
+                    dot={{ r: 3, fill: '#a855f7' }}
                   />
                 </LineChart>
               ) : (
                 <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#312e81" opacity={0.35} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.6} />
                   <XAxis 
                     dataKey="periodLabel" 
                     stroke="#94a3b8" 
-                    tick={{ fill: '#cbd5e1', fontSize: 11 }} 
+                    tick={{ fill: '#64748b', fontSize: 11 }} 
                   />
                   <YAxis 
                     stroke="#94a3b8" 
-                    tick={{ fill: '#cbd5e1', fontSize: 10 }}
+                    tick={{ fill: '#64748b', fontSize: 10 }}
                     tickFormatter={(val) => chartUnit === 'millions' ? `${val.toFixed(1)}M` : `${(val / 1e6).toFixed(0)}M`}
                   />
                   <RechartsTooltip content={<CustomForecastTooltip chartUnit={chartUnit} formatBr={formatBr} />} />
@@ -799,8 +798,8 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     dataKey={chartUnit === 'millions' ? 'baseCostM' : 'baseCost'} 
                     name="Base Planned Work Value" 
                     fill="#6366f1" 
-                    stroke="#818cf8"
-                    fillOpacity={0.4}
+                    stroke="#4f46e5"
+                    fillOpacity={0.3}
                     stackId="1"
                   />
                   <Area 
@@ -808,17 +807,17 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     dataKey={chartUnit === 'millions' ? 'paAdderM' : 'paAdder'} 
                     name="Price Escalation Adder" 
                     fill="#f43f5e" 
-                    stroke="#fb7185"
-                    fillOpacity={0.4}
+                    stroke="#e11d48"
+                    fillOpacity={0.3}
                     stackId="1"
                   />
                   <Line 
                     type="monotone" 
                     dataKey={chartUnit === 'millions' ? 'escalatedCostM' : 'escalatedCost'} 
                     name="Total Escalated Outlay" 
-                    stroke="#34d399" 
+                    stroke="#10b981" 
                     strokeWidth={3}
-                    dot={{ r: 4, fill: '#34d399' }}
+                    dot={{ r: 4, fill: '#10b981' }}
                   />
                 </ComposedChart>
               )}
@@ -829,22 +828,22 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
 
       {/* Expandable BOQ Division Work Quantities Breakdown Panel */}
       {showDivisionBreakdown && (
-        <div className="p-4 bg-slate-950/90 rounded-2xl border border-indigo-500/40 space-y-3 animate-fadeIn">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-800/60 pb-2.5">
+        <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3 animate-fadeIn">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700/60 pb-2.5">
             <div className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-indigo-400" />
-              <h4 className="text-xs font-black uppercase text-white tracking-wide">
+              <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <h4 className="text-xs font-black uppercase text-slate-900 dark:text-white tracking-wide">
                 Division Work Quantities & Financial Status (Series 1000 - 11000)
               </h4>
             </div>
-            <span className="text-[10px] font-mono text-slate-400">
-              Unexecuted BOQ balance feeding into multi-year forecast: <strong className="text-amber-400">{formatBr(remainingBalance)}</strong>
+            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+              Unexecuted BOQ balance feeding into multi-year forecast: <strong className="text-amber-600 dark:text-amber-400">{formatBr(remainingBalance)}</strong>
             </span>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-800">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-slate-900 text-[10px] uppercase font-mono font-bold text-indigo-300 border-b border-slate-800">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700/60">
+            <table className="w-full text-xs text-left bg-white dark:bg-slate-800">
+              <thead className="bg-slate-100/70 dark:bg-slate-850 text-[10px] uppercase font-mono font-bold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th className="p-2.5">Series Code</th>
                   <th className="p-2.5">Division Work Description</th>
@@ -854,41 +853,41 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                   <th className="p-2.5 text-right">Remaining Unexecuted (ETB)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-850 font-medium text-slate-200">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 font-medium text-slate-700 dark:text-slate-200">
                 {seriesList.map((s, sIdx) => {
                   const rem = Math.max(0, (s.contractAmt || 0) - (s.execAmt || 0));
                   const prog = s.progress || (s.contractAmt > 0 ? (s.execAmt / s.contractAmt) * 100 : 0);
                   const isFullyDone = prog >= 99.9;
 
                   return (
-                    <tr key={`series-breakdown-${s.code || 'series'}-${sIdx}`} className="hover:bg-indigo-950/20 transition">
-                      <td className="p-2.5 font-mono font-bold text-indigo-300">{s.code}</td>
-                      <td className="p-2.5 font-semibold text-white">{s.desc}</td>
-                      <td className="p-2.5 text-right font-mono text-slate-300">{formatBr(s.contractAmt)}</td>
-                      <td className="p-2.5 text-right font-mono text-emerald-400">{formatBr(s.execAmt)}</td>
+                    <tr key={`series-breakdown-${s.code || 'series'}-${sIdx}`} className="hover:bg-slate-50 dark:hover:bg-slate-750 transition">
+                      <td className="p-2.5 font-mono font-bold text-indigo-600 dark:text-indigo-400">{s.code}</td>
+                      <td className="p-2.5 font-semibold text-slate-800 dark:text-white">{s.desc}</td>
+                      <td className="p-2.5 text-right font-mono text-slate-600 dark:text-slate-300">{formatBr(s.contractAmt)}</td>
+                      <td className="p-2.5 text-right font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{formatBr(s.execAmt)}</td>
                       <td className="p-2.5 text-center font-mono font-bold">
                         <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                           isFullyDone 
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
-                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40' 
+                            : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40'
                         }`}>
                           {prog.toFixed(1)}%
                         </span>
                       </td>
-                      <td className="p-2.5 text-right font-mono font-bold text-amber-300">
+                      <td className="p-2.5 text-right font-mono font-bold text-amber-600 dark:text-amber-400">
                         {formatBr(rem)}
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
-              <tfoot className="bg-slate-900 font-bold text-xs border-t-2 border-indigo-800">
+              <tfoot className="bg-slate-100 dark:bg-slate-850 font-bold text-xs border-t-2 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white">
                 <tr>
-                  <td className="p-2.5 uppercase text-white" colSpan={2}>Total BOQ Division Quantities</td>
-                  <td className="p-2.5 text-right font-mono text-slate-200">{formatBr(totalSeriesContract)}</td>
-                  <td className="p-2.5 text-right font-mono text-emerald-400">{formatBr(totalSeriesExec)}</td>
-                  <td className="p-2.5 text-center font-mono text-blue-300">{executedPct.toFixed(1)}%</td>
-                  <td className="p-2.5 text-right font-mono text-amber-300 font-black">{formatBr(remainingBalance)}</td>
+                  <td className="p-2.5 uppercase" colSpan={2}>Total BOQ Division Quantities</td>
+                  <td className="p-2.5 text-right font-mono">{formatBr(totalSeriesContract)}</td>
+                  <td className="p-2.5 text-right font-mono text-emerald-600 dark:text-emerald-400">{formatBr(totalSeriesExec)}</td>
+                  <td className="p-2.5 text-center font-mono text-indigo-600 dark:text-indigo-400">{executedPct.toFixed(1)}%</td>
+                  <td className="p-2.5 text-right font-mono text-amber-600 dark:text-amber-400 font-black">{formatBr(remainingBalance)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -897,54 +896,54 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
       )}
 
       {/* Interactive Scenario Simulation & Filter Controls Toolbar */}
-      <div className="bg-slate-950/80 p-3 sm:p-4 rounded-xl border border-indigo-500/30 space-y-3">
+      <div className="bg-slate-50 dark:bg-slate-900/50 p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Sliders className="w-4 h-4 text-indigo-400" />
-            <span className="text-xs font-black uppercase text-white tracking-wide">
+            <Sliders className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <span className="text-xs font-black uppercase text-slate-900 dark:text-white tracking-wide">
               Interactive Sensitivity & Scenario Parameters
             </span>
           </div>
 
           {/* Scenario Presets */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] text-slate-400 uppercase font-bold mr-1">Presets:</span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold mr-1">Presets:</span>
             <button
               onClick={() => {
                 setBasePaFactor(Number(empiricalPn.toFixed(4)));
                 setAnnualInflation(0.05);
               }}
-              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/60 transition cursor-pointer"
+              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800 transition cursor-pointer"
             >
               Empirical (5.0%)
             </button>
             <button
               onClick={() => setAnnualInflation(0.03)}
-              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition cursor-pointer"
+              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
             >
               Low (3.0%)
             </button>
             <button
               onClick={() => setAnnualInflation(0.08)}
-              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-800/60 transition cursor-pointer"
+              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 transition cursor-pointer"
             >
               High (8.0%)
             </button>
             <button
               onClick={() => setAnnualInflation(0.12)}
-              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-rose-300 border border-rose-800/60 transition cursor-pointer"
+              className="px-2 py-1 rounded-lg text-[10px] font-bold bg-white hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 transition cursor-pointer"
             >
               Stress (12.0%)
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-indigo-900/60">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-200 dark:border-slate-700/60">
           {/* Parameter 1: Base Pn Factor */}
-          <div className="flex items-center justify-between bg-indigo-950/40 px-3 py-2 rounded-xl border border-indigo-800/60">
+          <div className="flex items-center justify-between bg-white dark:bg-slate-800/80 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
             <div>
-              <span className="text-[10px] text-indigo-300 uppercase font-bold block">Base Factor ($P_n$)</span>
-              <span className="text-[9px] text-slate-400">Current certified baseline</span>
+              <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-bold block">Base Factor ($P_n$)</span>
+              <span className="text-[9px] text-slate-500 dark:text-slate-400">Current certified baseline</span>
             </div>
             <div className="flex items-center gap-1">
               <input
@@ -954,11 +953,11 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                 step="0.005"
                 value={basePaFactor}
                 onChange={(e) => setBasePaFactor(Math.max(1.0, parseFloat(e.target.value) || 1.0))}
-                className="w-16 bg-slate-900 text-emerald-400 text-center font-mono font-bold text-xs px-2 py-1 rounded-lg border border-indigo-600 outline-none"
+                className="w-16 bg-slate-50 dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 text-center font-mono font-bold text-xs px-2 py-1 rounded-lg border border-slate-300 dark:border-indigo-600 outline-none"
               />
               <button
                 onClick={() => setBasePaFactor(Number(empiricalPn.toFixed(4)))}
-                className="p-1 hover:bg-indigo-800/50 text-indigo-300 rounded cursor-pointer transition"
+                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded cursor-pointer transition"
                 title="Reset to empirical factor from IPC tracker"
               >
                 <RefreshCw className="w-3 h-3" />
@@ -967,10 +966,10 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
           </div>
 
           {/* Parameter 2: Annual Compounding Inflation */}
-          <div className="flex items-center justify-between bg-indigo-950/40 px-3 py-2 rounded-xl border border-indigo-800/60">
+          <div className="flex items-center justify-between bg-white dark:bg-slate-800/80 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
             <div>
-              <span className="text-[10px] text-indigo-300 uppercase font-bold block">Annual Inflation Rate</span>
-              <span className="text-[9px] text-slate-400">Compounding escalation p.a.</span>
+              <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-bold block">Annual Inflation Rate</span>
+              <span className="text-[9px] text-slate-500 dark:text-slate-400">Compounding escalation p.a.</span>
             </div>
             <input
               type="number"
@@ -979,21 +978,21 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
               step="0.005"
               value={annualInflation}
               onChange={(e) => setAnnualInflation(Math.max(0, parseFloat(e.target.value) || 0))}
-              className="w-18 bg-slate-900 text-amber-300 text-center font-mono font-bold text-xs px-2 py-1 rounded-lg border border-indigo-600 outline-none"
+              className="w-18 bg-slate-50 dark:bg-slate-900 text-amber-600 dark:text-amber-400 text-center font-mono font-bold text-xs px-2 py-1 rounded-lg border border-slate-300 dark:border-indigo-600 outline-none"
             />
           </div>
 
           {/* Parameter 3: Scope View Horizon (Future Only vs Full Lifecycle) */}
-          <div className="flex items-center justify-between bg-indigo-950/40 px-3 py-2 rounded-xl border border-indigo-800/60">
+          <div className="flex items-center justify-between bg-white dark:bg-slate-800/80 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
             <div>
-              <span className="text-[10px] text-indigo-300 uppercase font-bold block">Forecast Horizon</span>
-              <span className="text-[9px] text-slate-400">Scope period display</span>
+              <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-bold block">Forecast Horizon</span>
+              <span className="text-[9px] text-slate-500 dark:text-slate-400">Scope period display</span>
             </div>
-            <div className="flex items-center bg-slate-900 rounded-lg p-0.5 border border-indigo-700/60">
+            <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700">
               <button
                 onClick={() => setScopeView('future')}
                 className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
-                  scopeView === 'future' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  scopeView === 'future' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Future Only
@@ -1001,7 +1000,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
               <button
                 onClick={() => setScopeView('all')}
                 className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
-                  scopeView === 'all' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  scopeView === 'all' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Full Lifecycle
@@ -1010,16 +1009,16 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
           </div>
 
           {/* Parameter 4: Calendar System Toggle (EFY vs G.C.) */}
-          <div className="flex items-center justify-between bg-indigo-950/40 px-3 py-2 rounded-xl border border-indigo-800/60">
+          <div className="flex items-center justify-between bg-white dark:bg-slate-800/80 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
             <div>
-              <span className="text-[10px] text-indigo-300 uppercase font-bold block">Calendar System</span>
-              <span className="text-[9px] text-slate-400">Reporting year format</span>
+              <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-bold block">Calendar System</span>
+              <span className="text-[9px] text-slate-500 dark:text-slate-400">Reporting year format</span>
             </div>
-            <div className="flex items-center bg-slate-900 rounded-lg p-0.5 border border-indigo-700/60">
+            <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700">
               <button
                 onClick={() => setCalendarView('EFY')}
                 className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
-                  calendarView === 'EFY' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  calendarView === 'EFY' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 EFY
@@ -1027,7 +1026,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
               <button
                 onClick={() => setCalendarView('G.C.')}
                 className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
-                  calendarView === 'G.C.' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  calendarView === 'G.C.' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 G.C.
@@ -1038,9 +1037,9 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
       </div>
 
       {/* Single Comprehensive Year-by-Year Table with Interactive Header Tooltips */}
-      <div className="overflow-x-auto rounded-2xl border border-indigo-900 bg-slate-950/90 shadow-xl">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 shadow-xs">
         <table className="w-full text-xs text-left border-collapse">
-          <thead className="bg-slate-900 text-[10px] uppercase font-mono font-bold text-indigo-300 border-b border-indigo-800">
+          <thead className="bg-slate-50 dark:bg-slate-900/80 text-[10px] uppercase font-mono font-bold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
             <tr>
               {/* Header 1: Operating Period */}
               <th className="p-3">
@@ -1144,7 +1143,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-900 font-medium text-slate-200">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 font-medium text-slate-700 dark:text-slate-200">
             {activeProjections.map((row, rIdx) => {
               const isPast = row.isPast;
               const isCurrent = row.isCurrent;
@@ -1152,32 +1151,32 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
 
               // Visual conditional styling
               const rowClass = isPast 
-                ? 'bg-slate-900/50 text-slate-400 border-l-4 border-slate-700' 
+                ? 'bg-slate-50/70 dark:bg-slate-900/40 text-slate-500 dark:text-slate-400 border-l-4 border-slate-400' 
                 : isCurrent 
-                ? 'bg-amber-500/15 dark:bg-amber-950/35 border-l-4 border-amber-400 font-bold' 
+                ? 'bg-amber-50/80 dark:bg-amber-950/25 border-l-4 border-amber-500 font-bold text-slate-900 dark:text-slate-100' 
                 : isFinish
-                ? 'bg-emerald-500/10 dark:bg-emerald-950/20 border-l-4 border-emerald-400 font-semibold'
-                : 'bg-indigo-950/20 hover:bg-indigo-950/40 border-l-4 border-indigo-500/40 transition';
+                ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-l-4 border-emerald-500 font-semibold text-slate-900 dark:text-slate-100'
+                : 'hover:bg-slate-50/80 dark:hover:bg-slate-750/50 border-l-4 border-indigo-400 transition text-slate-800 dark:text-slate-200';
 
               return (
                 <tr key={`fiscal-pred-${row.isPast ? 'past' : 'fut'}-${row.year}-${rIdx}`} className={rowClass}>
                   {/* 1. Operating Period */}
-                  <td className="p-3 font-bold text-white">
+                  <td className="p-3 font-bold text-slate-900 dark:text-white">
                     <div className="flex items-center gap-2">
                       <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
                         isPast 
-                          ? 'bg-slate-500' 
+                          ? 'bg-slate-400' 
                           : isCurrent 
-                          ? 'bg-amber-400 animate-pulse' 
+                          ? 'bg-amber-500 animate-pulse' 
                           : isFinish 
-                          ? 'bg-emerald-400' 
-                          : 'bg-indigo-400'
+                          ? 'bg-emerald-500' 
+                          : 'bg-indigo-500'
                       }`} />
                       <div>
-                        <span className="block text-xs font-bold text-white">
+                        <span className="block text-xs font-bold text-slate-900 dark:text-white">
                           {calendarView === 'EFY' ? row.efy : `${row.year} G.C.`}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-mono font-normal">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono font-normal">
                           {calendarView === 'EFY' ? row.periodLabel : row.efy}
                         </span>
                       </div>
@@ -1187,20 +1186,20 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                   {/* 2. Status / Lifecycle Stage */}
                   <td className="p-3 text-center">
                     {isPast ? (
-                      <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
+                      <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                         Historical Actual
                       </span>
                     ) : isCurrent ? (
-                      <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-amber-500/30 text-amber-300 border border-amber-500/50 font-bold flex items-center justify-center gap-1 mx-auto w-fit">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                      <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700 font-bold flex items-center justify-center gap-1 mx-auto w-fit">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
                         Current Operating FY
                       </span>
                     ) : isFinish ? (
-                      <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
+                      <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 font-bold">
                         Handover / Taking-Over
                       </span>
                     ) : (
-                      <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                         Future Forecast
                       </span>
                     )}
@@ -1210,19 +1209,19 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                   <td className="p-3 text-center font-mono">
                     <div className="space-y-1">
                       <div className="flex items-center justify-center gap-1.5">
-                        <span className="text-amber-300 font-bold text-xs">
+                        <span className="text-amber-700 dark:text-amber-400 font-bold text-xs">
                           {row.sharePct.toFixed(1)}%
                         </span>
-                        <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-700/50" title={`June-to-July Cumulative Plan increment: ${row.startRefLabel} (${row.startPlanVal.toFixed(1)}%) -> ${row.endRefLabel} (${row.endPlanVal.toFixed(1)}%)`}>
+                        <span className="text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-700/50" title={`June-to-July Cumulative Plan increment: ${row.startRefLabel} (${row.startPlanVal.toFixed(1)}%) -> ${row.endRefLabel} (${row.endPlanVal.toFixed(1)}%)`}>
                           +{row.fyPlanIncrement.toFixed(1)}% Plan
                         </span>
                       </div>
-                      <span className="text-[9px] text-slate-400 block font-sans">
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block font-sans">
                         {row.startRefLabel} ({row.startPlanVal.toFixed(0)}%) &rarr; {row.endRefLabel} ({row.endPlanVal.toFixed(0)}%)
                       </span>
-                      <div className="w-20 bg-slate-800 rounded-full h-1 mx-auto overflow-hidden">
+                      <div className="w-20 bg-slate-200 dark:bg-slate-700 rounded-full h-1 mx-auto overflow-hidden">
                         <div 
-                          className={`h-full rounded-full ${isCurrent ? 'bg-amber-400' : isFinish ? 'bg-emerald-400' : 'bg-indigo-400'}`}
+                          className={`h-full rounded-full ${isCurrent ? 'bg-amber-500' : isFinish ? 'bg-emerald-500' : 'bg-indigo-500'}`}
                           style={{ width: `${Math.min(100, Math.max(0, row.sharePct))}%` }}
                         />
                       </div>
@@ -1230,34 +1229,34 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                   </td>
 
                   {/* 4. Base Planned Work Value */}
-                  <td className="p-3 text-right font-mono text-slate-300 font-medium">
+                  <td className="p-3 text-right font-mono text-slate-700 dark:text-slate-300 font-medium">
                     {formatBr(row.baseCost)}
                   </td>
 
                   {/* 5. Escalation Factor (Pn) */}
                   <td className="p-3 text-center font-mono font-bold">
-                    <span className="text-indigo-300 bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-800/40">
+                    <span className="text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-750 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600">
                       {row.pnFactor.toFixed(4)}
                     </span>
                   </td>
 
                   {/* 6. Price Escalation Adder */}
-                  <td className="p-3 text-right font-mono font-semibold text-rose-300">
+                  <td className="p-3 text-right font-mono font-semibold text-rose-600 dark:text-rose-400">
                     +{formatBr(row.paAdder)}
                   </td>
 
                   {/* 7. Escalated Estimated Outlay */}
-                  <td className="p-3 text-right font-mono font-black text-emerald-400 text-xs sm:text-sm">
+                  <td className="p-3 text-right font-mono font-black text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm">
                     {formatBr(row.escalatedCost)}
                   </td>
 
                   {/* 8. Cumulative Escalated Outlay */}
-                  <td className="p-3 text-right font-mono font-bold text-blue-300">
+                  <td className="p-3 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">
                     {formatBr(row.cumulativeEscalated)}
                   </td>
 
                   {/* 9. Remaining Balance Liability */}
-                  <td className="p-3 text-right font-mono font-semibold text-slate-400">
+                  <td className="p-3 text-right font-mono font-semibold text-slate-500 dark:text-slate-400">
                     {formatBr(row.balanceRemaining)}
                   </td>
                 </tr>
@@ -1266,20 +1265,20 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
           </tbody>
 
           {/* Summary Footer */}
-          <tfoot className="bg-slate-900 font-black text-xs border-t-2 border-indigo-700">
+          <tfoot className="bg-slate-100 dark:bg-slate-850 font-black text-xs border-t-2 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white">
             <tr>
-              <td className="p-3 text-white uppercase" colSpan={2}>
+              <td className="p-3 uppercase" colSpan={2}>
                 Total Forecast to Project Completion
               </td>
-              <td className="p-3 text-center font-mono text-amber-300">100.0%</td>
-              <td className="p-3 text-right font-mono text-slate-200">{formatBr(totalBaseForecast)}</td>
-              <td className="p-3 text-center font-mono text-indigo-300">
+              <td className="p-3 text-center font-mono text-amber-700 dark:text-amber-400">100.0%</td>
+              <td className="p-3 text-right font-mono text-slate-800 dark:text-slate-200">{formatBr(totalBaseForecast)}</td>
+              <td className="p-3 text-center font-mono text-indigo-700 dark:text-indigo-300">
                 Avg {(futureProjections.reduce((a, b) => a + b.pnFactor, 0) / futureProjections.length).toFixed(4)}
               </td>
-              <td className="p-3 text-right font-mono text-rose-300">+{formatBr(totalFuturePaAdder)}</td>
-              <td className="p-3 text-right font-mono text-emerald-300 text-sm">{formatBr(totalProjectedEscalated)}</td>
-              <td className="p-3 text-right font-mono text-blue-400 text-sm">{formatBr(totalProjectedEscalated)}</td>
-              <td className="p-3 text-right font-mono text-emerald-400">Br. 0.00</td>
+              <td className="p-3 text-right font-mono text-rose-600 dark:text-rose-400">+{formatBr(totalFuturePaAdder)}</td>
+              <td className="p-3 text-right font-mono text-emerald-600 dark:text-emerald-400 text-sm">{formatBr(totalProjectedEscalated)}</td>
+              <td className="p-3 text-right font-mono text-indigo-600 dark:text-indigo-400 text-sm">{formatBr(totalProjectedEscalated)}</td>
+              <td className="p-3 text-right font-mono text-emerald-600 dark:text-emerald-400">Br. 0.00</td>
             </tr>
           </tfoot>
         </table>
@@ -1288,33 +1287,33 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
       {/* Statutory Compliance & FIDIC Sub-Clause 13.8 Audit Governance Card */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
         {/* Methodological Guidance */}
-        <div className="p-3.5 bg-indigo-950/60 rounded-xl border border-indigo-800/60 space-y-1.5">
-          <div className="font-bold flex items-center gap-1.5 text-white">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="p-3.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-1.5">
+          <div className="font-bold flex items-center gap-1.5 text-slate-900 dark:text-white">
+            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
             <span>FIDIC Sub-Clause 13.8 & Monthly S-Curve Methodology:</span>
           </div>
-          <p className="text-[11px] leading-relaxed text-indigo-200/80">
+          <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
             Each fiscal year plan is tied directly to the Monthly Cumulative S-Curve plan from June to July (&Delta;Plan = Plan_end - Plan_start), allocating the remaining BOQ balance ({formatBr(remainingBalance)}). Compounding price escalation follows Pn = P0 &times; (1 + r)^t, where P0 = {basePaFactor.toFixed(4)} is empirical historical inflation from certified IPCs and r = {(annualInflation * 100).toFixed(1)}% p.a.
           </p>
         </div>
 
         {/* Statutory PPA 20% Variance Guardrail */}
-        <div className="p-3.5 bg-indigo-950/60 rounded-xl border border-indigo-800/60 space-y-1.5">
-          <div className="font-bold flex items-center justify-between text-white">
+        <div className="p-3.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-1.5">
+          <div className="font-bold flex items-center justify-between text-slate-900 dark:text-white">
             <div className="flex items-center gap-1.5">
-              <Scale className="w-4 h-4 text-amber-400 shrink-0" />
+              <Scale className="w-4 h-4 text-amber-500 shrink-0" />
               <span>Ethiopian PPA 20% Statutory Cap Check:</span>
             </div>
             <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full ${
               isPpaCompliant 
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
-                : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40' 
+                : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40'
             }`}>
               {isPpaCompliant ? 'Compliant' : 'Warning'}
             </span>
           </div>
-          <p className="text-[11px] leading-relaxed text-indigo-200/80">
-            Total lifetime Price Adjustment (Certified to-date {formatBr(totalPa)} + Projected future {formatBr(totalFuturePaAdder)}) equals <strong className="text-white font-mono">{formatBr(totalLifetimePa)}</strong>, representing <strong className={isPpaCompliant ? 'text-emerald-300 font-mono' : 'text-rose-400 font-mono'}>{ppaThresholdRatio.toFixed(2)}%</strong> of Accepted Contract Amount ({formatBr(BAC)}).
+          <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+            Total lifetime Price Adjustment (Certified to-date {formatBr(totalPa)} + Projected future {formatBr(totalFuturePaAdder)}) equals <strong className="text-slate-900 dark:text-white font-mono">{formatBr(totalLifetimePa)}</strong>, representing <strong className={isPpaCompliant ? 'text-emerald-600 dark:text-emerald-400 font-mono' : 'text-rose-600 dark:text-rose-400 font-mono'}>{ppaThresholdRatio.toFixed(2)}%</strong> of Accepted Contract Amount ({formatBr(BAC)}).
           </p>
         </div>
       </div>
