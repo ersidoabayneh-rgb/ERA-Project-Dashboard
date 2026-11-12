@@ -99,7 +99,7 @@ function AccountingInput({
         setLocalVal(value === 0 ? '' : value.toString());
       }}
       onBlur={handleBlur}
-      className={`w-full bg-transparent text-right border-0 focus:ring-1 ${focusColor} focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-semibold px-2 text-slate-800 dark:text-zinc-100 disabled:cursor-not-allowed ${className}`}
+      className={`w-full bg-transparent text-right border-0 focus:ring-1 ${focusColor} focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-semibold px-1 py-0.5 text-slate-800 dark:text-zinc-100 disabled:cursor-not-allowed ${className}`}
     />
   );
 }
@@ -128,7 +128,7 @@ function AutoWrapTextInput({
   React.useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.max(28, textareaRef.current.scrollHeight)}px`;
+      textareaRef.current.style.height = `${Math.max(22, textareaRef.current.scrollHeight)}px`;
     }
   }, [value]);
 
@@ -136,7 +136,7 @@ function AutoWrapTextInput({
     return (
       <div 
         title={title || value}
-        className={`w-full whitespace-normal break-words overflow-wrap-break-word py-1 px-1.5 leading-snug ${className}`}
+        className={`w-full whitespace-normal break-words overflow-wrap-break-word py-0.5 px-1 leading-tight ${className}`}
       >
         {value || <span className="opacity-40 italic">{placeholder || '—'}</span>}
       </div>
@@ -154,9 +154,9 @@ function AutoWrapTextInput({
       onChange={(e) => {
         if (onChange) onChange(e.target.value);
         e.target.style.height = 'auto';
-        e.target.style.height = `${Math.max(28, e.target.scrollHeight)}px`;
+        e.target.style.height = `${Math.max(22, e.target.scrollHeight)}px`;
       }}
-      className={`w-full bg-transparent border-0 focus:ring-1 ${focusColor} focus:bg-white dark:focus:bg-slate-900 rounded px-1.5 py-1 resize-none whitespace-normal break-words overflow-wrap-break-word leading-snug outline-none ${className}`}
+      className={`w-full bg-transparent border-0 focus:ring-1 ${focusColor} focus:bg-white dark:focus:bg-slate-900 rounded px-1 py-0.5 resize-none whitespace-normal break-words overflow-wrap-break-word leading-tight outline-none ${className}`}
     />
   );
 }
@@ -1359,13 +1359,13 @@ export default function ResourceMobilizationView({
               <table className="w-full min-w-full text-xs text-left border-collapse">
                 <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
                   <tr className="text-slate-500 dark:text-slate-400 font-mono text-[10px] uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
-                    <th className="p-3 font-bold min-w-[240px] border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Material Description</th>
-                    <th className="p-3 w-40 min-w-[150px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Category</th>
-                    <th className="p-3 w-32 min-w-[120px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Scope</th>
-                    <th className="p-3 text-right w-32 min-w-[110px] bg-teal-500/5 text-teal-700 dark:text-teal-300 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Monthly Target</th>
+                    <th className="px-2 py-1.5 font-bold min-w-[170px] border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Material Description</th>
+                    <th className="px-2 py-1.5 w-28 min-w-[100px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Category</th>
+                    <th className="px-2 py-1.5 w-24 min-w-[80px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Scope</th>
+                    <th className="px-2 py-1.5 text-right w-24 min-w-[75px] bg-teal-500/5 text-teal-700 dark:text-teal-300 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Monthly Target</th>
                     
                     {/* Previous Month Total Column */}
-                    <th className="p-3 text-right w-32 min-w-[110px] bg-slate-200/50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">
+                    <th className="px-2 py-1.5 text-right w-24 min-w-[75px] bg-slate-200/50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">
                       <div className="flex flex-col items-end">
                         <span>Prev. Month</span>
                         <span className="text-[9px] lowercase text-slate-400 font-normal">
@@ -1375,7 +1375,7 @@ export default function ResourceMobilizationView({
                     </th>
 
                     {/* This Month Delivered Column */}
-                    <th className="p-3 text-right w-32 min-w-[110px] bg-teal-500/10 text-teal-800 dark:text-teal-200 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">
+                    <th className="px-2 py-1.5 text-right w-24 min-w-[75px] bg-teal-500/10 text-teal-800 dark:text-teal-200 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">
                       <div className="flex flex-col items-end">
                         <span>This Month</span>
                         <span className="text-[9px] lowercase text-teal-600 dark:text-teal-400 font-normal">+ delivered</span>
@@ -1383,7 +1383,7 @@ export default function ResourceMobilizationView({
                     </th>
 
                     {/* Total To Date Autocalculated Column */}
-                    <th className="p-3 text-right w-36 min-w-[130px] bg-indigo-500/10 text-indigo-900 dark:text-indigo-200 font-black border-r border-indigo-200 dark:border-indigo-900/60 whitespace-normal break-words">
+                    <th className="px-2 py-1.5 text-right w-28 min-w-[90px] bg-indigo-500/10 text-indigo-900 dark:text-indigo-200 font-black border-r border-indigo-200 dark:border-indigo-900/60 whitespace-normal break-words">
                       <div className="flex flex-col items-end">
                         <span className="flex items-center gap-1">
                           <Calculator className="w-3 h-3 text-indigo-500" />
@@ -1393,11 +1393,11 @@ export default function ResourceMobilizationView({
                       </div>
                     </th>
 
-                    <th className="p-3 text-center w-44 min-w-[150px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Target Completion</th>
-                    <th className="p-3 text-right w-28 min-w-[95px] text-blue-600 dark:text-blue-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Used</th>
-                    <th className="p-3 text-right w-28 min-w-[95px] text-emerald-600 dark:text-emerald-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">In Stock</th>
-                    <th className="p-3 text-right w-32 min-w-[110px] bg-amber-500/5 text-amber-700 dark:text-amber-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Remaining Bal.</th>
-                    {!isReadonly && <th className="p-3 text-center w-14 min-w-[50px] font-bold whitespace-normal break-words">Actions</th>}
+                    <th className="px-2 py-1.5 text-center w-28 min-w-[95px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Target Completion</th>
+                    <th className="px-2 py-1.5 text-right w-20 min-w-[65px] text-blue-600 dark:text-blue-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Used</th>
+                    <th className="px-2 py-1.5 text-right w-20 min-w-[65px] text-emerald-600 dark:text-emerald-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">In Stock</th>
+                    <th className="px-2 py-1.5 text-right w-24 min-w-[75px] bg-amber-500/5 text-amber-700 dark:text-amber-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Remaining Bal.</th>
+                    {!isReadonly && <th className="px-2 py-1.5 text-center w-8 min-w-[36px] font-bold whitespace-normal break-words">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-150 dark:divide-slate-800">
@@ -1633,12 +1633,12 @@ export default function ResourceMobilizationView({
               <table className="w-full min-w-full text-xs text-left border-collapse">
                 <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
                   <tr className="text-slate-500 dark:text-slate-400 font-mono text-[10px] uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
-                    <th className="p-3 font-bold min-w-[240px] border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Production Material / Station</th>
-                    <th className="p-3 w-36 min-w-[140px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Contract Scope</th>
-                    <th className="p-3 text-right w-32 min-w-[110px] bg-emerald-500/5 text-emerald-700 dark:text-emerald-300 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Monthly Target</th>
+                    <th className="px-2 py-1.5 font-bold min-w-[170px] border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Production Material / Station</th>
+                    <th className="px-2 py-1.5 w-24 min-w-[80px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Contract Scope</th>
+                    <th className="px-2 py-1.5 text-right w-24 min-w-[75px] bg-emerald-500/5 text-emerald-700 dark:text-emerald-300 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Monthly Target</th>
                     
                     {/* Previous Month Total Column */}
-                    <th className="p-3 text-right w-32 min-w-[110px] bg-slate-200/50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">
+                    <th className="px-2 py-1.5 text-right w-24 min-w-[75px] bg-slate-200/50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">
                       <div className="flex flex-col items-end">
                         <span>Prev. Month</span>
                         <span className="text-[9px] lowercase text-slate-400 font-normal">
@@ -1648,7 +1648,7 @@ export default function ResourceMobilizationView({
                     </th>
 
                     {/* This Month Produced Column */}
-                    <th className="p-3 text-right w-32 min-w-[110px] bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">
+                    <th className="px-2 py-1.5 text-right w-24 min-w-[75px] bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">
                       <div className="flex flex-col items-end">
                         <span>This Month</span>
                         <span className="text-[9px] lowercase text-emerald-600 dark:text-emerald-400 font-normal">+ produced</span>
@@ -1656,7 +1656,7 @@ export default function ResourceMobilizationView({
                     </th>
 
                     {/* Total To Date Autocalculated Column */}
-                    <th className="p-3 text-right w-36 min-w-[130px] bg-indigo-500/10 text-indigo-900 dark:text-indigo-200 font-black border-r border-indigo-200 dark:border-indigo-900/60 whitespace-normal break-words">
+                    <th className="px-2 py-1.5 text-right w-28 min-w-[90px] bg-indigo-500/10 text-indigo-900 dark:text-indigo-200 font-black border-r border-indigo-200 dark:border-indigo-900/60 whitespace-normal break-words">
                       <div className="flex flex-col items-end">
                         <span className="flex items-center gap-1">
                           <Calculator className="w-3 h-3 text-indigo-500" />
@@ -1666,11 +1666,11 @@ export default function ResourceMobilizationView({
                       </div>
                     </th>
 
-                    <th className="p-3 text-center w-44 min-w-[150px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Target Progress</th>
-                    <th className="p-3 text-right w-28 min-w-[95px] text-blue-600 dark:text-blue-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Used</th>
-                    <th className="p-3 text-right w-28 min-w-[95px] text-emerald-600 dark:text-emerald-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Available Stock</th>
-                    <th className="p-3 text-right w-32 min-w-[110px] bg-amber-500/5 text-amber-700 dark:text-amber-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Remaining Bal.</th>
-                    {!isReadonly && <th className="p-3 text-center w-14 min-w-[50px] font-bold whitespace-normal break-words">Actions</th>}
+                    <th className="px-2 py-1.5 text-center w-28 min-w-[95px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Target Progress</th>
+                    <th className="px-2 py-1.5 text-right w-20 min-w-[65px] text-blue-600 dark:text-blue-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Used</th>
+                    <th className="px-2 py-1.5 text-right w-20 min-w-[65px] text-emerald-600 dark:text-emerald-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Available Stock</th>
+                    <th className="px-2 py-1.5 text-right w-24 min-w-[75px] bg-amber-500/5 text-amber-700 dark:text-amber-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Remaining Bal.</th>
+                    {!isReadonly && <th className="px-2 py-1.5 text-center w-8 min-w-[36px] font-bold whitespace-normal break-words">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-150 dark:divide-slate-800">
@@ -1876,14 +1876,14 @@ export default function ResourceMobilizationView({
               <table className="w-full min-w-full text-xs text-left border-collapse">
                 <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
                   <tr className="text-slate-500 dark:text-slate-400 font-mono text-[10px] uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
-                    <th className="p-3 font-bold min-w-[240px] border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Resource / Machine Description</th>
-                    <th className="p-3 text-center w-28 min-w-[90px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Original Plan</th>
-                    <th className="p-3 text-center w-28 min-w-[90px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Revised Plan</th>
-                    <th className="p-3 text-center w-32 min-w-[100px] bg-blue-500/5 text-blue-700 dark:text-blue-300 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Available On Site</th>
-                    <th className="p-3 text-center w-28 min-w-[90px] bg-rose-500/5 text-rose-600 dark:text-rose-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Deficiency</th>
-                    <th className="p-3 text-center w-44 min-w-[140px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Readiness Gauge</th>
-                    <th className="p-3 font-bold min-w-[240px] border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Operational Status / Breakdown Details</th>
-                    {!isReadonly && <th className="p-3 text-center w-14 min-w-[50px] font-bold whitespace-normal break-words">Actions</th>}
+                    <th className="px-2 py-1.5 font-bold min-w-[170px] border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Resource / Machine Description</th>
+                    <th className="px-2 py-1.5 text-center w-16 min-w-[55px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Original Plan</th>
+                    <th className="px-2 py-1.5 text-center w-16 min-w-[55px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Revised Plan</th>
+                    <th className="px-2 py-1.5 text-center w-18 min-w-[65px] bg-blue-500/5 text-blue-700 dark:text-blue-300 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Available On Site</th>
+                    <th className="px-2 py-1.5 text-center w-14 min-w-[55px] bg-rose-500/5 text-rose-600 dark:text-rose-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Deficiency</th>
+                    <th className="px-2 py-1.5 text-center w-28 min-w-[90px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Readiness Gauge</th>
+                    <th className="px-2 py-1.5 font-bold min-w-[160px] border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Operational Status / Breakdown Details</th>
+                    {!isReadonly && <th className="px-2 py-1.5 text-center w-8 min-w-[36px] font-bold whitespace-normal break-words">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-150 dark:divide-slate-800">
@@ -1894,7 +1894,7 @@ export default function ResourceMobilizationView({
                       const readiness = plan > 0 ? Math.min(100, Math.round((item.available / plan) * 100)) : 100;
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-900/30 transition-colors">
-                          <td className="p-2.5 font-medium border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                          <td className="px-1.5 py-1 font-medium border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                             <AutoWrapTextInput
                               value={item.desc}
                               disabled={isReadonly}
@@ -1903,39 +1903,39 @@ export default function ResourceMobilizationView({
                               className="text-slate-800 dark:text-zinc-100 font-bold text-xs"
                             />
                           </td>
-                          <td className="p-2.5 text-center border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                          <td className="px-1.5 py-1 text-center border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                             <input
                               type="number"
                               value={item.originalPlan}
                               disabled={isReadonly}
                               onChange={(e) => handleResourceChange(item.id, 'originalPlan', parseInt(e.target.value) || 0)}
-                              className="w-16 bg-transparent text-center border-0 focus:ring-1 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-semibold text-slate-700 dark:text-slate-300"
+                              className="w-12 bg-transparent text-center border-0 focus:ring-1 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-semibold text-slate-700 dark:text-slate-300 px-0.5 py-0.5"
                             />
                           </td>
-                          <td className="p-2.5 text-center border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                          <td className="px-1.5 py-1 text-center border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                             <input
                               type="number"
                               value={item.revisedPlan}
                               disabled={isReadonly}
                               onChange={(e) => handleResourceChange(item.id, 'revisedPlan', parseInt(e.target.value) || 0)}
-                              className="w-16 bg-transparent text-center border-0 focus:ring-1 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-semibold text-slate-700 dark:text-slate-300"
+                              className="w-12 bg-transparent text-center border-0 focus:ring-1 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-semibold text-slate-700 dark:text-slate-300 px-0.5 py-0.5"
                             />
                           </td>
-                          <td className="p-2.5 text-center bg-blue-500/5 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                          <td className="px-1.5 py-1 text-center bg-blue-500/5 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                             <input
                               type="number"
                               value={item.available}
                               disabled={isReadonly}
                               onChange={(e) => handleResourceChange(item.id, 'available', parseInt(e.target.value) || 0)}
-                              className="w-16 bg-transparent text-center border-0 focus:ring-1 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-black text-blue-600 dark:text-blue-400"
+                              className="w-12 bg-transparent text-center border-0 focus:ring-1 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-black text-blue-600 dark:text-blue-400 px-0.5 py-0.5"
                             />
                           </td>
-                          <td className="p-2.5 text-center bg-rose-500/5 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                          <td className="px-1.5 py-1 text-center bg-rose-500/5 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                             <span className={`font-mono font-black ${item.deficiency > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                               {item.deficiency}
                             </span>
                           </td>
-                          <td className="p-2.5 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                          <td className="px-1.5 py-1 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                             <div className="w-full space-y-1">
                               <div className="flex items-center justify-between text-[10px]">
                                 <span className={`font-bold ${readiness === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>{readiness}%</span>
@@ -1949,7 +1949,7 @@ export default function ResourceMobilizationView({
                               </div>
                             </div>
                           </td>
-                          <td className="p-2.5 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                          <td className="px-1.5 py-1 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                             <AutoWrapTextInput
                               value={item.breakdown}
                               disabled={isReadonly}
@@ -1959,7 +1959,7 @@ export default function ResourceMobilizationView({
                             />
                           </td>
                           {!isReadonly && (
-                            <td className="p-2.5 text-center align-top whitespace-normal break-words">
+                            <td className="px-1.5 py-1 text-center align-top whitespace-normal break-words">
                               <button
                                 onClick={() => handleDeleteResourceRow(item.id)}
                                 title="Delete row"
@@ -2027,13 +2027,13 @@ export default function ResourceMobilizationView({
               <table className="w-full min-w-full text-xs text-left border-collapse">
                 <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 shadow-2xs">
                   <tr className="text-slate-500 dark:text-slate-400 font-mono text-[10px] uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
-                    <th className="p-3 font-bold min-w-[240px] border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Personnel Title / Designation</th>
-                    <th className="p-3 text-center w-28 min-w-[90px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Original Plan</th>
-                    <th className="p-3 text-center w-28 min-w-[90px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Revised Plan</th>
-                    <th className="p-3 text-center w-32 min-w-[100px] bg-indigo-500/5 text-indigo-700 dark:text-indigo-300 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Available</th>
-                    <th className="p-3 text-center w-28 min-w-[90px] bg-rose-500/5 text-rose-600 dark:text-rose-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Deficiency</th>
-                    <th className="p-3 font-bold min-w-[240px] border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Duty Station / Specific Task Assignment</th>
-                    {!isReadonly && <th className="p-3 text-center w-14 min-w-[50px] font-bold whitespace-normal break-words">Actions</th>}
+                    <th className="px-2 py-1.5 font-bold min-w-[170px] border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Personnel Title / Designation</th>
+                    <th className="px-2 py-1.5 text-center w-16 min-w-[55px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Original Plan</th>
+                    <th className="px-2 py-1.5 text-center w-16 min-w-[55px] font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Revised Plan</th>
+                    <th className="px-2 py-1.5 text-center w-18 min-w-[65px] bg-indigo-500/5 text-indigo-700 dark:text-indigo-300 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Available</th>
+                    <th className="px-2 py-1.5 text-center w-14 min-w-[55px] bg-rose-500/5 text-rose-600 dark:text-rose-400 font-bold border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Deficiency</th>
+                    <th className="px-2 py-1.5 font-bold min-w-[160px] border-r border-slate-200 dark:border-slate-700/80 whitespace-normal break-words">Duty Station / Specific Task Assignment</th>
+                    {!isReadonly && <th className="px-2 py-1.5 text-center w-8 min-w-[36px] font-bold whitespace-normal break-words">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-150 dark:divide-slate-800">
@@ -2041,7 +2041,7 @@ export default function ResourceMobilizationView({
                     .filter(item => item.desc.toLowerCase().includes(personnelSearch.toLowerCase()))
                     .map((item) => (
                       <tr key={item.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-900/30 transition-colors">
-                        <td className="p-2.5 font-medium border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                        <td className="px-1.5 py-1 font-medium border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                           <AutoWrapTextInput
                             value={item.desc}
                             disabled={isReadonly}
@@ -2050,39 +2050,39 @@ export default function ResourceMobilizationView({
                             className="text-slate-800 dark:text-zinc-100 font-bold text-xs"
                           />
                         </td>
-                        <td className="p-2.5 text-center border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                        <td className="px-1.5 py-1 text-center border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                           <input
                             type="number"
                             value={item.originalPlan}
                             disabled={isReadonly}
                             onChange={(e) => handleResourceChange(item.id, 'originalPlan', parseInt(e.target.value) || 0)}
-                            className="w-16 bg-transparent text-center border-0 focus:ring-1 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-semibold text-slate-700 dark:text-slate-300"
+                            className="w-12 bg-transparent text-center border-0 focus:ring-1 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-semibold text-slate-700 dark:text-slate-300 px-0.5 py-0.5"
                           />
                         </td>
-                        <td className="p-2.5 text-center border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                        <td className="px-1.5 py-1 text-center border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                           <input
                             type="number"
                             value={item.revisedPlan}
                             disabled={isReadonly}
                             onChange={(e) => handleResourceChange(item.id, 'revisedPlan', parseInt(e.target.value) || 0)}
-                            className="w-16 bg-transparent text-center border-0 focus:ring-1 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-semibold text-slate-700 dark:text-slate-300"
+                            className="w-12 bg-transparent text-center border-0 focus:ring-1 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-semibold text-slate-700 dark:text-slate-300 px-0.5 py-0.5"
                           />
                         </td>
-                        <td className="p-2.5 text-center bg-indigo-500/5 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                        <td className="px-1.5 py-1 text-center bg-indigo-500/5 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                           <input
                             type="number"
                             value={item.available}
                             disabled={isReadonly}
                             onChange={(e) => handleResourceChange(item.id, 'available', parseInt(e.target.value) || 0)}
-                            className="w-16 bg-transparent text-center border-0 focus:ring-1 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-black text-indigo-600 dark:text-indigo-400"
+                            className="w-12 bg-transparent text-center border-0 focus:ring-1 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-900 rounded font-mono font-black text-indigo-600 dark:text-indigo-400 px-0.5 py-0.5"
                           />
                         </td>
-                        <td className="p-2.5 text-center bg-rose-500/5 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                        <td className="px-1.5 py-1 text-center bg-rose-500/5 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                           <span className={`font-mono font-black ${item.deficiency > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                             {item.deficiency}
                           </span>
                         </td>
-                        <td className="p-2.5 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
+                        <td className="px-1.5 py-1 border-r border-slate-200 dark:border-slate-700/60 align-top whitespace-normal break-words">
                           <AutoWrapTextInput
                             value={item.breakdown}
                             disabled={isReadonly}
@@ -2092,7 +2092,7 @@ export default function ResourceMobilizationView({
                           />
                         </td>
                         {!isReadonly && (
-                          <td className="p-2.5 text-center align-top whitespace-normal break-words">
+                          <td className="px-1.5 py-1 text-center align-top whitespace-normal break-words">
                             <button
                               onClick={() => handleDeleteResourceRow(item.id)}
                               title="Delete row"
