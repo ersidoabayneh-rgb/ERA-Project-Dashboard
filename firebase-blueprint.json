@@ -29,6 +29,8 @@
         "variationClaimSettings": { "type": "object", "description": "Baseline settings and adjustments customization metrics" },
         "approvedClaimsCostSum": { "type": "number", "description": "Sum of all approved contractual claims cost compensation" },
         "contractAmountStatus": { "type": "string", "description": "Status of contract amount (Draft, Submitted, Validated)" },
+        "dailyActivities": { "type": "array", "description": "Chronological daily construction activities executed on site" },
+        "dailySiteLogs": { "type": "object", "description": "Per-date construction manager daily notes, labor deployment, equipment fleet, material tracker, and production logs keyed by YYYY-MM-DD" },
         "updatedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "name", "client"]

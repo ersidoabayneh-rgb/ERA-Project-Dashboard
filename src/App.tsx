@@ -497,7 +497,13 @@ export function getIntegratedProjectWithDrafts(
     if (d.snapshotData) {
       merged = {
         ...merged,
-        ...d.snapshotData
+        ...d.snapshotData,
+        ...(d.snapshotData.dailySiteLogs ? {
+          dailySiteLogs: {
+            ...(merged.dailySiteLogs || {}),
+            ...d.snapshotData.dailySiteLogs
+          }
+        } : {})
       };
     }
   });
@@ -1134,6 +1140,19 @@ export default function App() {
         const parsed = JSON.parse(saved);
         if (typeof parsed.fidic === 'number' && typeof parsed.projectMgmt === 'number' &&
             typeof parsed.evm === 'number' && typeof parsed.kpi === 'number' && typeof parsed.linear === 'number') {
+          if (parsed.labels) {
+            delete parsed.labels.materialApproval;
+            delete parsed.labels.workInspection;
+            if (parsed.labels.resourceMobilization && (parsed.labels.resourceMobilization.startsWith('9.') || parsed.labels.resourceMobilization.startsWith('8.'))) {
+              parsed.labels.resourceMobilization = '7. Resource Mobilization';
+            }
+          }
+          if (parsed.descriptions) {
+            delete parsed.descriptions.materialApproval;
+            delete parsed.descriptions.workInspection;
+          }
+          delete parsed.materialApproval;
+          delete parsed.workInspection;
           return parsed;
         }
       }
@@ -2248,8 +2267,22 @@ let isBatchSyncRunning = false;
         if (docSnap && docSnap.exists()) {
           const data = docSnap.data();
           if (data && data.contractorWeights) {
-            setContractorWeights(data.contractorWeights);
-            localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(data.contractorWeights));
+            const sanitized = { ...data.contractorWeights };
+            delete sanitized.materialApproval;
+            delete sanitized.workInspection;
+            if (sanitized.labels) {
+              delete sanitized.labels.materialApproval;
+              delete sanitized.labels.workInspection;
+              if (sanitized.labels.resourceMobilization && (sanitized.labels.resourceMobilization.startsWith('9.') || sanitized.labels.resourceMobilization.startsWith('8.'))) {
+                sanitized.labels.resourceMobilization = '7. Resource Mobilization';
+              }
+            }
+            if (sanitized.descriptions) {
+              delete sanitized.descriptions.materialApproval;
+              delete sanitized.descriptions.workInspection;
+            }
+            setContractorWeights(sanitized);
+            localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(sanitized));
           }
           if (data && data.consultantWeights) {
             setConsultantWeights(data.consultantWeights);
@@ -3181,10 +3214,12 @@ let isBatchSyncRunning = false;
 
     // 2. Check if user is assigned editing permission for this page by the Admin
     const isProjectInfoSection = sectionName.includes('Project Information') || sectionName.includes('Contract Specifications') || isAiChatUpdate;
-    if (!isProjectInfoSection && !canUserEditPage(currentUserObj, activeTab)) {
+    const isDailySyncUpdate = fields.dailyActivities !== undefined || fields.dailySiteLogs !== undefined;
+    const permissionTargetPage = isDailySyncUpdate ? 'dailyActivities' : activeTab;
+    if (!isProjectInfoSection && !canUserEditPage(currentUserObj, permissionTargetPage)) {
       alert(
         `🔒 PAGE EDITING ACCESS RESTRICTED\n\n` +
-        `Your System Administrator has not assigned you editing permission for page "${activeTab}".\n` +
+        `Your System Administrator has not assigned you editing permission for page "${permissionTargetPage}".\n` +
         `Please request your Administrator to assign editing access for this page.`
       );
       return;

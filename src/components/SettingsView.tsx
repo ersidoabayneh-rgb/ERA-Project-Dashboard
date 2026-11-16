@@ -62,10 +62,8 @@ const CONTRACTOR_CRITERIA_META: Array<{ key: string; defaultLabel: string; defau
   { key: 'evm', defaultLabel: '3. EVM Metrics (CPI & SPI)', defaultDesc: 'Cost Efficiency Index (CPI) & Schedule Performance (SPI)', defaultWeight: 15 },
   { key: 'kpi', defaultLabel: '4. KPIs & Quality Milestones', defaultDesc: 'Key milestone completions & critical risk mitigations', defaultWeight: 15 },
   { key: 'linear', defaultLabel: '5. Linear Layer Physical Progress', defaultDesc: 'Earthwork, Subgrade, Subbase, Basecourse, & Asphalt pavement layers', defaultWeight: 15 },
-  { key: 'rfi', defaultLabel: '6. Technical RFIs Performance', defaultDesc: 'RFI response, quality & resolution compliance ratio', defaultWeight: 10 },
-  { key: 'materialApproval', defaultLabel: '7. Material Approval Submittals', defaultDesc: 'Timeliness & specification compliance of material samples', defaultWeight: 10 },
-  { key: 'workInspection', defaultLabel: '8. Work Inspections (WIR)', defaultDesc: 'First-time pass rate and quality inspection submittals', defaultWeight: 5 },
-  { key: 'resourceMobilization', defaultLabel: '9. Resource Mobilization', defaultDesc: 'Equipment, machinery & key personnel site presence', defaultWeight: 5 },
+  { key: 'rfi', defaultLabel: '6. Technical RFIs, Material Approvals & WIR Performance', defaultDesc: 'RFI response, material submittal specification compliance & WIR pass rates', defaultWeight: 20 },
+  { key: 'resourceMobilization', defaultLabel: '7. Resource Mobilization', defaultDesc: 'Equipment, machinery & key personnel site presence', defaultWeight: 5 },
 ];
 
 const CONSULTANT_CRITERIA_META: Array<{ key: string; defaultLabel: string; defaultDesc: string; defaultWeight: number }> = [
@@ -241,13 +239,25 @@ export default function SettingsView({
   const handleSaveWeights = async () => {
     setIsSaving(true);
     try {
-      localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(tempContractorWeights));
+      const cleanedContractor = { ...tempContractorWeights };
+      delete (cleanedContractor as any).materialApproval;
+      delete (cleanedContractor as any).workInspection;
+      if (cleanedContractor.labels) {
+        delete (cleanedContractor.labels as any).materialApproval;
+        delete (cleanedContractor.labels as any).workInspection;
+      }
+      if (cleanedContractor.descriptions) {
+        delete (cleanedContractor.descriptions as any).materialApproval;
+        delete (cleanedContractor.descriptions as any).workInspection;
+      }
+
+      localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(cleanedContractor));
       localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(tempConsultantWeights));
 
-      await safeSyncScoringWeights(tempContractorWeights, tempConsultantWeights, currentUser?.username);
+      await safeSyncScoringWeights(cleanedContractor, tempConsultantWeights, currentUser?.username);
 
       if (onUpdateScoringWeights) {
-        await onUpdateScoringWeights(tempContractorWeights, tempConsultantWeights);
+        await onUpdateScoringWeights(cleanedContractor, tempConsultantWeights);
       }
 
       setSaveSuccessMessage('Scoring model weightages successfully updated and saved to configuration database!');
@@ -1067,12 +1077,10 @@ export default function SettingsView({
                   const evm = Number(w.evm) || 0;
                   const kpi = Number(w.kpi) || 0;
                   const linear = Number(w.linear) || 0;
-                  const rfi = Number(w.rfi ?? 10);
-                  const mat = Number(w.materialApproval ?? 10);
-                  const wir = Number(w.workInspection ?? 5);
+                  const rfi = Number(w.rfi ?? 20);
                   const mob = Number(w.resourceMobilization ?? 5);
                   const custom = (w.customCriteria || []).reduce((acc, c) => acc + (Number(c.weight) || 0), 0);
-                  return fidic + pm + evm + kpi + linear + rfi + mat + wir + mob + custom;
+                  return fidic + pm + evm + kpi + linear + rfi + mob + custom;
                 };
 
                 const currentSum = calcContractorSum(tempContractorWeights);
@@ -1087,9 +1095,7 @@ export default function SettingsView({
                   let evm = Math.round((tempContractorWeights.evm || 0) * factor);
                   let kpi = Math.round((tempContractorWeights.kpi || 0) * factor);
                   let linear = Math.round((tempContractorWeights.linear || 0) * factor);
-                  let rfi = Math.round((tempContractorWeights.rfi ?? 10) * factor);
-                  let materialApproval = Math.round((tempContractorWeights.materialApproval ?? 10) * factor);
-                  let workInspection = Math.round((tempContractorWeights.workInspection ?? 5) * factor);
+                  let rfi = Math.round((tempContractorWeights.rfi ?? 20) * factor);
                   let resourceMobilization = Math.round((tempContractorWeights.resourceMobilization ?? 5) * factor);
 
                   const customCriteria = (tempContractorWeights.customCriteria || []).map(c => ({
@@ -1098,11 +1104,11 @@ export default function SettingsView({
                   }));
 
                   const customSum = customCriteria.reduce((acc, c) => acc + c.weight, 0);
-                  const newTotal = fidic + projectMgmt + evm + kpi + linear + rfi + materialApproval + workInspection + resourceMobilization + customSum;
+                  const newTotal = fidic + projectMgmt + evm + kpi + linear + rfi + resourceMobilization + customSum;
                   const diff = 100 - newTotal;
                   if (diff !== 0) projectMgmt = Math.max(0, projectMgmt + diff);
 
-                  setTempContractorWeights({
+                  const updated: ContractorScoringWeights = {
                     ...tempContractorWeights,
                     fidic,
                     projectMgmt,
@@ -1110,11 +1116,20 @@ export default function SettingsView({
                     kpi,
                     linear,
                     rfi,
-                    materialApproval,
-                    workInspection,
                     resourceMobilization,
                     customCriteria
-                  });
+                  };
+                  delete (updated as any).materialApproval;
+                  delete (updated as any).workInspection;
+                  if (updated.labels) {
+                    delete (updated.labels as any).materialApproval;
+                    delete (updated.labels as any).workInspection;
+                  }
+                  if (updated.descriptions) {
+                    delete (updated.descriptions as any).materialApproval;
+                    delete (updated.descriptions as any).workInspection;
+                  }
+                  setTempContractorWeights(updated);
                 };
 
                 return (
@@ -1354,12 +1369,10 @@ export default function SettingsView({
                     const evm = Number(w.evm) || 0;
                     const kpi = Number(w.kpi) || 0;
                     const linear = Number(w.linear) || 0;
-                    const rfi = Number(w.rfi ?? 10);
-                    const mat = Number(w.materialApproval ?? 10);
-                    const wir = Number(w.workInspection ?? 5);
+                    const rfi = Number(w.rfi ?? 20);
                     const mob = Number(w.resourceMobilization ?? 5);
                     const custom = (w.customCriteria || []).reduce((acc, c) => acc + (Number(c.weight) || 0), 0);
-                    return fidic + pm + evm + kpi + linear + rfi + mat + wir + mob + custom;
+                    return fidic + pm + evm + kpi + linear + rfi + mob + custom;
                   };
 
                   const currentSum = calcContractorSum(tempContractorWeights);

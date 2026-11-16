@@ -23,6 +23,7 @@ import { jsPDF } from 'jspdf';
 import { drawStandardDocumentHeader, STRICT_1_INCH_MARGIN, drawDocumentWatermark, safeSplitText } from '../lib/pdfReportEngine';
 import { ConsultantSubmittalKpi, Project, SupervisionConsultantInfo } from '../types';
 import { formatPdfDate } from '../lib/dateUtils';
+import { isRfiRecord } from './SubmittalLogView';
 
 export interface SignatureRoleItem {
   key: string;
@@ -336,9 +337,9 @@ export default function SubmittalPrintModal({
         return matchSub || matchId;
       });
     } else if (scope === 'technical') {
-      pool = pool.filter(s => s.type !== 'RFI');
+      pool = pool.filter(s => !isRfiRecord(s));
     } else if (scope === 'rfi') {
-      pool = pool.filter(s => s.type === 'RFI');
+      pool = pool.filter(s => isRfiRecord(s));
     }
 
     // 2. Filter by Status
@@ -405,8 +406,8 @@ export default function SubmittalPrintModal({
   // Breakdown statistics for filtered records
   const stats = useMemo(() => {
     const total = filteredRecords.length;
-    const technical = filteredRecords.filter(s => s.type !== 'RFI').length;
-    const rfis = filteredRecords.filter(s => s.type === 'RFI').length;
+    const technical = filteredRecords.filter(s => !isRfiRecord(s)).length;
+    const rfis = filteredRecords.filter(s => isRfiRecord(s)).length;
     const closed = filteredRecords.filter(s => 
       s.status === 'Approved' || 
       s.status === 'Approved / Closed' || 
@@ -755,8 +756,9 @@ export default function SubmittalPrintModal({
 
       // Render items with robust bounding and zero overlap
       group.items.forEach((item, index) => {
+        const itemIsRfi = isRfiRecord(item);
         const subNoLines = safeSplitText(doc, item.submittalNo || item.id || '-', tableCols[0].width - 8, 7, true);
-        const catText = item.type === 'RFI' ? (item.discipline ? `RFI (${item.discipline})` : 'RFI') : (item.type || '-');
+        const catText = itemIsRfi ? (item.discipline ? `RFI (${item.discipline})` : 'RFI') : (item.type || '-');
         const catLines = safeSplitText(doc, catText, tableCols[1].width - 8, 6.5, false);
         const titleLines = safeSplitText(doc, item.title || '-', tableCols[2].width - 8, 7, true);
         
@@ -807,7 +809,7 @@ export default function SubmittalPrintModal({
         // Submittal / RFI #
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7);
-        doc.setTextColor(item.type === 'RFI' ? 147 : 15, item.type === 'RFI' ? 51 : 23, item.type === 'RFI' ? 234 : 42);
+        doc.setTextColor(itemIsRfi ? 147 : 15, itemIsRfi ? 51 : 23, itemIsRfi ? 234 : 42);
         subNoLines.forEach((line: string, li: number) => {
           doc.text(line, rx + 4, curY + 10 + (li * 8.5));
         });
@@ -1015,7 +1017,7 @@ export default function SubmittalPrintModal({
                     <div className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Technical Only</div>
                     <div className="text-xs font-black mt-0.5">Technical Submittals</div>
                     <div className="text-[11px] font-mono mt-1 text-blue-600 dark:text-blue-400 font-bold">
-                      {allSubmittals.filter(s => s.type !== 'RFI').length} submittals
+                      {allSubmittals.filter(s => !isRfiRecord(s)).length} submittals
                     </div>
                   </button>
 
@@ -1031,7 +1033,7 @@ export default function SubmittalPrintModal({
                     <div className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Inquiries Only</div>
                     <div className="text-xs font-black mt-0.5">RFIs & Clarifications</div>
                     <div className="text-[11px] font-mono mt-1 text-purple-600 dark:text-purple-400 font-bold">
-                      {allSubmittals.filter(s => s.type === 'RFI').length} RFIs
+                      {allSubmittals.filter(s => isRfiRecord(s)).length} RFIs
                     </div>
                   </button>
                 </div>
@@ -1716,7 +1718,7 @@ export default function SubmittalPrintModal({
                                 </td>
                                 <td className="p-2.5 text-slate-600 dark:text-slate-400">
                                   <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                    item.type === 'RFI'
+                                    isRfiRecord(item)
                                       ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300'
                                       : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
                                   }`}>

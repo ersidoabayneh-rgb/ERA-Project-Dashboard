@@ -19,6 +19,7 @@ import { calculateProjectEvm } from '../lib/evmCalculations';
 import { resolveCurrentMonthKey, isSameMonth } from '../lib/monthlySync';
 import { getProjectConsultantEvaluation } from './consultantEvaluationMatrix';
 import { calculateProgressKpiScores } from '../lib/kpiProgressCalculator';
+import { isRfiRecord, deduplicateSubmittals, isSubmittalApproved, isSubmittalRejected } from '../lib/submittalHelpers';
 
 export const MILLION = 1_000_000;
 
@@ -965,6 +966,78 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
   const totalOrigExec = te * 1.15;
   const pa = ((project.payment || []).find(x => x.item === 'Price Adjustment') || { amount: 0 }).amount;
 
+  // 4b. Live Telemetry for Linear Asphalt, Submittals (RFI/WIR/Materials), Daily Activities, and Defects
+  const linearAsphaltExecKm =
+    (project.linear?.asphalt || []).reduce((s, r) => s + (Number(r.exec) || 0), 0) +
+    (project.linearSpur?.asphalt || []).reduce((s, r) => s + (Number(r.exec) || 0), 0);
+  const linearAsphaltPlanKm =
+    (project.linearPlan?.asphalt?.plannedKm || 0) +
+    (project.linearPlanSpur?.asphalt?.plannedKm || 0);
+  const qtyAsphalt = (project.quantities || []).find(q => q.name.toLowerCase().includes('asphalt'));
+  let autoPp3Score: number | null = null;
+  if (linearAsphaltPlanKm > 0 && (linearAsphaltExecKm > 0 || (project.linearPlan?.asphalt?.plannedKm ?? 0) > 0)) {
+    autoPp3Score = Math.min(100, Math.max(0, (linearAsphaltExecKm / linearAsphaltPlanKm) * 100));
+  } else if (qtyAsphalt && qtyAsphalt.plan > 0 && (qtyAsphalt.exec > 0 || project.physicalProgress === 0)) {
+    autoPp3Score = Math.min(100, Math.max(0, (qtyAsphalt.exec / qtyAsphalt.plan) * 100));
+  }
+
+  const dedupSubmittals = deduplicateSubmittals(project.supervisionConsultant?.submittalKpis || []);
+  const rfiSubmittals = dedupSubmittals.filter(isRfiRecord);
+  const techSubmittals = dedupSubmittals.filter(s => !isRfiRecord(s));
+  const wirSubmittals = techSubmittals.filter(s => {
+    const t = String(s.type || '').toLowerCase();
+    return t.includes('wir') || t.includes('work inspection');
+  });
+  const materialSubmittals = techSubmittals.filter(s => String(s.type || '').toLowerCase().includes('material'));
+
+  const dailyActs = project.dailyActivities || [];
+  const dailyQcEvaluated = dailyActs.filter(d => Boolean(d.qcStatus && d.qcStatus.trim().length > 0));
+  const dailyQcPassed = dailyQcEvaluated.filter(d => {
+    const st = String(d.qcStatus || '').toLowerCase();
+    return st.includes('approved') || st.includes('passed') || st.includes('pass');
+  });
+
+  const wirPassedCount = wirSubmittals.filter(w => isSubmittalApproved(w.status)).length;
+  const totalQcSamples = wirSubmittals.length + dailyQcEvaluated.length;
+  const autoQl2bScore: number | null = totalQcSamples > 0
+    ? Math.min(100, Math.max(0, ((wirPassedCount + dailyQcPassed.length) / totalQcSamples) * 100))
+    : null;
+
+  const dlpList = project.dlpDefects || [];
+  const autoQl3aScore: number | null = dlpList.length > 0
+    ? Math.min(100, Math.max(0, (dlpList.filter(d => d.status === 'Closed' || d.status === 'Rectified').length / dlpList.length) * 100))
+    : null;
+
+  const autoQl4aScore: number | null = rfiSubmittals.length > 0
+    ? Math.min(100, Math.max(0, (rfiSubmittals.filter(r => !isSubmittalRejected(r.status) && !isSubmittalRejected(r.rfiStatus)).length / rfiSubmittals.length) * 100))
+    : null;
+
+  const autoQl4bScore: number | null = rfiSubmittals.length > 0
+    ? Math.min(100, Math.max(0, (rfiSubmittals.filter(r => {
+        const target = r.targetDays || 7;
+        let elapsed = typeof r.actualDays === 'number' ? r.actualDays : 0;
+        if (r.actualDays === undefined && r.submittedDate) {
+          const sDate = new Date(r.submittedDate);
+          const eDate = r.respondedDate ? new Date(r.respondedDate) : new Date();
+          if (!isNaN(sDate.getTime()) && !isNaN(eDate.getTime())) {
+            elapsed = Math.max(0, Math.floor((eDate.getTime() - sDate.getTime()) / (1000 * 60 * 60 * 24)));
+          }
+        }
+        return elapsed <= target;
+      }).length / rfiSubmittals.length) * 100))
+    : null;
+
+  const autoMq1Score: number | null = materialSubmittals.length > 0
+    ? Math.min(100, Math.max(0, (materialSubmittals.filter(m => isSubmittalApproved(m.status)).length / materialSubmittals.length) * 100))
+    : null;
+
+  const hasMonthlyMpr =
+    (project.monthly || []).some(m => Number(m.actual || 0) > 0) ||
+    (project.progressPlanHistory?.length || 0) > 0 ||
+    (project.progressPlan?.actual?.month || 0) > 0;
+  const autoCc1cScore: number | null = hasMonthlyMpr ? 100 : (project.physicalProgress === 0 ? 0 : null);
+  const autoCc1fScore: number | null = dailyActs.length > 0 ? 100 : (project.physicalProgress === 0 ? 0 : null);
+
   // 5. Build map with both DB and DBB default items to allow dual-evaluation
   const dbDefaults = generateKpiAllocated('DB');
   const dbbDefaults = generateKpiAllocated('DBB');
@@ -1043,6 +1116,8 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
         const progressCalc = calculateProgressKpiScores(project, project.kpiActiveMonth);
         computedAlloc = progressCalc.pp1Score;
       }
+    } else if (k.itemId === 'PP-3' && autoPp3Score !== null) {
+      computedAlloc = Number(autoPp3Score.toFixed(2));
     } else if (k.itemId === 'PT-1') {
       computedAlloc = Math.min(100, Math.max(0, ratio));
     } else if (k.itemId === 'CM-1') {
@@ -1059,6 +1134,16 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
       computedAlloc = (project.origDays <= 0 || project.physicalProgress === 0) ? 0 : Math.max(0, Math.min(100, 100 - timeOverrunPct));
     } else if (k.itemId === 'TM-2') {
       computedAlloc = (project.physicalProgress === 0 || PV <= 0) ? 0 : Math.max(0, Math.min(100, 100 + SV_pct));
+    } else if (k.itemId === 'QL-2B' && autoQl2bScore !== null) {
+      computedAlloc = Number(autoQl2bScore.toFixed(2));
+    } else if (k.itemId === 'QL-3A' && autoQl3aScore !== null) {
+      computedAlloc = Number(autoQl3aScore.toFixed(2));
+    } else if (k.itemId === 'QL-4A' && autoQl4aScore !== null) {
+      computedAlloc = Number(autoQl4aScore.toFixed(2));
+    } else if (k.itemId === 'QL-4B' && autoQl4bScore !== null) {
+      computedAlloc = Number(autoQl4bScore.toFixed(2));
+    } else if (k.itemId === 'MQ-1' && autoMq1Score !== null) {
+      computedAlloc = Number(autoMq1Score.toFixed(2));
     } else if (k.itemId === 'RW-1') {
       computedAlloc = Math.min(100, Math.max(0, rowPercent));
     } else if (k.itemId === 'RW-2A') {
@@ -1071,6 +1156,10 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
       computedAlloc = Math.min(100, Math.max(0, utilitiesCompletenessVal));
     } else if (k.itemId === 'CC-1A') {
       computedAlloc = project.workProgram.length > 0 ? 100 : 0;
+    } else if (k.itemId === 'CC-1C' && autoCc1cScore !== null) {
+      computedAlloc = autoCc1cScore;
+    } else if (k.itemId === 'CC-1F' && autoCc1fScore !== null) {
+      computedAlloc = autoCc1fScore;
     } else if (k.itemId === 'CC-3A') {
       computedAlloc = hasPerfBound;
     } else if (k.itemId === 'CC-3B') {

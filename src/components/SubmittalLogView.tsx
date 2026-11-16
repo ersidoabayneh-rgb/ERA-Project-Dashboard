@@ -71,6 +71,82 @@ interface SubmittalLogViewProps {
   currentUserObj?: User | null;
 }
 
+export function isRfiRecord(item: Partial<ConsultantSubmittalKpi> | null | undefined): boolean {
+  if (!item) return false;
+  const normalizedType = String(item.type || '').trim().toLowerCase();
+  if (normalizedType === 'rfi' || normalizedType === 'request for information') {
+    return true;
+  }
+  const normalizedId = String(item.id || '').trim().toLowerCase();
+  if (normalizedId.startsWith('rfi_')) {
+    return true;
+  }
+  const normalizedNo = String(item.submittalNo || '').trim();
+  if (/^rfi[-_\s#0-9]/i.test(normalizedNo) || /^rfi$/i.test(normalizedNo)) {
+    return true;
+  }
+  if (
+    Boolean(item.rfiStatus && String(item.rfiStatus).trim().length > 0) ||
+    Boolean(item.contractorInquiry && String(item.contractorInquiry).trim().length > 0) ||
+    Boolean(item.correspondenceThread && item.correspondenceThread.length > 0)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function deduplicateSubmittals(list: ConsultantSubmittalKpi[]): ConsultantSubmittalKpi[] {
+  const seenIds = new Set<string>();
+  const seenScopeNos = new Set<string>();
+  const result: ConsultantSubmittalKpi[] = [];
+
+  for (const item of list) {
+    if (!item) continue;
+    const normId = String(item.id || '').trim();
+    if (normId && seenIds.has(normId)) {
+      continue;
+    }
+
+    const isRfi = isRfiRecord(item);
+    const normNo = String(item.submittalNo || '').trim().toUpperCase();
+    const scopeKey = normNo ? `${isRfi ? 'RFI' : 'TECH'}::${normNo}` : '';
+    if (scopeKey && seenScopeNos.has(scopeKey)) {
+      continue;
+    }
+
+    if (normId) seenIds.add(normId);
+    if (scopeKey) seenScopeNos.add(scopeKey);
+
+    result.push(isRfi && item.type !== 'RFI' ? { ...item, type: 'RFI' } : item);
+  }
+
+  return result;
+}
+
+function getNextUniqueSubmittalNo(existingList: ConsultantSubmittalKpi[]): string {
+  const usedNos = new Set(
+    existingList.map(item => String(item.submittalNo || '').trim().toUpperCase()).filter(Boolean)
+  );
+  let maxNum = 0;
+  existingList.forEach(item => {
+    const match = String(item.submittalNo || '').trim().match(/^sub[-_\s#]*(\d+)$/i);
+    if (match) {
+      const parsed = parseInt(match[1], 10);
+      if (!isNaN(parsed) && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    }
+  });
+  let candidateNum = maxNum + 1;
+  while (true) {
+    const candidate = `SUB-${String(candidateNum).padStart(3, '0')}`;
+    if (!usedNos.has(candidate.toUpperCase())) {
+      return candidate;
+    }
+    candidateNum++;
+  }
+}
+
 export default function SubmittalLogView({
   project,
   projects = [],
@@ -129,7 +205,7 @@ export default function SubmittalLogView({
             }
           }
           const target = targetOverrides['IPC Review'] || 7;
-          const existing = baseList.find(s => s.id === `ipc_kpi_${ipc.id}` || s.submittalNo === ipc.paymentNo);
+          const existing = baseList.find(s => !isRfiRecord(s) && (s.id === `ipc_kpi_${ipc.id}` || s.submittalNo === ipc.paymentNo));
 
           return {
             id: `ipc_kpi_${ipc.id}`,
@@ -149,12 +225,30 @@ export default function SubmittalLogView({
           };
         });
 
-      const nonIpcItems = baseList.filter(s => s.type !== 'IPC Review' && !s.id.startsWith('ipc_kpi_'));
-      return [...nonIpcItems, ...ipcSubmittals];
+      const nonIpcItems = baseList.filter(s => isRfiRecord(s) || (s.type !== 'IPC Review' && !s.id.startsWith('ipc_kpi_')));
+      return deduplicateSubmittals([...nonIpcItems, ...ipcSubmittals]);
     }
 
-    return baseList;
+    return deduplicateSubmittals(baseList);
   }, [consultant.submittalKpis, project?.id, project?.ipcTracker, consultant.residentEngineerName, targetOverrides]);
+
+  // View mode: 'submittals' (technical submittals register) vs 'rfi_log' (dedicated RFI correspondence log)
+  const [activeViewTab, setActiveViewTab] = useState<'submittals' | 'rfi_log'>('submittals');
+
+  // Strict partition: RFIs live ONLY on RFI Log; Technical Submittals live ONLY on Technical Submittals Register
+  const technicalSubmittalsList = useMemo(() => {
+    return submittalsList.filter(s => !isRfiRecord(s));
+  }, [submittalsList]);
+
+  const rfiSubmittalsList = useMemo(() => {
+    return submittalsList.filter(s => isRfiRecord(s));
+  }, [submittalsList]);
+
+  const rfiCount = rfiSubmittalsList.length;
+  const pendingRfiCount = useMemo(
+    () => rfiSubmittalsList.filter(s => s.status !== 'Approved / Closed' && s.status !== 'Closed' && s.status !== 'Approved').length,
+    [rfiSubmittalsList]
+  );
 
   // Search & filter states
   const [submittalSearch, setSubmittalSearch] = useState('');
@@ -171,16 +265,16 @@ export default function SubmittalLogView({
   // Table scrolling height state
   const [tableScrollHeight, setTableScrollHeight] = useState<'450px' | '650px' | '850px' | 'full'>('650px');
 
-  // Metrics summary for evaluation linkage
+  // Metrics summary for Technical Submittals tab (excludes RFIs)
   const metricsSummary = useMemo(() => {
-    const total = submittalsList.length;
+    const total = technicalSubmittalsList.length;
     let totalDays = 0;
     let daysCount = 0;
     let delayedCount = 0;
     let pendingCount = 0;
     let closedCount = 0;
 
-    submittalsList.forEach(s => {
+    technicalSubmittalsList.forEach(s => {
       const target = s.targetDays || targetOverrides[s.type] || 7;
       const delayInfo = checkSubmittalDelay(s, target);
       if (delayInfo.isDelayed) {
@@ -210,7 +304,7 @@ export default function SubmittalLogView({
       complianceRate,
       avgDays
     };
-  }, [submittalsList, targetOverrides]);
+  }, [technicalSubmittalsList, targetOverrides]);
 
   // Contractor role detection
   const isContractorUser = useMemo(() => {
@@ -257,9 +351,9 @@ export default function SubmittalLogView({
   // Watermark state for exported PDFs ('NONE' | 'DRAFT' | 'CONFIDENTIAL')
   const [pdfWatermark, setPdfWatermark] = useState<'NONE' | 'DRAFT' | 'CONFIDENTIAL'>('NONE');
 
-  // Dynamic custom categories list
+  // Dynamic custom categories list (RFIs are strictly excluded from Technical Submittal categories)
   const submittalCategories = useMemo<string[]>(() => {
-    return consultant.submittalCategories || [
+    const raw = consultant.submittalCategories || [
       'Material Approval',
       'IPC Review',
       'Work Inspection (WIR)',
@@ -267,10 +361,15 @@ export default function SubmittalLogView({
       'Design Review',
       'Claim / Notice'
     ];
+    return raw.filter(cat => {
+      const norm = cat.trim().toLowerCase();
+      return norm !== 'rfi' && norm !== 'request for information';
+    });
   }, [consultant.submittalCategories]);
 
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryManagerError, setCategoryManagerError] = useState<string | null>(null);
 
   // Dynamic custom statuses list
   const submittalStatuses = useMemo<string[]>(() => {
@@ -287,6 +386,7 @@ export default function SubmittalLogView({
 
   const [showStatusManager, setShowStatusManager] = useState(false);
   const [newStatusName, setNewStatusName] = useState('');
+  const [statusManagerError, setStatusManagerError] = useState<string | null>(null);
 
   // Selected submittals for export (Technical Submittals & RFIs)
   const [selectedSubmittalNos, setSelectedSubmittalNos] = useState<string[]>([]);
@@ -294,37 +394,25 @@ export default function SubmittalLogView({
 
   // Print Submittals & RFI Register Modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [printModalInitialScope, setPrintModalInitialScope] = useState<'all' | 'selected' | 'technical' | 'rfi'>('all');
+  const [printModalInitialScope, setPrintModalInitialScope] = useState<'all' | 'selected' | 'technical' | 'rfi'>('technical');
 
   const handleOpenPrintModal = (preferredScope?: 'all' | 'selected' | 'technical' | 'rfi') => {
     if (preferredScope) {
       setPrintModalInitialScope(preferredScope);
-    } else if (selectedSubmittalNos.length > 0 || selectedRfiIds.length > 0) {
-      setPrintModalInitialScope('selected');
     } else if (activeViewTab === 'rfi_log') {
-      setPrintModalInitialScope('rfi');
+      setPrintModalInitialScope(selectedRfiIds.length > 0 ? 'selected' : 'rfi');
     } else {
-      setPrintModalInitialScope('all');
+      setPrintModalInitialScope(selectedSubmittalNos.length > 0 ? 'selected' : 'technical');
     }
     setIsPrintModalOpen(true);
   };
-
-  // View mode: 'submittals' (technical submittals register) vs 'rfi_log' (dedicated RFI correspondence log)
-  const [activeViewTab, setActiveViewTab] = useState<'submittals' | 'rfi_log'>('submittals');
-
-  // Pure technical submittals (excluding RFIs which are tracked exclusively in the RFI Log table)
-  const technicalSubmittalsList = useMemo(() => {
-    return submittalsList.filter(s => s.type !== 'RFI');
-  }, [submittalsList]);
-
-  const rfiCount = useMemo(() => submittalsList.filter(s => s.type === 'RFI').length, [submittalsList]);
-  const pendingRfiCount = useMemo(() => submittalsList.filter(s => s.type === 'RFI' && s.status !== 'Approved / Closed' && s.status !== 'Closed').length, [submittalsList]);
 
   // Modal states
   const [isAddSubmittalModalOpen, setIsAddSubmittalModalOpen] = useState(false);
   const [isEditSubmittalModalOpen, setIsEditSubmittalModalOpen] = useState(false);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editingRowDraft, setEditingRowDraft] = useState<ConsultantSubmittalKpi | null>(null);
+  const [editSubmittalError, setEditSubmittalError] = useState<string | null>(null);
 
   // Row expansion state for detailed status history & reviewer comments
   const [expandedRowIds, setExpandedRowIds] = useState<string[]>([]);
@@ -376,13 +464,14 @@ export default function SubmittalLogView({
 
   const commitSubmittals = (updatedList: ConsultantSubmittalKpi[], actionDesc: string) => {
     if (!onProjectUpdate) return;
+    const deduplicatedList = deduplicateSubmittals(updatedList);
     const tempConsultant: SupervisionConsultantInfo = {
       ...consultant,
-      submittalKpis: updatedList
+      submittalKpis: deduplicatedList
     };
     
     // Auto-evaluate 105 criteria and calculate 5-dimension & Pillar I composite performance
-    const autoEvaluations = autoEvaluateAllCriteria(project, tempConsultant, updatedList);
+    const autoEvaluations = autoEvaluateAllCriteria(project, tempConsultant, deduplicatedList);
     const evalSummary = getProjectConsultantEvaluation(project, tempConsultant);
     const dimensionScores = {
       A: { earnedScore: evalSummary.dimensionBreakdown.A.earned, maxScore: evalSummary.dimensionBreakdown.A.maxWeight, scorePct: evalSummary.dimensionBreakdown.A.percentage },
@@ -397,7 +486,7 @@ export default function SubmittalLogView({
 
     const updatedConsultant: SupervisionConsultantInfo = {
       ...tempConsultant,
-      submittalKpis: updatedList,
+      submittalKpis: deduplicatedList,
       detailedEvaluations: autoEvaluations,
       dimensionScores: dimensionScores,
       overallEvaluationScore: evalSummary.overallScore,
@@ -410,7 +499,7 @@ export default function SubmittalLogView({
     if (project.ipcTracker && project.ipcTracker.length > 0) {
       let trackerChanged = false;
       const newTracker = project.ipcTracker.map(ipc => {
-        const matchingSub = updatedList.find(s => s.id === `ipc_kpi_${ipc.id}` || s.submittalNo === ipc.paymentNo);
+        const matchingSub = deduplicatedList.find(s => !isRfiRecord(s) && (s.id === `ipc_kpi_${ipc.id}` || s.submittalNo === ipc.paymentNo));
         if (matchingSub) {
           const newSubDate = matchingSub.submittedDate || '';
           const newCertDate = matchingSub.respondedDate || '';
@@ -427,7 +516,8 @@ export default function SubmittalLogView({
       });
 
       // Also add newly created IPC Review items to ipcTracker if not already present
-      const addedIpcSubs = updatedList.filter(s => 
+      const addedIpcSubs = deduplicatedList.filter(s => 
+        !isRfiRecord(s) &&
         (s.type === 'IPC Review' || s.id.startsWith('ipc_kpi_')) &&
         !project.ipcTracker!.some(ipc => `ipc_kpi_${ipc.id}` === s.id || ipc.paymentNo === s.submittalNo)
       );
@@ -471,7 +561,16 @@ export default function SubmittalLogView({
   };
 
   const handleSaveNewSubmittal = () => {
-    if (!newSubmittalForm.title || !newSubmittalForm.submittalNo) return;
+    const trimmedTitle = (newSubmittalForm.title || '').trim();
+    const trimmedNo = (newSubmittalForm.submittalNo || '').trim();
+    if (!trimmedTitle || !trimmedNo) return;
+    if (/^rfi[-_\s#0-9]/i.test(trimmedNo) || /^rfi$/i.test(trimmedNo)) return;
+
+    const normNo = trimmedNo.toUpperCase();
+    const isDuplicateNo = technicalSubmittalsList.some(
+      s => String(s.submittalNo || '').trim().toUpperCase() === normNo
+    );
+    if (isDuplicateNo) return;
 
     let actualDays = Number(newSubmittalForm.actualDays);
     if (newSubmittalForm.respondedDate && newSubmittalForm.submittedDate) {
@@ -481,14 +580,16 @@ export default function SubmittalLogView({
       }
     }
 
-    const submittalType = newSubmittalForm.type && newSubmittalForm.type !== 'RFI' ? newSubmittalForm.type : 'Material Approval';
+    const submittalType = newSubmittalForm.type && String(newSubmittalForm.type).trim().toLowerCase() !== 'rfi'
+      ? newSubmittalForm.type
+      : 'Material Approval';
     const target = Number(newSubmittalForm.targetDays) || targetOverrides[submittalType] || 7;
 
     const newRecord: ConsultantSubmittalKpi = {
-      id: `sub_${Date.now()}`,
-      submittalNo: newSubmittalForm.submittalNo,
+      id: `sub_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      submittalNo: trimmedNo,
       type: submittalType as any,
-      title: newSubmittalForm.title,
+      title: trimmedTitle,
       submittedDate: newSubmittalForm.submittedDate || new Date().toISOString().split('T')[0],
       respondedDate: newSubmittalForm.respondedDate || undefined,
       targetDays: target,
@@ -599,11 +700,29 @@ export default function SubmittalLogView({
   const handleStartRowEdit = (item: ConsultantSubmittalKpi) => {
     setEditingRowId(item.id);
     setEditingRowDraft({ ...item });
+    setEditSubmittalError(null);
     setIsEditSubmittalModalOpen(true);
   };
 
   const handleSaveRowEdit = () => {
     if (!editingRowDraft) return;
+
+    const trimmedNo = (editingRowDraft.submittalNo || '').trim();
+    if (!trimmedNo) {
+      setEditSubmittalError('Submittal Reference # is required.');
+      return;
+    }
+    if (/^rfi[-_\s#0-9]/i.test(trimmedNo) || /^rfi$/i.test(trimmedNo)) {
+      setEditSubmittalError('RFI reference numbers must be registered on the RFI Log tab, not Technical Submittals.');
+      return;
+    }
+    const isDuplicateNo = technicalSubmittalsList.some(
+      s => s.id !== editingRowDraft.id && String(s.submittalNo || '').trim().toUpperCase() === trimmedNo.toUpperCase()
+    );
+    if (isDuplicateNo) {
+      setEditSubmittalError(`Submittal Reference "${trimmedNo}" already exists in the Technical Submittals register.`);
+      return;
+    }
 
     let actualDays = editingRowDraft.actualDays;
     if (editingRowDraft.respondedDate && editingRowDraft.submittedDate) {
@@ -614,8 +733,14 @@ export default function SubmittalLogView({
       }
     }
 
+    const safeType = String(editingRowDraft.type || '').trim().toLowerCase() === 'rfi'
+      ? (submittalCategories[0] || 'Material Approval')
+      : editingRowDraft.type;
+
     const finalDraft: ConsultantSubmittalKpi = {
       ...editingRowDraft,
+      submittalNo: trimmedNo,
+      type: safeType as any,
       actualDays
     };
 
@@ -626,6 +751,7 @@ export default function SubmittalLogView({
     commitSubmittals(updatedList, `Updated submittal ${finalDraft.submittalNo}`);
     setEditingRowId(null);
     setEditingRowDraft(null);
+    setEditSubmittalError(null);
     setIsEditSubmittalModalOpen(false);
   };
 
@@ -647,10 +773,18 @@ export default function SubmittalLogView({
   };
 
   const handleDuplicateRow = (item: ConsultantSubmittalKpi) => {
+    const usedNos = new Set(submittalsList.map(s => String(s.submittalNo || '').trim().toUpperCase()));
+    let copyCandidate = `${item.submittalNo}-COPY`;
+    let suffix = 2;
+    while (usedNos.has(copyCandidate.toUpperCase())) {
+      copyCandidate = `${item.submittalNo}-COPY-${suffix}`;
+      suffix++;
+    }
+
     const newRecord: ConsultantSubmittalKpi = {
       ...item,
-      id: `sub_${Date.now()}`,
-      submittalNo: `${item.submittalNo}-COPY`,
+      id: `sub_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      submittalNo: copyCandidate,
       title: `${item.title} (Copy)`,
       submittedDate: new Date().toISOString().split('T')[0],
       respondedDate: undefined,
@@ -663,10 +797,10 @@ export default function SubmittalLogView({
   };
 
   const handleInsertQuickRow = () => {
-    const nextNum = technicalSubmittalsList.length + 1;
+    const nextSubNo = getNextUniqueSubmittalNo(submittalsList);
     const newRecord: ConsultantSubmittalKpi = {
-      id: `sub_${Date.now()}`,
-      submittalNo: `SUB-0${nextNum < 10 ? '0' + nextNum : nextNum}`,
+      id: `sub_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      submittalNo: nextSubNo,
       type: 'Material Approval',
       title: 'New Technical Material Submittal / Method Statement',
       submittedDate: new Date().toISOString().split('T')[0],
@@ -811,39 +945,32 @@ export default function SubmittalLogView({
 
   const handleExportPdf = (forcedScope?: 'selected' | 'all') => {
     if (!isAuthorizedAuditAdmin) return;
-    // Determine which records to export (Selected Technical Submittals + Selected RFIs)
-    const hasSelectedTech = selectedSubmittalNos.length > 0;
-    const hasSelectedRfi = selectedRfiIds.length > 0;
-    const hasAnySelection = hasSelectedTech || hasSelectedRfi;
-    const isSelectionExport = (forcedScope === 'selected' || (hasAnySelection && forcedScope !== 'all'));
+
+    const isRfiTab = activeViewTab === 'rfi_log';
+    const hasTabSelection = isRfiTab ? selectedRfiIds.length > 0 : selectedSubmittalNos.length > 0;
+    const isSelectionExport = forcedScope === 'selected' || (hasTabSelection && forcedScope !== 'all');
 
     let recordsToExport: ConsultantSubmittalKpi[] = [];
 
-    if (isSelectionExport) {
-      // 1. Collect selected technical submittals
-      const selectedTechRecords = submittalsList.filter(s =>
-        s.type !== 'RFI' && (
-          selectedSubmittalNos.includes(s.submittalNo) || 
-          (s.id && selectedSubmittalNos.includes(s.id))
-        )
-      );
-      // 2. Collect selected RFIs
-      const selectedRfiRecords = submittalsList.filter(s =>
-        s.type === 'RFI' && (
-          (s.id && selectedRfiIds.includes(s.id)) ||
-          selectedSubmittalNos.includes(s.submittalNo) ||
-          selectedRfiIds.includes(s.submittalNo)
-        )
-      );
-      recordsToExport = [...selectedTechRecords, ...selectedRfiRecords];
+    if (isRfiTab) {
+      recordsToExport = isSelectionExport
+        ? rfiSubmittalsList.filter(
+            s =>
+              (s.id && selectedRfiIds.includes(s.id)) ||
+              selectedRfiIds.includes(s.submittalNo)
+          )
+        : [...rfiSubmittalsList];
     } else {
-      recordsToExport = activeViewTab === 'rfi_log'
-        ? submittalsList.filter(s => s.type === 'RFI')
-        : [...submittalsList];
+      recordsToExport = isSelectionExport
+        ? technicalSubmittalsList.filter(
+            s =>
+              selectedSubmittalNos.includes(s.submittalNo) ||
+              (s.id && selectedSubmittalNos.includes(s.id))
+          )
+        : [...technicalSubmittalsList];
     }
 
     if (recordsToExport.length === 0) {
-      alert('No submittal or RFI records available to export.');
       return;
     }
 
@@ -1007,19 +1134,18 @@ export default function SubmittalLogView({
     // Draw page 1 decorations
     drawPageDecorations();
 
-    const techCount = recordsToExport.filter(s => s.type !== 'RFI').length;
-    const rfiCountInExport = recordsToExport.filter(s => s.type === 'RFI').length;
+    const techCount = recordsToExport.filter(s => !isRfiRecord(s)).length;
+    const rfiCountInExport = recordsToExport.filter(s => isRfiRecord(s)).length;
 
     let scopeText = "ALL ACTIVE REGISTER RECORDS";
     if (isSelectionExport) {
-      const parts = [];
-      if (techCount > 0) parts.push(`${techCount} Technical Submittal${techCount > 1 ? 's' : ''}`);
-      if (rfiCountInExport > 0) parts.push(`${rfiCountInExport} RFI${rfiCountInExport > 1 ? 's' : ''}`);
-      scopeText = `SELECTED RECORDS: ${parts.join(' & ')} (${recordsToExport.length} TOTAL)`;
+      scopeText = activeViewTab === 'rfi_log'
+        ? `SELECTED RFI RECORDS (${rfiCountInExport} TOTAL)`
+        : `SELECTED TECHNICAL SUBMITTALS (${techCount} TOTAL)`;
     } else if (activeViewTab === 'rfi_log') {
       scopeText = `ALL RFI CORRESPONDENCE RECORDS (${rfiCountInExport} TOTAL)`;
     } else {
-      scopeText = `ALL TECHNICAL SUBMITTALS & RFIs (${recordsToExport.length} TOTAL)`;
+      scopeText = `ALL TECHNICAL SUBMITTAL RECORDS (${techCount} TOTAL)`;
     }
 
     const supervisionConsultantName = project.supervisionConsultant?.firmName || consultant?.firmName || project.consultant || 'N/A';
@@ -1030,13 +1156,15 @@ export default function SubmittalLogView({
       margin,
       curY,
       contentWidth,
-      documentTitle: "OFFICIAL TECHNICAL SUBMITTAL & RFI CORRESPONDENCE REGISTER",
+      documentTitle: activeViewTab === 'rfi_log'
+        ? "OFFICIAL TECHNICAL RFI CORRESPONDENCE REGISTER"
+        : "OFFICIAL TECHNICAL SUBMITTALS REGISTER",
       projectName: project.name || 'CURRENT PROJECT',
       consultantName: supervisionConsultantName,
       contractorName: contractorName,
       scopeText: scopeText,
       titleColor: [79, 70, 229], // Indigo
-      referenceNo: project.id || 'SUBMITTAL-RFI-LOG',
+      referenceNo: project.id || (activeViewTab === 'rfi_log' ? 'RFI-LOG' : 'SUBMITTAL-LOG'),
       statusBadge: isSelectionExport ? 'SELECTED EXPORT' : 'REGISTER AUDIT',
     });
 
@@ -1139,8 +1267,9 @@ export default function SubmittalLogView({
 
     // Table rows rendering loop with robust wrapping and strict DD MMM YYYY dates
     recordsToExport.forEach((item, index) => {
+      const itemIsRfi = isRfiRecord(item);
       const subNoLines = safeSplitText(doc, item.submittalNo || item.id || '-', tableCols[0].width - 8, 7, true);
-      const catText = item.type === 'RFI' ? (item.discipline ? `RFI (${item.discipline})` : 'RFI') : (item.type || '-');
+      const catText = itemIsRfi ? (item.discipline ? `RFI (${item.discipline})` : 'RFI') : (item.type || '-');
       const catLines = safeSplitText(doc, catText, tableCols[1].width - 8, 6.5, false);
       const titleLines = safeSplitText(doc, item.title || '-', tableCols[2].width - 8, 7, true);
       
@@ -1191,7 +1320,7 @@ export default function SubmittalLogView({
       // Col 0: Submittal #
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
-      if (item.type === 'RFI') {
+      if (itemIsRfi) {
         doc.setTextColor(147, 51, 234); // Purple for RFI
       } else {
         doc.setTextColor(15, 23, 42);
@@ -1268,9 +1397,10 @@ export default function SubmittalLogView({
     });
 
     // Save generated PDF
-    const filename = isSelectionExport
-      ? `ERA_Selected_Submittals_and_RFIs_${new Date().toISOString().split('T')[0]}.pdf`
-      : `ERA_Complete_Submittal_RFI_Register_${new Date().toISOString().split('T')[0]}.pdf`;
+    const dateSlug = new Date().toISOString().split('T')[0];
+    const filename = activeViewTab === 'rfi_log'
+      ? (isSelectionExport ? `ERA_Selected_RFIs_${dateSlug}.pdf` : `ERA_Complete_RFI_Log_${dateSlug}.pdf`)
+      : (isSelectionExport ? `ERA_Selected_Technical_Submittals_${dateSlug}.pdf` : `ERA_Technical_Submittals_Register_${dateSlug}.pdf`);
     doc.save(filename);
   };
 
@@ -1367,17 +1497,17 @@ export default function SubmittalLogView({
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="px-3 py-1 bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 rounded-full text-xs font-bold border border-purple-200 dark:border-purple-800 flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5" /> Submittal Register & RFI Tracking
+                  <FileText className="w-3.5 h-3.5" /> Technical Submittals Register
                 </span>
                 <span className="px-2.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold border border-slate-200 dark:border-slate-700 flex items-center gap-1">
                   <Building2 className="w-3 h-3 text-purple-500" /> {project.name || 'Current Project'}
                 </span>
                 <span className="text-xs font-bold text-slate-500 font-mono">
-                  {submittalsList.length} Total Records
+                  {technicalSubmittalsList.length} Technical Submittals
                 </span>
               </div>
               <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                Supervision Consultant Submittal & RFI Log
+                Supervision Consultant Technical Submittals Register
               </h1>
             </div>
 
@@ -1394,7 +1524,7 @@ export default function SubmittalLogView({
               <button
                 onClick={() => handleOpenPrintModal()}
                 className="px-4 py-2 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
-                title="Print or export selected technical submittals and RFIs by date and month as per user preferences"
+                title="Print or export selected technical submittals by date and month"
               >
                 <Printer className="w-4 h-4" />
                 <span>Print Register (By Date/Month)</span>
@@ -1424,22 +1554,22 @@ export default function SubmittalLogView({
                 </select>
               </div>
               {isAuthorizedAuditAdmin && (
-                (selectedSubmittalNos.length > 0 || selectedRfiIds.length > 0) ? (
+                selectedSubmittalNos.length > 0 ? (
                   <button
                     onClick={() => handleExportPdf('selected')}
                     className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer"
-                    title="Export selected RFIs and technical submittals directly to official PDF"
+                    title="Export selected technical submittals directly to official PDF"
                   >
                     <FileText className="w-4 h-4 text-rose-200" />
                     <span>
-                      Export Selected ({selectedSubmittalNos.length + selectedRfiIds.length}) PDF
+                      Export Selected ({selectedSubmittalNos.length}) PDF
                     </span>
                   </button>
                 ) : (
                   <button
                     onClick={() => handleExportPdf('all')}
                     className="px-4 py-2 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl flex items-center gap-1.5 transition cursor-pointer border border-indigo-200 dark:border-indigo-800"
-                    title="Export all submittal & RFI records to a beautifully formatted PDF document."
+                    title="Export all technical submittal records to a formatted PDF document."
                   >
                     <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                     <span>Export All PDF</span>
@@ -1634,10 +1764,10 @@ export default function SubmittalLogView({
               <button
                 onClick={() => handleExportPdf('selected')}
                 className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                title="Export selected technical submittals and RFIs directly to official PDF"
+                title="Export selected technical submittals directly to official PDF"
               >
                 <FileText className="w-3.5 h-3.5" />
-                <span>Export to PDF ({selectedSubmittalNos.length + selectedRfiIds.length})</span>
+                <span>Export to PDF ({selectedSubmittalNos.length})</span>
               </button>
             )}
             <button
@@ -1861,27 +1991,16 @@ export default function SubmittalLogView({
                           </div>
                         </td>
                         <td className="p-3.5">
-                          {item.type === 'RFI' ? (
-                            <button
-                              onClick={() => setActiveViewTab('rfi_log')}
-                              className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/80 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 text-[11px] font-bold inline-flex items-center gap-1.5 transition cursor-pointer border border-blue-200 dark:border-blue-800 shadow-2xs"
-                              title="Click to open full correspondence thread in RFI Log"
-                            >
-                              <MessageSquare className="w-3 h-3 text-blue-500" />
-                              <span>Technical RFI</span>
-                            </button>
-                          ) : (
-                            <div className="flex flex-col gap-1">
-                              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold block w-max">
-                                {item.type}
+                          <div className="flex flex-col gap-1">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold block w-max">
+                              {item.type}
+                            </span>
+                            {item.type === 'IPC Review' && (
+                              <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1" title="IPC Submission date is dynamically linked with the Financial Data page">
+                                <LinkIcon className="w-2.5 h-2.5" /> Financial IPC
                               </span>
-                              {item.type === 'IPC Review' && (
-                                <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1" title="IPC Submission date is dynamically linked with the Financial Data page">
-                                  <LinkIcon className="w-2.5 h-2.5" /> Financial IPC
-                                </span>
-                              )}
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </td>
                         <td className="p-3.5 max-w-xs">
                           <div className="font-bold text-slate-900 dark:text-white truncate" title={item.title}>
@@ -2474,13 +2593,22 @@ export default function SubmittalLogView({
               </div>
 
               <div className="space-y-3 text-xs overflow-y-auto max-h-[60vh] pr-1">
+                {editSubmittalError && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{editSubmittalError}</span>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Submittal Reference #</label>
                     <input
                       type="text"
                       value={editingRowDraft.submittalNo}
-                      onChange={(e) => setEditingRowDraft({ ...editingRowDraft, submittalNo: e.target.value })}
+                      onChange={(e) => {
+                        setEditSubmittalError(null);
+                        setEditingRowDraft({ ...editingRowDraft, submittalNo: e.target.value });
+                      }}
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white font-bold"
                     />
                   </div>
@@ -2490,7 +2618,10 @@ export default function SubmittalLogView({
                       <label className="block font-semibold text-slate-700 dark:text-slate-300">Category</label>
                       <button
                         type="button"
-                        onClick={() => setShowCategoryManager(!showCategoryManager)}
+                        onClick={() => {
+                          setCategoryManagerError(null);
+                          setShowCategoryManager(!showCategoryManager);
+                        }}
                         className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-1 cursor-pointer"
                       >
                         ⚙️ {showCategoryManager ? 'Hide List' : 'Manage'}
@@ -2508,12 +2639,20 @@ export default function SubmittalLogView({
 
                     {showCategoryManager && (
                       <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 rounded-xl space-y-2.5">
+                        {categoryManagerError && (
+                          <div className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold">
+                            {categoryManagerError}
+                          </div>
+                        )}
                         <div className="flex gap-1.5">
                           <input
                             type="text"
                             placeholder="New category..."
                             value={newCategoryName}
-                            onChange={(e) => setNewCategoryName(e.target.value)}
+                            onChange={(e) => {
+                              setCategoryManagerError(null);
+                              setNewCategoryName(e.target.value);
+                            }}
                             className="flex-1 px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                           />
                           <button
@@ -2521,8 +2660,13 @@ export default function SubmittalLogView({
                             onClick={() => {
                               const trimmed = newCategoryName.trim();
                               if (!trimmed) return;
-                              if (submittalCategories.includes(trimmed)) {
-                                alert('Category already exists!');
+                              const lower = trimmed.toLowerCase();
+                              if (lower === 'rfi' || lower === 'request for information') {
+                                setCategoryManagerError('RFIs are managed exclusively on the RFI Log tab.');
+                                return;
+                              }
+                              if (submittalCategories.some(c => c.toLowerCase() === lower)) {
+                                setCategoryManagerError('Category already exists.');
                                 return;
                               }
                               const updated = [...submittalCategories, trimmed];
@@ -2533,6 +2677,7 @@ export default function SubmittalLogView({
                                 }
                               }, `Added custom category: "${trimmed}"`);
                               setNewCategoryName('');
+                              setCategoryManagerError(null);
                             }}
                             className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer transition"
                           >
@@ -2667,12 +2812,20 @@ export default function SubmittalLogView({
 
                     {showStatusManager && (
                       <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 rounded-xl space-y-2.5">
+                        {statusManagerError && (
+                          <div className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold">
+                            {statusManagerError}
+                          </div>
+                        )}
                         <div className="flex gap-1.5">
                           <input
                             type="text"
                             placeholder="New status..."
                             value={newStatusName}
-                            onChange={(e) => setNewStatusName(e.target.value)}
+                            onChange={(e) => {
+                              setStatusManagerError(null);
+                              setNewStatusName(e.target.value);
+                            }}
                             className="flex-1 px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                           />
                           <button
@@ -2680,8 +2833,8 @@ export default function SubmittalLogView({
                             onClick={() => {
                               const trimmed = newStatusName.trim();
                               if (!trimmed) return;
-                              if (submittalStatuses.includes(trimmed)) {
-                                alert('Status already exists!');
+                              if (submittalStatuses.some(s => s.toLowerCase() === trimmed.toLowerCase())) {
+                                setStatusManagerError('Status already exists.');
                                 return;
                               }
                               const updated = [...submittalStatuses, trimmed];
@@ -2692,6 +2845,7 @@ export default function SubmittalLogView({
                                 }
                               }, `Added custom status: "${trimmed}"`);
                               setNewStatusName('');
+                              setStatusManagerError(null);
                             }}
                             className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer transition"
                           >
@@ -3024,9 +3178,9 @@ export default function SubmittalLogView({
         onClose={() => setIsPrintModalOpen(false)}
         project={project}
         consultant={consultant}
-        allSubmittals={submittalsList}
-        selectedSubmittalNos={selectedSubmittalNos}
-        selectedRfiIds={selectedRfiIds}
+        allSubmittals={activeViewTab === 'rfi_log' ? rfiSubmittalsList : technicalSubmittalsList}
+        selectedSubmittalNos={activeViewTab === 'rfi_log' ? [] : selectedSubmittalNos}
+        selectedRfiIds={activeViewTab === 'rfi_log' ? selectedRfiIds : []}
         initialScope={printModalInitialScope}
         targetOverrides={targetOverrides}
         watermark={pdfWatermark}

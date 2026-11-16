@@ -760,6 +760,7 @@ export interface Project {
   risks?: RiskItem[];
   issues?: IssueLogItem[];
   dailyActivities?: DailyActivityRecord[];
+  dailySiteLogs?: Record<string, DailySiteLogEntry>;
   dlpDefects?: DlpDefect[];
   aiChatHistory?: AiChatMessage[];
   documents?: ProjectDocument[];
@@ -811,11 +812,61 @@ export interface DailyActivityLaborItem {
   count: number;
 }
 
+export interface DailyEquipmentFleetItem {
+  id: string;
+  name: string;
+  typeCapacity: string;
+  status: 'Operating' | 'Standby' | 'Breakdown' | 'Maintenance';
+  workingHours: number;
+  remarks: string;
+}
+
+export interface DailyMaterialItem {
+  id: string;
+  material: string;
+  received: number;
+  used: number;
+  balance?: number;
+  unit?: string;
+  remarks: string;
+}
+
+export interface DailyTomorrowPlanItem {
+  id: string;
+  area: string;
+  description: string;
+  unit: string;
+  target: number;
+  remarks: string;
+}
+
+export interface DailySiteLogEntry {
+  date: string; // YYYY-MM-DD
+  weather: string;
+  shift: string;
+  dailyNotes: string; // Construction Manager textual context tying labor, equipment & material inputs
+  laborSummary: DailyActivityLaborItem[];
+  equipmentFleet: DailyEquipmentFleetItem[];
+  materialsList: DailyMaterialItem[];
+  productionList: DailyProductionItem[];
+  isNoWorkDay: boolean;
+  noWorkReason?: string;
+  noWorkNotes?: string;
+  siteChallenges?: string[];
+  tomorrowPlans?: DailyTomorrowPlanItem[];
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+export type DailyActivityMaterialItem = DailyMaterialItem;
+
 export interface DailyActivityRecord {
   id: string;
   date: string; // YYYY-MM-DD
   shift?: 'Day Shift (Standard)' | 'Night Shift' | 'Extended / Overtime' | string;
   priority?: 'High' | 'Medium' | 'Low'; // Priority level with color coding
+  recordKind?: string;
+  materialsList?: DailyMaterialItem[];
   
   // Activity Category & Work Item (Mapping to 1-16 sections)
   activityType: string; // e.g., '1. Clearing and Grubbing', '5. Embankment Construction'
@@ -903,7 +954,8 @@ export interface DailyActivityRecord {
   equipmentList?: DailyActivityEquipmentItem[];
   laborSummary?: DailyActivityLaborItem[];
   
-  // Remarks & Photos
+  // Remarks, Daily Notes & Photos
+  dailyNotes?: string;
   remarks?: string;
   photos?: Array<{
     id: string;
@@ -1631,35 +1683,29 @@ export interface ContractorScoringWeights {
 }
 
 export const DEFAULT_CONTRACTOR_SCORING_WEIGHTS: ContractorScoringWeights = {
-  fidic: 10,
-  projectMgmt: 20,
+  fidic: 15,
+  projectMgmt: 15,
   evm: 15,
-  kpi: 10,
+  kpi: 15,
   linear: 15,
-  rfi: 10,
-  materialApproval: 10,
-  workInspection: 5,
+  rfi: 20,
   resourceMobilization: 5,
   labels: {
     fidic: '1. FIDIC Contract Compliance',
-    projectMgmt: '2. Progress vs. Original Plan (Time)',
+    projectMgmt: '2. Project Management (Time)',
     evm: '3. EVM Metrics (CPI & SPI)',
     kpi: '4. KPIs & Quality Milestones',
     linear: '5. Linear Layer Physical Progress',
-    rfi: '6. Technical RFIs Performance',
-    materialApproval: '7. Material Approval Submittals',
-    workInspection: '8. Work Inspections (WIR)',
-    resourceMobilization: '9. Resource Mobilization'
+    rfi: '6. Technical RFIs, Material Approvals & WIR Performance',
+    resourceMobilization: '7. Resource Mobilization'
   },
   descriptions: {
     fidic: 'Performance/Mobilization Guarantees & Risk notices',
-    projectMgmt: 'Physical progress vs original baseline plan & schedule overrun compliance',
+    projectMgmt: 'Schedule overrun & EOT extension compliance',
     evm: 'Cost Efficiency Index (CPI) & Schedule Performance (SPI)',
     kpi: 'Key milestone completions & critical risk mitigations',
     linear: 'Earthwork, Subgrade, Subbase, Basecourse, & Asphalt pavement layers',
-    rfi: 'RFI response, quality & resolution compliance ratio',
-    materialApproval: 'Timeliness & specification compliance of material samples',
-    workInspection: 'First-time pass rate and quality inspection submittals',
+    rfi: 'RFI response, material submittals & WIR inspection pass rates',
     resourceMobilization: 'Equipment, machinery & key personnel site presence'
   },
   customCriteria: []

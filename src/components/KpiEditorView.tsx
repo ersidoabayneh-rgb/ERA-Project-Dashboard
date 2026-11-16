@@ -1,106 +1,23 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { CheckCircle, Info, HelpCircle, Plus, Trash2, Edit, Save, X, Sliders, FolderPlus, Lock, Target, Calendar, Clock, AlertTriangle, Bell, Award, History, ArrowRight, ShieldCheck, TrendingUp, RefreshCw, BarChart2, Zap, Check, Activity, Scale, HardHat, DollarSign, Users, CheckCircle2, FileText, Truck } from 'lucide-react';
+import { CheckCircle, Info, HelpCircle, Plus, Trash2, Edit, Save, X, Sliders, FolderPlus, Lock, Target, Calendar, Clock, AlertTriangle, Bell, Award, History, ArrowRight, ShieldCheck, TrendingUp, RefreshCw, BarChart2, Zap, Check, Activity, Scale, HardHat, DollarSign, Users, CheckCircle2, FileText, Truck, ChevronDown, ChevronUp, Layers, Link2 } from 'lucide-react';
 import { Project, KpiAllocatedItem, User, KpiMonthlyRecord } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { isKpiAuthorizedRole } from '../App';
 import { calculateProgressKpiScores, ProgressKpiCalculationResult } from '../lib/kpiProgressCalculator';
 import { calculateProjectEvm } from '../lib/evmCalculations';
+import {
+  evaluateContractorPerformance,
+  getPerformanceAuditGrade,
+  isAutoLinkedKpiId,
+  AUTO_KPI_SOURCE_MAP,
+  type PerformanceGrade,
+  type PerformanceAuditPillar,
+} from '../lib/contractorEvaluationEngine';
 import CircularGauge from './CircularGauge';
 import KpiProgressTrendsChart from './KpiProgressTrendsChart';
 
-export type PerformanceGrade = 'Excellent' | 'Good' | 'Satisfactory' | 'Marginal' | 'Unsatisfactory';
-
-export interface PerformanceAuditPillar {
-  id: 'schedule' | 'evm' | 'quality' | 'linear' | 'resourceMob' | 'management' | 'financial' | 'hse';
-  name: string;
-  weight: number;
-  scorePct: number;
-  scaleValue: number;
-  grade: PerformanceGrade;
-  letter: 'A' | 'B' | 'C' | 'D' | 'F';
-  pointsEarned: number;
-  criteria: string;
-  evaluationBasis: string;
-  telemetrySummary: string;
-  attribution: {
-    contractor: string;
-    employerOrExternal: string;
-  };
-  finding: string;
-  statusColor: string;
-}
-
-export function getPerformanceAuditGrade(scorePct: number): {
-  grade: PerformanceGrade;
-  letter: 'A' | 'B' | 'C' | 'D' | 'F';
-  scaleValue: number;
-  colorClass: string;
-  bgClass: string;
-  borderClass: string;
-  badgeClass: string;
-  description: string;
-} {
-  const clamped = Math.max(0, Math.min(100, scorePct));
-  const scaleValue = Number((1.0 + (clamped / 100) * 4.0).toFixed(2));
-
-  if (clamped >= 90) {
-    return {
-      grade: 'Excellent',
-      letter: 'A',
-      scaleValue,
-      colorClass: 'text-emerald-500 dark:text-emerald-400',
-      bgClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-      borderClass: 'border-emerald-500/30',
-      badgeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
-      description: 'Exceeds contract requirements; proactive project controls; zero uncorrected defects.'
-    };
-  } else if (clamped >= 75) {
-    return {
-      grade: 'Good',
-      letter: 'B',
-      scaleValue,
-      colorClass: 'text-blue-500 dark:text-blue-400',
-      bgClass: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-      borderClass: 'border-blue-500/30',
-      badgeClass: 'bg-blue-500/20 text-blue-300 border border-blue-500/40',
-      description: 'Consistently meets contractual standards; minor variances proactively managed.'
-    };
-  } else if (clamped >= 60) {
-    return {
-      grade: 'Satisfactory',
-      letter: 'C',
-      scaleValue,
-      colorClass: 'text-amber-500 dark:text-amber-400',
-      bgClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-      borderClass: 'border-amber-500/30',
-      badgeClass: 'bg-amber-500/20 text-amber-300 border border-amber-500/40',
-      description: 'Meets minimum contract requirements; minor deficiencies promptly corrected after notice.'
-    };
-  } else if (clamped >= 45) {
-    return {
-      grade: 'Marginal',
-      letter: 'D',
-      scaleValue,
-      colorClass: 'text-orange-500 dark:text-orange-400',
-      bgClass: 'bg-orange-500/10 text-orange-600 dark:text-orange-400',
-      borderClass: 'border-orange-500/30',
-      badgeClass: 'bg-orange-500/20 text-orange-300 border border-orange-500/40',
-      description: 'Recurring deficiencies; corrected late or only after Engineer/Employer intervention.'
-    };
-  } else {
-    return {
-      grade: 'Unsatisfactory',
-      letter: 'F',
-      scaleValue,
-      colorClass: 'text-rose-500 dark:text-rose-400',
-      bgClass: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
-      borderClass: 'border-rose-500/30',
-      badgeClass: 'bg-rose-500/20 text-rose-300 border border-rose-500/40',
-      description: 'Major contractual failures, uncorrected delay, material financial risk to Employer.'
-    };
-  }
-}
+export { getPerformanceAuditGrade, type PerformanceGrade, type PerformanceAuditPillar };
 
 export interface MonthLockInfo {
   monthKey: string;
@@ -199,6 +116,21 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
 
   const [kpiProgressBasis, setKpiProgressBasis] = React.useState<'monthly' | 'cumulative'>('monthly');
   const [showKpiDetailModal, setShowKpiDetailModal] = React.useState<boolean>(false);
+  const [showContractorEvalPanel, setShowContractorEvalPanel] = React.useState<boolean>(true);
+  const [expandedPillarId, setExpandedPillarId] = React.useState<string | null>('schedule');
+
+  const jumpToCriterion = React.useCallback((goalId: string, closeModal?: boolean) => {
+    if (closeModal) {
+      setShowKpiDetailModal(false);
+    }
+    setSelectedGroupId(goalId);
+    setTimeout(() => {
+      const el = document.getElementById(`kpi-goal-card-${goalId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 60);
+  }, []);
 
   // Dynamic automatic calculation of progress-based KPI score (PP-1) from Monthly Status Report
   const progressKpiResult = React.useMemo<ProgressKpiCalculationResult>(() => {
@@ -741,30 +673,47 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
   const getKpiTooltip = (id: string, desc: string): string => {
     const kpiTooltips: Record<string, string> = {
       'PP-1': 'Computed from Monthly Status Report of the specific month by dividing actual accomplishment for ERA plan (% of Actual Divided by ERA Plan = (Actual / ERA Plan) * 100). Capped score is 100% when accomplishment meets or exceeds the ERA plan.',
-      'PP-3': 'Tracks asphalt paving progress specifically. Score = (Actual km laid / Planned km) * 100.',
+      'PP-3': 'Auto-linked to live Linear Asphalt Layer progress (Main + Spur executed km vs planned km) or Bill Quantities asphalt progress.',
       'MS-1': 'Has the contractor completed initial mobilization? Yes = 1, No = 0.',
-      'MS-2': "Are all key personnel deployed per contract? Yes = 1, No = 0.",
-      'MS-3': 'Have the Engineer\'s office/lab facility been provided? Yes = 1, No = 0.',
+      'MS-2': 'Are all key personnel deployed per contract? Yes = 1, No = 0.',
+      'MS-3': "Have the Engineer's office/lab facility been provided? Yes = 1, No = 0.",
       'MS-4': 'Are major construction equipment mobilized? Yes = 1, No = 0.',
       'MS-5': 'Submission of Design Review Document (for Design-Build projects).',
       'MS-14': 'Crushed aggregates stockpile vs plan meets 95%.',
       'MS-15': 'Earthworks progress vs plan meets 95% conformance.',
       'PT-1': 'Schedule Efficiency: Auto-calculated via Physical Progress % / Elapsed Time %.',
       'CM-1': 'Cost Conformance: Variation amount vs original contract sum.',
-      'CM-2': 'Cost Trend: Quarter-over-quarter cost increase rate. If no QoQ rate is available, evaluated based on Approved cost increase vs original contract (CM-1).',
+      'CM-2': 'Cost Trend: Quarter-over-quarter cost increase rate based on revised contract vs original contract.',
       'TM-1': 'Time overruns: Approved EOT days vs original duration days.',
+      'TM-2': 'Schedule Variance conformance auto-calculated from EVM Schedule Variance ((EV - PV) / PV).',
+      'QL-2B': 'Auto-linked to Work Inspection Requests (WIR) approval rate combined with Daily Site QC pass rate.',
+      'QL-3A': 'Auto-linked to DLP / NCR defect closure ratio across logged project defects.',
+      'QL-4A': 'Auto-linked to deduplicated RFI Log non-rejection compliance rate.',
+      'QL-4B': 'Auto-linked to deduplicated RFI Log SLA response conformance rate.',
+      'MQ-1': 'Auto-linked to Material Approval submittal pass rate from the Submittal Log.',
       'RW-1': 'ROW Clearance: Calculated via ROW Obstruction free Section Km vs ROW Request By Contractor Km (fallback to project length).',
       'RW-2A': 'Properties identified, measured, evaluated: Calculated via Properties identified, measured, evaluated Km vs total project length.',
       'RW-2B': 'Compensation paid to owners: Calculated via Compensation Paid by ERA Km vs total project length.',
       'RW-2C': 'Compensated properties removed: Calculated via ROW Obstruction free Section Km vs ROW Request By Contractor Km.',
       'RW-3': 'Monthly ROW report completeness: Calculated via overall utility relocation handover completion rate.',
+      'CC-1A': 'Auto-linked to active CPM Work Program activity log.',
+      'CC-1C': 'Auto-linked to Monthly Progress Report (MPR) submission history.',
+      'CC-1F': 'Auto-linked to Daily Site Activities & Work Log reporting coverage.',
+      'CC-3A': 'Auto-linked to Performance Guarantee bond validity status in Bonds Register.',
+      'CC-3B': 'Auto-linked to Advance Payment Guarantee validity status in Bonds Register.',
+      'CC-3C': 'Auto-linked to Retention Money Guarantee validity status in Bonds Register.',
+      'CC-3D': 'Auto-linked to Contractor All-Risk (CAR) Insurance validity status in Bonds Register.',
+      'CC-3E': 'Auto-linked to Professional Indemnity Insurance validity status in Bonds Register.',
+      'CC-3F': 'Auto-linked to Plant & Equipment Insurance validity status in Bonds Register.',
+      'RK-1': 'Auto-linked to Risk Register active hazard detection check.',
+      'RK-2': 'Auto-linked to mean severity index (P x I) across tracked risks.',
+      'RK-3': 'Auto-linked to mitigation & control closure rate across Risk Register entries.',
+      'RK-4': 'Auto-linked to composite project risk exposure score across all active risks.'
     };
     return kpiTooltips[id] || `${desc}. Enter 0-100% or select Yes(1)/No(0).`;
   };
 
-  const isAutoKpi = (id: string) => {
-    return ['PP-1', 'PT-1', 'CM-1', 'CM-2', 'TM-1', 'TM-2', 'RW-1', 'RW-2A', 'RW-2B', 'RW-2C', 'RW-3', 'CC-1A', 'CC-3A', 'CC-3B', 'CC-3C', 'CC-3D', 'CC-3E', 'CC-3F'].includes(id);
-  };
+  const isAutoKpi = (id: string) => isAutoLinkedKpiId(id);
 
   const handleValueChange = (itemId: string, value: number, isNa: boolean) => {
     const updated = kpis.map(k => {
@@ -864,281 +813,19 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
 
   const evmMetrics = React.useMemo(() => calculateProjectEvm(project), [project]);
 
-  // Weighted Compliance & Performance Audit Framework
-  // Framework: Schedule 20%, EVM 15%, Quality 25%, Financial 10%, HSE 15%, Management 15% (Total 100%)
+  // Live Contractor Performance Evaluation Engine linked directly to all 12 ERA KPI Goals & project modules
   const auditData = React.useMemo(() => {
-    // 1. Progress vs. Original Contractor's Plan (Weight: 25%)
-    // The actual physical progress evaluated strictly against the original contractor's baseline plan
-    const originalPlanPct = (evmMetrics.originalPlannedPct && evmMetrics.originalPlannedPct > 0)
-      ? evmMetrics.originalPlannedPct
-      : 100.0;
-    const actualProgressVal = Number(project.physicalProgress || 0);
-    const progressRatioToOrigPlan = originalPlanPct > 0 
-      ? Math.min(100, Math.max(0, (actualProgressVal / originalPlanPct) * 100))
-      : actualProgressVal;
-    const scheduleScore = Number(progressRatioToOrigPlan.toFixed(1));
-    const scheduleGradeInfo = getPerformanceAuditGrade(scheduleScore);
-    const schedulePoints = Number(((scheduleScore * 25) / 100).toFixed(2));
-
-    // 2. EVM & Project Controls (Weight: 15%)
-    const spiScore = Math.min(100, Math.max(0, evmMetrics.SPI * 100));
-    const cpiScore = Math.min(100, Math.max(0, evmMetrics.CPI * 100));
-    const evmScore = Number(((spiScore + cpiScore) / 2).toFixed(1));
-    const evmGradeInfo = getPerformanceAuditGrade(evmScore);
-    const evmPoints = Number(((evmScore * 15) / 100).toFixed(2));
-
-    // 3. Technical Quality & Testing Compliance (Weight: 25%)
-    const g5 = getGoalScore('G5');
-    const qualityScore = Number((g5 > 0 ? g5 : 80.2).toFixed(1));
-    const qualityGradeInfo = getPerformanceAuditGrade(qualityScore);
-    const qualityPoints = Number(((qualityScore * 25) / 100).toFixed(2));
-
-    // 4. Linear Layer Progress Evaluation (Weight: 10%)
-    // Specific Pavement Layers (Subgrade, Capping, Subbase, Basecourse, Asphalt) planned vs actually executed
-    const planSubgradeKm = 65.0;
-    const planCappingKm = 65.0;
-    const planSubbaseKm = 65.0;
-    const planBasecourseKm = 65.0;
-    const planAsphaltKm = 65.0;
-
-    const execSubgradeKm = 42.5;
-    const execCappingKm = 36.2;
-    const execSubbaseKm = 31.8;
-    const execBasecourseKm = 26.5;
-    const execAsphaltKm = 21.0;
-
-    const sgRatio = (execSubgradeKm / planSubgradeKm) * 100;
-    const capRatio = (execCappingKm / planCappingKm) * 100;
-    const sbRatio = (execSubbaseKm / planSubbaseKm) * 100;
-    const bcRatio = (execBasecourseKm / planBasecourseKm) * 100;
-    const acRatio = (execAsphaltKm / planAsphaltKm) * 100;
-
-    const linearScoreRaw = (sgRatio + capRatio + sbRatio + bcRatio + acRatio) / 5;
-    const linearScore = Number(Math.min(100, Math.max(0, linearScoreRaw)).toFixed(1));
-    const linearGradeInfo = getPerformanceAuditGrade(linearScore);
-    const linearPoints = Number(((linearScore * 10) / 100).toFixed(2));
-
-    // 5. Resource Mobilization (Weight: 5%)
-    // Average six-month data of resource mobilization (equipment), material production, and material supply
-    let mobRatio = 84.8;
-    if (project.resourceMobilization && project.resourceMobilization.length > 0) {
-      const planUnits = project.resourceMobilization.reduce((s, r) => s + (r.revisedPlan || r.originalPlan || 0), 0);
-      const availUnits = project.resourceMobilization.reduce((s, r) => s + (r.available || 0), 0);
-      if (planUnits > 0) mobRatio = (availUnits / planUnits) * 100;
-    }
-
-    let prodRatio = 91.2;
-    if (project.materialProduction && project.materialProduction.length > 0) {
-      const prodItems = project.materialProduction.filter(m => m.category === 'Production');
-      if (prodItems.length > 0) {
-        const sumTargets = prodItems.reduce((s, m) => s + (m.monthlyTarget || 0), 0);
-        const sumAccomplished = prodItems.reduce((s, m) => s + (m.thisMonth || 0), 0);
-        if (sumTargets > 0) prodRatio = (sumAccomplished / sumTargets) * 100;
-      }
-    }
-
-    let supplyRatio = 95.8;
-    if (project.materialProduction && project.materialProduction.length > 0) {
-      const supItems = project.materialProduction.filter(m => m.category !== 'Production');
-      if (supItems.length > 0) {
-        const sumTargets = supItems.reduce((s, m) => s + (m.monthlyTarget || 0), 0);
-        const sumAccomplished = supItems.reduce((s, m) => s + (m.thisMonth || 0), 0);
-        if (sumTargets > 0) supplyRatio = (sumAccomplished / sumTargets) * 100;
-      }
-    }
-
-    const sixMonthAvgScoreRaw = (mobRatio * 0.35) + (prodRatio * 0.35) + (supplyRatio * 0.30);
-    const resourceMobScore = Number(Math.min(100, Math.max(0, sixMonthAvgScoreRaw)).toFixed(1));
-    const resourceMobGradeInfo = getPerformanceAuditGrade(resourceMobScore);
-    const resourceMobPoints = Number(((resourceMobScore * 5) / 100).toFixed(2));
-
-    // 6. Management & Contract Administration (Weight: 10%)
-    const g12 = getGoalScore('G12');
-    const mgmtScore = Number((g12 > 0 ? (g12 * 0.65 + 25) : 65.0).toFixed(1));
-    const mgmtGradeInfo = getPerformanceAuditGrade(mgmtScore);
-    const mgmtPoints = Number(((mgmtScore * 10) / 100).toFixed(2));
-
-    // 7. Financial & Cost Control (Weight: 5%)
-    const g3 = getGoalScore('G3');
-    const financialScore = Number((g3 > 0 ? g3 : 84.0).toFixed(1));
-    const financialGradeInfo = getPerformanceAuditGrade(financialScore);
-    const financialPoints = Number(((financialScore * 5) / 100).toFixed(2));
-
-    // 8. HSE & Social Safeguards (Weight: 5%)
-    const g9 = getGoalScore('G9');
-    const hseScore = Number((g9 > 0 ? g9 : 86.5).toFixed(1));
-    const hseGradeInfo = getPerformanceAuditGrade(hseScore);
-    const hsePoints = Number(((hseScore * 5) / 100).toFixed(2));
-
-    const totalPointsEarned = Number((
-      schedulePoints + evmPoints + qualityPoints + linearPoints + resourceMobPoints + mgmtPoints + financialPoints + hsePoints
-    ).toFixed(2));
-
-    const compositeScorePct = totalPointsEarned;
-    const overallAuditGrade = getPerformanceAuditGrade(compositeScorePct);
-
-    const pillars: PerformanceAuditPillar[] = [
-      {
-        id: 'schedule',
-        name: 'Progress vs. Original Contractor Plan',
-        weight: 25,
-        scorePct: scheduleScore,
-        scaleValue: scheduleGradeInfo.scaleValue,
-        grade: scheduleGradeInfo.grade,
-        letter: scheduleGradeInfo.letter,
-        pointsEarned: schedulePoints,
-        criteria: 'Actual physical progress compared & evaluated against original contractor baseline plan',
-        evaluationBasis: `Original Baseline Plan (${originalPlanPct.toFixed(1)}% target)`,
-        telemetrySummary: `Actual Accomplishment: ${actualProgressVal.toFixed(2)}% vs. Original Plan: ${originalPlanPct.toFixed(1)}% (${(actualProgressVal - originalPlanPct).toFixed(2)}% variance; ${progressRatioToOrigPlan.toFixed(1)}% accomplishment ratio; SPI ${evmMetrics.SPI.toFixed(3)})`,
-        attribution: {
-          contractor: 'Inadequate earthwork fleet production rate, delayed crusher overhaul & quarry haulage bottlenecks.',
-          employerOrExternal: 'Right-of-Way access delay on Meleya-Mejo Spur (km 0+000 to km 8+800) and heavy wet-season rainfall.'
-        },
-        finding: scheduleScore < 45 ? 'Severe schedule slippage against original contractor baseline plan (>36 months delay); float exhausted on critical path.' : 'Physical accomplishment lagging original baseline milestones.',
-        statusColor: scheduleGradeInfo.badgeClass
-      },
-      {
-        id: 'evm',
-        name: 'Earned Value & Project Controls (EVM)',
-        weight: 15,
-        scorePct: evmScore,
-        scaleValue: evmGradeInfo.scaleValue,
-        grade: evmGradeInfo.grade,
-        letter: evmGradeInfo.letter,
-        pointsEarned: evmPoints,
-        criteria: 'EVM metrics integration (PV, EV, AC, SPI, CPI, SV, CV, and Earned Schedule)',
-        evaluationBasis: 'Earned Value S-Curve Analysis (SPI & CPI mean)',
-        telemetrySummary: `PV: ETB ${(evmMetrics.PV / 1e6).toFixed(1)}M | EV: ETB ${(evmMetrics.EV / 1e6).toFixed(1)}M | AC: ETB ${(evmMetrics.AC / 1e6).toFixed(1)}M | SPI: ${evmMetrics.SPI.toFixed(3)} | CPI: ${evmMetrics.CPI.toFixed(3)} | SV: ETB ${(evmMetrics.SV / 1e6).toFixed(1)}M`,
-        attribution: {
-          contractor: 'Prolonged equipment idling and extended contractor site overhead costs.',
-          employerOrExternal: 'Contractual price escalation adjustments (ETB 409.35M certified) under unit-rate contract formula.'
-        },
-        finding: `CPI ${evmMetrics.CPI.toFixed(3)} indicates manageable cost variance, but SPI ${evmMetrics.SPI.toFixed(3)} reflects severe earned schedule slippage.`,
-        statusColor: evmGradeInfo.badgeClass
-      },
-      {
-        id: 'quality',
-        name: 'Technical Quality & Standards',
-        weight: 25,
-        scorePct: qualityScore,
-        scaleValue: qualityGradeInfo.scaleValue,
-        grade: qualityGradeInfo.grade,
-        letter: qualityGradeInfo.letter,
-        pointsEarned: qualityPoints,
-        criteria: 'QA/QC manual implementation, laboratory testing frequency, material compliance & NCR closure',
-        evaluationBasis: 'ERA Technical Specifications & Laboratory Verification',
-        telemetrySummary: 'Field compaction MDD conformance >98%; structural concrete compressive strength 100% compliant; 42 WIR inspections completed; zero unresolved critical NCRs.',
-        attribution: {
-          contractor: 'Roadbed, subbase, and structural works comply with AASHTO/ERA standard specifications; minor lag in test submittal turnaround.',
-          employerOrExternal: 'Employer technical audits confirmed structural soundness of drainage structures and bridge abutments.'
-        },
-        finding: 'Technical quality conformance consistently satisfies standard specifications with zero structural rejections.',
-        statusColor: qualityGradeInfo.badgeClass
-      },
-      {
-        id: 'linear',
-        name: 'Linear Layer Progress Evaluation',
-        weight: 10,
-        scorePct: linearScore,
-        scaleValue: linearGradeInfo.scaleValue,
-        grade: linearGradeInfo.grade,
-        letter: linearGradeInfo.letter,
-        pointsEarned: linearPoints,
-        criteria: 'Pavement layers execution based on plan and actually executed (Subgrade, Capping, Subbase, Basecourse, Asphalt)',
-        evaluationBasis: 'Pavement Layer Construction Baseline (65.0 km Total Scope)',
-        telemetrySummary: `Subgrade: ${execSubgradeKm}/${planSubgradeKm}km (${sgRatio.toFixed(1)}%), Capping: ${execCappingKm}/${planCappingKm}km (${capRatio.toFixed(1)}%), Subbase: ${execSubbaseKm}/${planSubbaseKm}km (${sbRatio.toFixed(1)}%), Basecourse: ${execBasecourseKm}/${planBasecourseKm}km (${bcRatio.toFixed(1)}%), Asphalt: ${execAsphaltKm}/${planAsphaltKm}km (${acRatio.toFixed(1)}%) &bull; Mean Executed: ${linearScore.toFixed(1)}%`,
-        attribution: {
-          contractor: 'Aggregate crushing output lagging asphalt laying capacity; second crusher crew required.',
-          employerOrExternal: 'ROW compensation delays on section km 45+000 - 53+800 hindered continuous earthwork sequencing.'
-        },
-        finding: 'Lower pavement layers (subgrade/capping) well advanced; upper layers (basecourse/asphalt) require accelerated aggregate production.',
-        statusColor: linearGradeInfo.badgeClass
-      },
-      {
-        id: 'resourceMob',
-        name: 'Resource Mobilization (6-Month Average)',
-        weight: 5,
-        scorePct: resourceMobScore,
-        scaleValue: resourceMobGradeInfo.scaleValue,
-        grade: resourceMobGradeInfo.grade,
-        letter: resourceMobGradeInfo.letter,
-        pointsEarned: resourceMobPoints,
-        criteria: 'Average six-month data of resource mobilization production and material supply',
-        evaluationBasis: '6-Month Rolling Historical Average (Equipment + Production + Material Supply)',
-        telemetrySummary: `6-Month Composite Avg: ${resourceMobScore.toFixed(1)}% (Heavy Equipment Mobilization: ${mobRatio.toFixed(1)}%, Material Production: ${prodRatio.toFixed(1)}%, Key Material Supply: ${supplyRatio.toFixed(1)}%)`,
-        attribution: {
-          contractor: 'Heavy fleet mobilization meets contract quotas (70/78 units deployed); spare parts logistics stabilized.',
-          employerOrExternal: 'Foreign exchange prioritization facilitated timely importation of 60/70 penetration bitumen and Portland cement.'
-        },
-        finding: 'Resource mobilization, quarry production, and material supply rates consistently satisfy required site operational thresholds.',
-        statusColor: resourceMobGradeInfo.badgeClass
-      },
-      {
-        id: 'management',
-        name: 'Management & Contract Administration',
-        weight: 10,
-        scorePct: mgmtScore,
-        scaleValue: mgmtGradeInfo.scaleValue,
-        grade: mgmtGradeInfo.grade,
-        letter: mgmtGradeInfo.letter,
-        pointsEarned: mgmtPoints,
-        criteria: 'Site organization, key personnel retention, reporting timeliness & contract administration',
-        evaluationBasis: 'FIDIC Conditions of Contract & Administration Obligation',
-        telemetrySummary: '68% active equipment availability; Project Manager & QA Manager present on site; 100% mandatory domestic subcontractors engaged; monthly progress reports submitted.',
-        attribution: {
-          contractor: 'Subcontractor management compliant; preventive maintenance regime for crushers needs enhancement.',
-          employerOrExternal: 'Supervision Engineer issued 3 notices under Sub-Clause 8.6 regarding acceleration requirements.'
-        },
-        finding: 'Management demonstrates solid technical oversight, but mechanical fleet uptime requires immediate reinforcement.',
-        statusColor: mgmtGradeInfo.badgeClass
-      },
-      {
-        id: 'financial',
-        name: 'Financial & Cost Control',
-        weight: 5,
-        scorePct: financialScore,
-        scaleValue: financialGradeInfo.scaleValue,
-        grade: financialGradeInfo.grade,
-        letter: financialGradeInfo.letter,
-        pointsEarned: financialPoints,
-        criteria: 'Variation order magnitude (% of BAC), payment certificate accuracy, claims control & advance recovery',
-        evaluationBasis: 'Contract Financial Ledger & Variation Order Register',
-        telemetrySummary: `Approved variations: ETB 72.16M (+4.64% of original BAC ETB 1,555.71M); IPCs 1–28 certified; advance payment guarantee active with ~75% recovered.`,
-        attribution: {
-          contractor: 'Timely and transparent submission of Interim Payment Certificates (IPCs) with complete supporting measurements.',
-          employerOrExternal: 'Variation orders formally issued for bridge foundation scour deepening and subgrade soft-ground stabilization.'
-        },
-        finding: 'Net variation growth of +4.64% remains well below the FIDIC 15% substantial modification threshold.',
-        statusColor: financialGradeInfo.badgeClass
-      },
-      {
-        id: 'hse',
-        name: 'HSE & Social Safeguards',
-        weight: 5,
-        scorePct: hseScore,
-        scaleValue: hseGradeInfo.scaleValue,
-        grade: hseGradeInfo.grade,
-        letter: hseGradeInfo.letter,
-        pointsEarned: hsePoints,
-        criteria: 'Health, Safety & Environmental compliance (ESOSH), Lost Time Injuries (LTIs), clinic & TMP',
-        evaluationBasis: 'ESOSH Site Audit & OHS Incident Register',
-        telemetrySummary: '0 Fatalities, 0 Lost Time Injuries (LTIFR = 0.00 across 2.84M man-hours); 100% PPE enforcement on active cuts; active site clinic & ambulance available.',
-        attribution: {
-          contractor: 'Proactive site safety management, daily toolbox talks, and effective traffic detours through mountainous terrain.',
-          employerOrExternal: 'Local administrative authorities commended Contractor for swift mitigation of community dust complaints.'
-        },
-        finding: 'Exemplary health and safety compliance with zero statutory infractions or environmental stop-work orders.',
-        statusColor: hseGradeInfo.badgeClass
-      }
-    ];
-
-    return {
-      pillars,
-      compositeScorePct,
-      overallAuditGrade,
-      totalPointsEarned
-    };
-  }, [progressKpiResult, evmMetrics, hierarchy, draftKpis, project]);
+    return evaluateContractorPerformance({
+      project,
+      kpis: draftKpis,
+      hierarchy,
+      getGoalScore,
+      getSscScore,
+      progressKpiResult,
+      evmMetrics,
+      selectedMonth
+    });
+  }, [progressKpiResult, evmMetrics, hierarchy, draftKpis, project, selectedMonth]);
 
   const handleLockCurrentMonth = (monthKey: string) => {
     if (!isAuthorized || isViewer) {
@@ -1414,37 +1101,6 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
         </div>
       )}
 
-      {/* Compact KPI Scoring Detail Trigger Banner (Inline engine hidden from page body per request) */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-3.5 sm:p-4 border border-indigo-700/50 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0">
-            <Activity className="w-5 h-5 text-indigo-300" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-xs sm:text-sm font-black uppercase tracking-tight text-white">
-                {selectedMonth} KPI Scoring & Physical Progress Evaluation
-              </h3>
-              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 font-mono">
-                Overall: {(currentRecord?.overallScore ?? overallScore).toFixed(1)}% (Grade {currentRecord?.overallGrade || overallGrade})
-              </span>
-            </div>
-            <p className="text-2xs text-indigo-200/80 mt-0.5">
-              PP-1 Actual / ERA Plan ratio: <strong className="text-amber-300">{progressKpiResult.performanceRatio.toFixed(2)}%</strong> &bull; PP-1 Score: <strong className="text-emerald-400">{progressKpiResult.pp1Score.toFixed(1)}%</strong> ({progressKpiResult.status})
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setShowKpiDetailModal(true)}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm border border-indigo-400/30 cursor-pointer shrink-0"
-        >
-          <BarChart2 className="w-4 h-4 text-indigo-200" />
-          <span>View KPI Scoring Detail Modal</span>
-        </button>
-      </div>
-
       {/* 1. Admin/Non-Admin mode banners */}
       {!isAdmin ? (
         <div className="bg-amber-50/50 dark:bg-amber-950/15 border border-amber-200/60 dark:border-amber-900/45 p-4 rounded-2xl flex items-center justify-between gap-3 shadow-2xs">
@@ -1525,6 +1181,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
           </div>
         </div>
       )}
+
 
       <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 p-5 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1830,7 +1487,8 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
           return (
             <div 
               key={goal.id} 
-              className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm"
+              id={`kpi-goal-card-${goal.id}`}
+              className="bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm scroll-mt-4"
             >
               {/* Goal Header */}
               <div className="bg-gradient-to-r from-blue-700 to-blue-800 dark:from-slate-750 dark:to-slate-800 text-white px-5 py-3 flex flex-wrap justify-between items-center gap-3 select-none">
@@ -2186,7 +1844,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                                   </span>
                                 </div>
 
-                                {it.id === 'PP-1' && (
+                                {it.id === 'PP-1' ? (
                                   <div className="flex items-center gap-2 mt-1 flex-wrap pl-1">
                                     <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                                       <Zap className="w-3 h-3 text-indigo-500" />
@@ -2195,6 +1853,10 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                                     <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
                                       % Divided for ERA Plan: <strong>{progressKpiResult.performanceRatio.toFixed(2)}%</strong> &bull; Score: <strong className="text-indigo-600 dark:text-indigo-400 font-mono">{progressKpiResult.pp1Score.toFixed(1)}%</strong>
                                     </span>
+                                  </div>
+                                ) : isAutoLinkedKpiId(it.id) && (
+                                  <div className="text-[10px] text-slate-500 dark:text-slate-400 pl-1">
+                                    Linked Source: <span className="font-medium text-blue-600 dark:text-blue-400">{AUTO_KPI_SOURCE_MAP[it.id]}</span>
                                   </div>
                                 )}
                               </div>
@@ -2355,6 +2017,425 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
         getGoalScore={getGoalScore}
         onProjectUpdate={onProjectUpdate}
       />
+
+      {/* Integrated Contractor Performance Evaluation & Criteria Linkage */}
+      <section className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-2xl shadow-xs overflow-hidden mt-6">
+        {/* Header Bar */}
+        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-700/60 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Scale className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+                Contractor Performance Evaluation &amp; Criteria Linkage
+              </h2>
+              <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                {selectedMonth} &middot; FIDIC / ERA Weighted Audit
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed max-w-3xl">
+              Evaluates contractor delivery across 8 weighted pillars directly linked to{' '}
+              <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 tabular-nums">
+                {auditData.linkedGoalCoverageCount}/{auditData.totalGoalCount}
+              </span>{' '}
+              KPI Goals and{' '}
+              <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 tabular-nums">
+                {auditData.totalLinkedCriteriaCount}/{auditData.totalActiveCriteriaCount}
+              </span>{' '}
+              active evaluation criteria, synchronized with live project modules.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-4 flex-wrap justify-between lg:justify-end">
+            <div className="flex items-center gap-4 border border-slate-200 dark:border-slate-700/70 rounded-xl px-3.5 py-2 bg-slate-50/70 dark:bg-slate-900/50">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 dark:text-slate-400">
+                  Composite Score
+                </div>
+                <div className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100">
+                  {auditData.compositeScorePct.toFixed(1)}%
+                </div>
+              </div>
+              <div className="h-7 w-px bg-slate-200 dark:bg-slate-700" />
+              <div>
+                <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 dark:text-slate-400">
+                  Rating Scale
+                </div>
+                <div className={`text-sm font-bold font-mono tabular-nums ${auditData.overallAuditGrade.colorClass}`}>
+                  {auditData.overallAuditGrade.scaleValue.toFixed(2)} / 5.00
+                </div>
+              </div>
+              <div className="h-7 w-px bg-slate-200 dark:bg-slate-700" />
+              <div>
+                <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 dark:text-slate-400">
+                  Grade ({auditData.overallAuditGrade.letter})
+                </div>
+                <div className={`text-sm font-bold ${auditData.overallAuditGrade.colorClass}`}>
+                  {auditData.overallAuditGrade.grade}
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowContractorEvalPanel(prev => !prev)}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 transition flex items-center gap-1.5 cursor-pointer"
+            >
+              {showContractorEvalPanel ? (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5" />
+                  <span>Hide Details</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                  <span>Show Evaluation</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {showContractorEvalPanel && (
+          <div className="divide-y divide-slate-200 dark:divide-slate-700/60">
+            {/* Rating Band Reference Strip */}
+            <div className="px-4 sm:px-5 py-3 bg-slate-50/50 dark:bg-slate-900/30 grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
+              {[
+                { band: 'Excellent', range: '>= 90.0% · 4.50–5.00', color: 'text-emerald-600 dark:text-emerald-400', activeBg: 'bg-emerald-500/10 border-emerald-500/40' },
+                { band: 'Good', range: '75.0–89.9% · 3.50–4.49', color: 'text-blue-600 dark:text-blue-400', activeBg: 'bg-blue-500/10 border-blue-500/40' },
+                { band: 'Satisfactory', range: '60.0–74.9% · 2.50–3.49', color: 'text-amber-600 dark:text-amber-400', activeBg: 'bg-amber-500/10 border-amber-500/40' },
+                { band: 'Marginal', range: '45.0–59.9% · 1.50–2.49', color: 'text-orange-600 dark:text-orange-400', activeBg: 'bg-orange-500/10 border-orange-500/40' },
+                { band: 'Unsatisfactory', range: '< 45.0% · 1.00–1.49', color: 'text-rose-600 dark:text-rose-400', activeBg: 'bg-rose-500/10 border-rose-500/40' },
+              ].map((tier) => {
+                const isActive = auditData.overallAuditGrade.grade === tier.band;
+                return (
+                  <div
+                    key={tier.band}
+                    className={`px-2.5 py-1.5 rounded-lg border transition ${
+                      isActive
+                        ? tier.activeBg
+                        : 'border-slate-200/70 dark:border-slate-700/50 bg-white/60 dark:bg-slate-800/40 opacity-75'
+                    }`}
+                  >
+                    <div className={`font-bold ${tier.color}`}>
+                      {tier.band}{isActive ? ' (Active)' : ''}
+                    </div>
+                    <div className="font-mono text-[10px] text-slate-600 dark:text-slate-400 tabular-nums">
+                      {tier.range}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 8-Pillar Interactive Evaluation Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 dark:bg-slate-900/60 text-[10px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700/60">
+                  <tr>
+                    <th className="px-3.5 py-2.5 w-8 text-center">#</th>
+                    <th className="px-3.5 py-2.5">Evaluation Pillar &amp; Linked Goals</th>
+                    <th className="px-3 py-2.5 text-center">Weight</th>
+                    <th className="px-3 py-2.5 text-center">Score</th>
+                    <th className="px-3 py-2.5 text-center">Scale</th>
+                    <th className="px-3 py-2.5 text-center">Earned</th>
+                    <th className="px-3 py-2.5">Rating Band</th>
+                    <th className="px-3.5 py-2.5 text-right">Criteria Breakdown</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                  {auditData.pillars.map((pillar, idx) => {
+                    const isExpanded = expandedPillarId === pillar.id;
+                    const pillarGrade = getPerformanceAuditGrade(pillar.scorePct);
+                    return (
+                      <React.Fragment key={`main-pillar-${pillar.id}`}>
+                        <tr
+                          onClick={() => setExpandedPillarId(isExpanded ? null : pillar.id)}
+                          className={`cursor-pointer transition ${
+                            isExpanded
+                              ? 'bg-blue-50/40 dark:bg-slate-900/70'
+                              : 'hover:bg-slate-50/80 dark:hover:bg-slate-900/40'
+                          }`}
+                        >
+                          <td className="px-3.5 py-3 text-center font-mono text-slate-500 dark:text-slate-400 tabular-nums">
+                            {idx + 1}
+                          </td>
+                          <td className="px-3.5 py-3">
+                            <div className="font-semibold text-slate-900 dark:text-slate-100">
+                              {pillar.name}
+                            </div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                              <span className="inline-flex items-center gap-1 font-mono text-blue-600 dark:text-blue-400 font-semibold">
+                                <Link2 className="w-3 h-3" />
+                                {pillar.linkedGoalIds.join(', ')}
+                              </span>
+                              <span>&middot;</span>
+                              <span className="font-mono tabular-nums">
+                                {pillar.linkedCriteria.length} linked criteria
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-center font-mono font-semibold text-slate-700 dark:text-slate-300 tabular-nums">
+                            {pillar.weight}%
+                          </td>
+                          <td className={`px-3 py-3 text-center font-mono font-bold tabular-nums ${pillarGrade.colorClass}`}>
+                            {pillar.scorePct.toFixed(1)}%
+                          </td>
+                          <td className="px-3 py-3 text-center font-mono text-slate-700 dark:text-slate-300 tabular-nums">
+                            {pillar.scaleValue.toFixed(2)}
+                          </td>
+                          <td className="px-3 py-3 text-center font-mono font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+                            {pillar.pointsEarned.toFixed(2)}
+                          </td>
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <span className={`font-semibold ${pillarGrade.colorClass}`}>
+                              {pillar.grade} ({pillar.letter})
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedPillarId(isExpanded ? null : pillar.id);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
+                            >
+                              <span>{isExpanded ? 'Hide' : 'Inspect'}</span>
+                              {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            </button>
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr className="bg-slate-50/70 dark:bg-slate-900/50">
+                            <td colSpan={8} className="px-4 py-4 space-y-4 border-t border-slate-200/80 dark:border-slate-700/60">
+                              {/* Context, Attribution & Basis */}
+                              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                                <div className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl p-3 space-y-1">
+                                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                    Evaluation Basis &amp; Finding
+                                  </div>
+                                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                                    {pillar.evaluationBasis}
+                                  </div>
+                                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                                    {pillar.finding}
+                                  </p>
+                                </div>
+
+                                <div className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl p-3 space-y-1">
+                                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                    Contractor Attribution
+                                  </div>
+                                  <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed">
+                                    {pillar.attribution.contractor}
+                                  </p>
+                                </div>
+
+                                <div className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl p-3 space-y-1">
+                                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                    Employer / External Context
+                                  </div>
+                                  <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed">
+                                    {pillar.attribution.employerOrExternal}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Live Telemetry Evidence Grid */}
+                              {pillar.evidenceMetrics.length > 0 && (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                                  {pillar.evidenceMetrics.map((em, emIdx) => (
+                                    <div
+                                      key={`em-${pillar.id}-${emIdx}`}
+                                      className="bg-white dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/60 rounded-lg px-2.5 py-2"
+                                    >
+                                      <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                                        {em.label}
+                                      </div>
+                                      <div className="text-xs font-mono font-bold text-slate-900 dark:text-slate-100 mt-0.5 tabular-nums truncate" title={em.value}>
+                                        {em.value}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Linear Pavement Layers Breakdown Table (for Linear Pillar) */}
+                              {pillar.linearLayers && pillar.linearLayers.length > 0 && (
+                                <div className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl overflow-hidden">
+                                  <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-700/60 flex items-center gap-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                                    <Layers className="w-3.5 h-3.5 text-blue-500" />
+                                    <span>Linear Pavement Layer Execution Breakdown (Main + Spur)</span>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-[11px] text-left">
+                                      <thead className="bg-slate-50 dark:bg-slate-900/50 text-[10px] uppercase text-slate-500 dark:text-slate-400">
+                                        <tr>
+                                          <th className="px-3 py-1.5">Layer</th>
+                                          <th className="px-3 py-1.5 text-right">Planned (km)</th>
+                                          <th className="px-3 py-1.5 text-right">Executed (km)</th>
+                                          <th className="px-3 py-1.5 text-right">Variance (km)</th>
+                                          <th className="px-3 py-1.5 text-right">Completion %</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40 font-mono tabular-nums">
+                                        {pillar.linearLayers.map(layer => (
+                                          <tr key={`layer-${layer.key}`}>
+                                            <td className="px-3 py-1.5 font-sans font-semibold text-slate-800 dark:text-slate-200">
+                                              {layer.label}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-right text-slate-600 dark:text-slate-300">
+                                              {layer.planKm.toFixed(2)}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-right font-semibold text-slate-900 dark:text-slate-100">
+                                              {layer.execKm.toFixed(2)}
+                                            </td>
+                                            <td className={`px-3 py-1.5 text-right ${layer.varianceKm >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                              {layer.varianceKm >= 0 ? '+' : ''}{layer.varianceKm.toFixed(2)}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-right font-bold text-slate-900 dark:text-slate-100">
+                                              {layer.ratioPct.toFixed(1)}%
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Linked ERA KPI Criteria Table */}
+                              <div className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl overflow-hidden">
+                                <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-2 flex-wrap">
+                                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                                    Linked ERA KPI Criteria ({pillar.linkedCriteria.length})
+                                  </span>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {pillar.linkedGoalLabels.map(gl => (
+                                      <span key={gl} className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                                        {gl}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                                  <table className="w-full text-[11px] text-left">
+                                    <thead className="bg-slate-50 dark:bg-slate-900/50 text-[10px] uppercase text-slate-500 dark:text-slate-400 sticky top-0">
+                                      <tr>
+                                        <th className="px-3 py-2">Code</th>
+                                        <th className="px-3 py-2">Criterion &amp; Subgroup</th>
+                                        <th className="px-3 py-2">Data Source</th>
+                                        <th className="px-3 py-2 text-right">Value</th>
+                                        <th className="px-3 py-2 text-right">Score</th>
+                                        <th className="px-3 py-2 text-right">Action</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
+                                      {pillar.linkedCriteria.map(c => (
+                                        <tr key={`linked-crit-${pillar.id}-${c.itemId}`} className="hover:bg-slate-50 dark:hover:bg-slate-900/40">
+                                          <td className="px-3 py-2 font-mono font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                            {c.itemId}
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <div className="font-medium text-slate-800 dark:text-slate-200">
+                                              {c.desc}
+                                            </div>
+                                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                              {c.goalId} &middot; {c.sscId}: {c.sscName}
+                                            </div>
+                                          </td>
+                                          <td className="px-3 py-2 text-slate-600 dark:text-slate-400">
+                                            <span className={c.isAutoLinked ? 'text-blue-600 dark:text-blue-400 font-medium' : ''}>
+                                              {c.sourceLabel}
+                                            </span>
+                                            {c.isOverridden && (
+                                              <span className="ml-1.5 text-[10px] font-mono text-amber-600 dark:text-amber-400">
+                                                (Manual Override)
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="px-3 py-2 text-right font-mono text-slate-700 dark:text-slate-300 tabular-nums whitespace-nowrap">
+                                            {c.valueDisplay}
+                                          </td>
+                                          <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100 tabular-nums whitespace-nowrap">
+                                            {c.naActive ? 'N/A' : `${c.scorePct.toFixed(1)}%`}
+                                          </td>
+                                          <td className="px-3 py-2 text-right whitespace-nowrap">
+                                            <button
+                                              type="button"
+                                              onClick={() => jumpToCriterion(c.goalId)}
+                                              className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                                            >
+                                              Jump to {c.goalId}
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+                <tfoot className="bg-slate-50 dark:bg-slate-900/70 border-t border-slate-200 dark:border-slate-700/60 font-bold text-xs">
+                  <tr>
+                    <td className="px-3.5 py-2.5 text-center font-mono">&Sigma;</td>
+                    <td className="px-3.5 py-2.5 text-slate-900 dark:text-slate-100">
+                      Weighted Composite Contractor Evaluation
+                    </td>
+                    <td className="px-3 py-2.5 text-center font-mono tabular-nums">100%</td>
+                    <td className={`px-3 py-2.5 text-center font-mono tabular-nums ${auditData.overallAuditGrade.colorClass}`}>
+                      {auditData.compositeScorePct.toFixed(1)}%
+                    </td>
+                    <td className="px-3 py-2.5 text-center font-mono tabular-nums">
+                      {auditData.overallAuditGrade.scaleValue.toFixed(2)}
+                    </td>
+                    <td className="px-3 py-2.5 text-center font-mono tabular-nums text-slate-900 dark:text-slate-100">
+                      {auditData.totalPointsEarned.toFixed(2)}
+                    </td>
+                    <td colSpan={2} className={`px-3.5 py-2.5 ${auditData.overallAuditGrade.colorClass}`}>
+                      {auditData.overallAuditGrade.grade} (Grade {auditData.overallAuditGrade.letter})
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* Dynamic FIDIC Determination & Recommended Action Footer */}
+            <div className="p-4 sm:p-5 bg-slate-50/40 dark:bg-slate-900/30 space-y-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                <span className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span>Evaluator Determination &amp; FIDIC Governance</span>
+                </span>
+                <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                  Risk Level: <strong className="text-slate-800 dark:text-slate-200">{auditData.determination.riskLevel}</strong> &middot; {auditData.determination.contractClauseRef}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                <div>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100 block mb-0.5">
+                    Performance Profile &amp; Causal Analysis
+                  </span>
+                  <p>{auditData.determination.strengthSummary} {auditData.determination.causalAnalysis}</p>
+                </div>
+                <div>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100 block mb-0.5">
+                    Contractual Action &amp; Monitoring Plan
+                  </span>
+                  <p>{auditData.determination.correctiveAction}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
       
       {/* KPI Scoring Detail Modal */}
       {showKpiDetailModal && (
@@ -3166,8 +3247,11 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                           </div>
                         </div>
 
-                        {/* Attribution Notes */}
-                        <div className="space-y-0.5 pt-1.5 border-t border-white/10 text-[9px] leading-relaxed">
+                        {/* Attribution & Linked KPIs */}
+                        <div className="space-y-1 pt-1.5 border-t border-white/10 text-[9px] leading-relaxed">
+                          <div className="text-blue-300 font-mono truncate" title={pillar.linkedGoalLabels.join(', ')}>
+                            <strong>Linked KPIs:</strong> {pillar.linkedGoalIds.join(', ')} ({pillar.linkedCriteria.length} criteria)
+                          </div>
                           <div className="text-amber-200/90 truncate" title={pillar.attribution.contractor}>
                             <strong>Contractor:</strong> {pillar.attribution.contractor}
                           </div>
@@ -3187,7 +3271,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                       <FileText className="w-4 h-4 text-indigo-400" /> Tabular Breakdown of Category Scores & Overall Weighted Total
                     </span>
                     <span className="text-[10px] font-mono text-slate-400">
-                      Overall Total = &Sigma;(Score &times; Weight) = {auditData.totalPointsEarned.toFixed(2)} / 100 Points
+                      Overall Total = &Sigma;(Score &times; Weight) = {auditData.totalPointsEarned.toFixed(2)} / 100 Points ({auditData.totalLinkedCriteriaCount}/{auditData.totalActiveCriteriaCount} Criteria Linked)
                     </span>
                   </div>
 
@@ -3196,7 +3280,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                       <thead className="bg-slate-900 uppercase font-mono font-extrabold text-[10px] text-indigo-300 border-b border-white/15">
                         <tr>
                           <th className="px-3 py-2.5 w-8 text-center">#</th>
-                          <th className="px-3 py-2.5">Audit Category / Dimension</th>
+                          <th className="px-3 py-2.5">Audit Category / Linked Goals</th>
                           <th className="px-2.5 py-2.5 text-center">Weight</th>
                           <th className="px-3 py-2.5">Evaluation Method & Reference Rule</th>
                           <th className="px-3 py-2.5">Evaluated Telemetry & Performance Data</th>
@@ -3213,7 +3297,19 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                               {idx + 1}
                             </td>
                             <td className="px-3 py-2.5 font-bold text-white whitespace-nowrap">
-                              {pillar.name}
+                              <div>{pillar.name}</div>
+                              <div className="text-[10px] font-mono font-normal text-indigo-300 flex items-center gap-2 mt-0.5">
+                                <span>{pillar.linkedGoalIds.join(', ')} &bull; {pillar.linkedCriteria.length} criteria</span>
+                                {pillar.linkedGoalIds[0] && (
+                                  <button
+                                    type="button"
+                                    onClick={() => jumpToCriterion(pillar.linkedGoalIds[0], true)}
+                                    className="text-amber-300 hover:underline cursor-pointer"
+                                  >
+                                    Inspect &rarr;
+                                  </button>
+                                )}
+                              </div>
                             </td>
                             <td className="px-2.5 py-2.5 text-center font-mono font-black text-amber-300">
                               {pillar.weight}%
@@ -3252,7 +3348,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                             100%
                           </td>
                           <td colSpan={2} className="px-3 py-3 text-[11px] text-slate-300">
-                            Combined weighted audit: Progress vs. Original Plan (25%), EVM (15%), Quality (25%), Linear Layers (10%), 6-Mo Resource Mob (5%), Management (10%), Financial (5%), HSE (5%)
+                            Combined weighted audit: Progress vs. Original Plan (25%), EVM (15%), Quality (25%), Linear Layers (10%), Multi-Month Resource Mob (5%), Management (10%), Financial (5%), HSE (5%)
                           </td>
                           <td className="px-2.5 py-3 text-center font-mono text-amber-300 text-sm font-black">
                             {auditData.compositeScorePct.toFixed(1)}%
@@ -3281,20 +3377,20 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                       <ShieldCheck className="w-4 h-4 text-emerald-400" /> Independent Evaluator Audit Assessment & FIDIC Determination
                     </span>
                     <span className="font-mono text-[10px] text-slate-400">
-                      Standard: FIDIC Conditions of Contract (Red Book) &bull; Project Ref: W-43-NC-5
+                      {auditData.determination.contractClauseRef} &bull; Risk: {auditData.determination.riskLevel} &bull; Project: {project.name || project.id}
                     </span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] leading-relaxed text-slate-200">
                     <div className="space-y-1">
-                      <strong className="text-amber-300 block font-bold">Delay & Causal Attribution Analysis:</strong>
+                      <strong className="text-amber-300 block font-bold">Performance & Causal Attribution Analysis:</strong>
                       <p className="text-slate-300">
-                        Contractor construction delivery demonstrates commendable compliance in 6-month resource mobilization ({auditData.pillars[4].scorePct.toFixed(1)}%), technical quality ({auditData.pillars[2].scorePct.toFixed(1)}%), and HSE standards ({auditData.pillars[7].scorePct.toFixed(1)}%). However, overall delivery is constrained by physical progress lagging the original contractor baseline plan ({auditData.pillars[0].scorePct.toFixed(1)}% accomplishment ratio; SPI {evmMetrics.SPI.toFixed(3)}) and linear pavement upper layers ({auditData.pillars[3].scorePct.toFixed(1)}%). While ROW delays on the 8.8km Meleya-Mejo Spur represent Employer-side delay, rock crushing and subgrade haulage bottlenecks are contractor-attributable.
+                        {auditData.determination.strengthSummary} {auditData.determination.causalAnalysis}
                       </p>
                     </div>
                     <div className="space-y-1">
                       <strong className="text-emerald-300 block font-bold">Corrective Action & Contract Administration:</strong>
                       <p className="text-slate-300">
-                        Pursuant to FIDIC Sub-Clause 8.6 [Rate of Progress], the Contractor must submit a revised recovery programme with concrete measures to double crusher production output and accelerate asphalt paving layers. With an overall weighted total of <strong>{auditData.totalPointsEarned.toFixed(2)} pts ({auditData.overallAuditGrade.grade} • Grade {auditData.overallAuditGrade.letter})</strong> within the predefined rating bands, retention release and advance recovery amortizations remain securely enforceable against milestone delivery.
+                        {auditData.determination.correctiveAction}
                       </p>
                     </div>
                   </div>

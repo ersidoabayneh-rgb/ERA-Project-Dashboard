@@ -1,19 +1,37 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Truck, Trash2, DownloadCloud, X, Eye, EyeOff,
   Activity, Sun, AlertTriangle, Package, ClipboardList,
   Calendar, Factory, CheckSquare, Square, Sliders, RefreshCw,
-  Check, Printer, RotateCcw, Layers, Filter, CheckCircle2, FileText
+  Check, Printer, RotateCcw, Layers, Filter, FileText, Search, Users, Save, MessageSquare
 } from 'lucide-react';
 import {
-  Project, DailyActivityRecord, User, DailyProductionItem, QtyItem
+  Project,
+  DailyActivityRecord,
+  User,
+  DailyProductionItem,
+  QtyItem,
+  DailySiteLogEntry,
+  DailyActivityLaborItem,
+  DailyEquipmentFleetItem,
+  DailyMaterialItem,
+  DailyTomorrowPlanItem
 } from '../types';
+import {
+  createDefaultLaborSummary,
+  createDefaultProductionList,
+  createDefaultEquipmentFleet,
+  createDefaultMaterialsList,
+  createDefaultSiteChallenges,
+  createDefaultTomorrowPlans,
+  broadcastDailyActivitiesSync
+} from '../lib/dailyActivitiesSync';
 import eraLogo from '../assets/logo.png';
 
 interface DailyActivitiesViewProps {
   project: Project;
-  onUpdateProject: (updatedProject: Project, actionDesc: string) => void;
+  onUpdateProject: (updatedProject: Partial<Project>, actionDesc: string) => void;
   isReadonly?: boolean;
   currentUserObj?: User | null;
 }
@@ -28,14 +46,7 @@ export interface WorkRegisterSectionDef {
   isCustom?: boolean;
 }
 
-export interface EquipmentFleetItem {
-  id: string;
-  name: string;
-  typeCapacity: string;
-  status: 'Operating' | 'Standby' | 'Breakdown' | 'Maintenance';
-  workingHours: number;
-  remarks: string;
-}
+export type EquipmentFleetItem = DailyEquipmentFleetItem;
 
 export const MEASUREMENT_UNITS = [
   'km',
@@ -260,11 +271,11 @@ export const WORK_SECTIONS: WorkRegisterSectionDef[] = [
   { id: '11', name: 'AC', metrics: ['Description of Work', 'Station of Work', 'Side', 'Daily Executed (m)', 'Daily Executed (km)', 'Daily Executed (km)'] },
   { id: '12', name: 'Shoulder DBST', metrics: ['Description of Work', 'Station of Work', 'Side', 'Daily Executed (m)', 'Daily Executed (km)', 'Daily Executed (km)'] },
   { id: '13', name: 'RCP Production', metrics: ['Description of Work', 'Station of Work', 'This day', 'Previous', 'To date'] },
+  { id: '18', name: 'Ditch Construction', metrics: ['Description of Work', 'Station of Work', 'Side', 'Daily Executed Stretch (m)', 'Volume(m³)', 'Net Daily Executed (km)'] },
   { id: '14', name: 'RCP Pipe Construction', isSpecial: true, metrics: [] },
   { id: '15', name: 'Box Culvert Construction', isSpecial: true, metrics: [] },
   { id: '16', name: 'Slab Culvert Construction', isSpecial: true, metrics: [] },
-  { id: '17', name: 'Bridge Construction', isSpecial: true, metrics: [] },
-  { id: '18', name: 'Ditch Construction', metrics: ['Description of Work', 'Station of Work', 'Side', 'Daily Executed Stretch (m)', 'Volume(m³)', 'Net Daily Executed (km)'] }
+  { id: '17', name: 'Bridge Construction', isSpecial: true, metrics: [] }
 ];
 
 export const STANDSTILL_REASONS = [
@@ -288,24 +299,167 @@ export const PRESET_MATERIALS = [
   'Subbase Material (GAB/GS)'
 ];
 
+function readLocalJson<T>(key: string, fallback: T): T {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored !== null) return JSON.parse(stored) as T;
+  } catch {}
+  return fallback;
+}
+
+function hydrateDayFieldsFromProject(proj: Project, dateStr: string) {
+  const explicitLog: Partial<DailySiteLogEntry> | undefined = proj.dailySiteLogs?.[dateStr];
+  const dayActs = (Array.isArray(proj.dailyActivities) ? proj.dailyActivities : []).filter(a => a.date === dateStr);
+
+  // Resolve Daily Notes
+  const actNotes = dayActs.map(a => (a.dailyNotes || '').trim()).filter(Boolean).join('\n');
+  let dailyNotes = '';
+  if (explicitLog && typeof explicitLog.dailyNotes === 'string') {
+    dailyNotes = explicitLog.dailyNotes;
+  } else if (actNotes) {
+    dailyNotes = actNotes;
+  } else {
+    dailyNotes = readLocalJson<string>(`era_daily_notes_${proj.id}_${dateStr}`, '');
+  }
+
+  // Resolve Labor Summary
+  let laborSummary: DailyActivityLaborItem[] = [];
+  if (explicitLog && Array.isArray(explicitLog.laborSummary) && explicitLog.laborSummary.length > 0) {
+    laborSummary = explicitLog.laborSummary.map(l => ({ category: l.category, count: Number(l.count) || 0 }));
+  } else {
+    const actLaborMap = new Map<string, number>();
+    dayActs.forEach(a => {
+      (a.laborSummary || []).forEach(l => {
+        if (l?.category) {
+          actLaborMap.set(l.category, (actLaborMap.get(l.category) || 0) + (Number(l.count) || 0));
+        }
+      });
+    });
+    if (actLaborMap.size > 0) {
+      const defaults = createDefaultLaborSummary();
+      const extra = Array.from(actLaborMap.entries())
+        .filter(([cat]) => !defaults.some(d => d.category === cat))
+        .map(([category, count]) => ({ category, count }));
+      laborSummary = [
+        ...defaults.map(d => ({ category: d.category, count: actLaborMap.get(d.category) || 0 })),
+        ...extra
+      ];
+    } else {
+      laborSummary = readLocalJson<DailyActivityLaborItem[]>(
+        `era_labor_${proj.id}_${dateStr}`,
+        createDefaultLaborSummary()
+      );
+    }
+  }
+
+  const weather = explicitLog?.weather || dayActs[0]?.weatherCondition || 'Sunny';
+  const shift = explicitLog?.shift || dayActs[0]?.shift || 'Day Shift (Standard)';
+  const isNoWorkDay = explicitLog?.isNoWorkDay !== undefined
+    ? Boolean(explicitLog.isNoWorkDay)
+    : readLocalJson<boolean>(`era_no_work_${proj.id}_${dateStr}`, false);
+  const noWorkReason = explicitLog?.noWorkReason || readLocalJson<string>(`era_no_work_reason_${proj.id}_${dateStr}`, STANDSTILL_REASONS[0]);
+  const noWorkNotes = explicitLog?.noWorkNotes !== undefined
+    ? explicitLog.noWorkNotes
+    : readLocalJson<string>(`era_no_work_notes_${proj.id}_${dateStr}`, '');
+
+  const productionList = explicitLog?.productionList && Array.isArray(explicitLog.productionList)
+    ? explicitLog.productionList
+    : readLocalJson<DailyProductionItem[]>(`era_production_${proj.id}_${dateStr}`, createDefaultProductionList());
+
+  let equipmentFleet: EquipmentFleetItem[];
+  if (explicitLog?.equipmentFleet && Array.isArray(explicitLog.equipmentFleet)) {
+    equipmentFleet = explicitLog.equipmentFleet;
+  } else {
+    const storedEq = readLocalJson<EquipmentFleetItem[] | null>(`era_equipment_${proj.id}_${dateStr}`, null);
+    if (storedEq) {
+      equipmentFleet = storedEq;
+    } else {
+      const actEq: EquipmentFleetItem[] = [];
+      dayActs.forEach(a => {
+        (a.equipmentList || []).forEach((eq, idx) => {
+          actEq.push({
+            id: eq.id || `${a.id}_eq_${idx}`,
+            name: eq.name,
+            typeCapacity: a.activityName || `Sec ${a.activityType}`,
+            status: eq.status,
+            workingHours: Number(a.workingHours) || 8,
+            remarks: a.startStationKm ? `Stn ${a.startStationKm}` : 'Site assignment'
+          });
+        });
+      });
+      equipmentFleet = actEq.length > 0 ? actEq : createDefaultEquipmentFleet();
+    }
+  }
+
+  const materialsList = explicitLog?.materialsList && Array.isArray(explicitLog.materialsList)
+    ? explicitLog.materialsList
+    : readLocalJson<DailyMaterialItem[]>(`era_materials_${proj.id}_${dateStr}`, createDefaultMaterialsList());
+
+  const siteChallenges = explicitLog?.siteChallenges && Array.isArray(explicitLog.siteChallenges)
+    ? explicitLog.siteChallenges
+    : readLocalJson<string[]>(`era_challenges_${proj.id}_${dateStr}`, createDefaultSiteChallenges());
+
+  const tomorrowPlans = explicitLog?.tomorrowPlans && Array.isArray(explicitLog.tomorrowPlans)
+    ? explicitLog.tomorrowPlans
+    : readLocalJson<DailyTomorrowPlanItem[]>(`era_plans_${proj.id}_${dateStr}`, createDefaultTomorrowPlans());
+
+  return {
+    dailyNotes,
+    laborSummary,
+    weather,
+    shift,
+    isNoWorkDay,
+    noWorkReason,
+    noWorkNotes,
+    productionList,
+    equipmentFleet,
+    materialsList,
+    siteChallenges,
+    tomorrowPlans,
+    updatedAt: explicitLog?.updatedAt || null
+  };
+}
+
 export default function DailyActivitiesView({
   project,
   onUpdateProject,
   isReadonly = false,
+  currentUserObj = null,
 }: DailyActivitiesViewProps) {
   // Activities state
   const activities = useMemo(() => Array.isArray(project.dailyActivities) ? project.dailyActivities : [], [project.dailyActivities]);
 
   // View States
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [weather, setWeather] = useState('Sunny');
-  const [shift, setShift] = useState('Day Shift (Standard)');
+  const initialHydration = useMemo(() => hydrateDayFieldsFromProject(project, selectedDate), []);
+
+  const [weather, setWeather] = useState<string>(initialHydration.weather);
+  const [shift, setShift] = useState<string>(initialHydration.shift);
+  const [dailyNotes, setDailyNotes] = useState<string>(initialHydration.dailyNotes);
+  const [laborSummary, setLaborSummary] = useState<DailyActivityLaborItem[]>(initialHydration.laborSummary);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(initialHydration.updatedAt);
+
   const [activeTab, setActiveTab] = useState<'register' | 'production' | 'resources' | 'challenges' | 'all'>('all');
   const [showActiveOnly, setShowActiveOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showPartyEditor, setShowPartyEditor] = useState(false);
+  const [feedbackNotice, setFeedbackNotice] = useState<{ type: 'success' | 'warning'; text: string } | null>(null);
 
-  // Auto-Save Status: 'saved' | 'saving' | 'idle'
+  // Quick-Add Work Entry States
+  const [quickSectionId, setQuickSectionId] = useState<string>('1');
+  const [quickDesc, setQuickDesc] = useState<string>('');
+  const [quickStation, setQuickStation] = useState<string>('');
+  const [quickQty, setQuickQty] = useState<string>('');
+  const [quickSide, setQuickSide] = useState<string>('BHS');
+
+  // Real-time Sync Status: 'saved' | 'saving' | 'idle'
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('saved');
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasPendingDirtyRef = useRef<boolean>(false);
+  const pendingActionDescRef = useRef<string>('Synchronized Daily Site Log & Notes');
+  const pendingActivitiesRef = useRef<DailyActivityRecord[] | undefined>(undefined);
+  const lastLocalCommitAtRef = useRef<string>('');
+  const lastHydratedKeyRef = useRef<string>(`${project.id}_${selectedDate}_${initialHydration.updatedAt || ''}`);
 
   // Print Specific Day Modal States
   const [isPrintSpecificDayOpen, setIsPrintSpecificDayOpen] = useState(false);
@@ -331,6 +485,8 @@ export default function DailyActivitiesView({
   const [selectedBridgeLocation, setSelectedBridgeLocation] = useState<string>('Bridge @ Km 198+450 (River Dermi)');
   const [customBridgeLocation, setCustomBridgeLocation] = useState<string>('');
   const [selectedBridgeStage, setSelectedBridgeStage] = useState<BridgeConstructionStage>('Foundation');
+  const [selectedPipeStagePctBridge] = useState<number>(100);
+  void selectedPipeStagePctBridge;
   const [selectedBridgeStagePct, setSelectedBridgeStagePct] = useState<number>(100);
   const [selectedBridgeStageKm, setSelectedBridgeStageKm] = useState<number>(0.02);
   const [bridgeFilterStage, setBridgeFilterStage] = useState<string>('ALL');
@@ -372,7 +528,8 @@ export default function DailyActivitiesView({
         const hasBox = parsed.some(s => s.id === '15' && s.name.includes('Box'));
         const hasSlab = parsed.some(s => s.id === '16' && s.name.includes('Slab'));
         const hasBridge = parsed.some(s => s.id === '17');
-        if (!hasBox || !hasSlab || !hasBridge || parsed.some(s => s.id === '14.1' || s.id === '14.2')) {
+        const hasDitch = parsed.some(s => s.id === '18');
+        if (!hasBox || !hasSlab || !hasBridge || !hasDitch || parsed.some(s => s.id === '14.1' || s.id === '14.2')) {
           localStorage.setItem(`era_active_sections_${project.id}`, JSON.stringify(WORK_SECTIONS));
           return WORK_SECTIONS;
         }
@@ -422,153 +579,241 @@ export default function DailyActivitiesView({
   const [newSectionName, setNewSectionName] = useState('');
 
   // Standstill / No Work Day State
-  const [isNoWorkDay, setIsNoWorkDay] = useState<boolean>(() => {
-    try {
-      const stored = localStorage.getItem(`era_no_work_${project.id}_${selectedDate}`);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return false;
+  const [isNoWorkDay, setIsNoWorkDay] = useState<boolean>(initialHydration.isNoWorkDay);
+  const [noWorkReason, setNoWorkReason] = useState<string>(initialHydration.noWorkReason);
+  const [noWorkNotes, setNoWorkNotes] = useState<string>(initialHydration.noWorkNotes);
+
+  // Production Table State
+  const [productionList, setProductionList] = useState<DailyProductionItem[]>(initialHydration.productionList);
+
+  // Equipment Fleet Deployment State
+  const [equipmentFleet, setEquipmentFleet] = useState<EquipmentFleetItem[]>(initialHydration.equipmentFleet);
+
+  // Materials Tracker
+  const [materialsList, setMaterialsList] = useState<DailyMaterialItem[]>(initialHydration.materialsList);
+
+  // Site Challenges & Obstructions
+  const [siteChallenges, setSiteChallenges] = useState<string[]>(initialHydration.siteChallenges);
+
+  // Tomorrow Work Plan
+  const [tomorrowPlans, setTomorrowPlans] = useState<DailyTomorrowPlanItem[]>(initialHydration.tomorrowPlans);
+
+  // Keep a mutable ref to latest values so debounced saves, date-switches, and unmount flushes never capture stale closures
+  const latestStateRef = useRef({
+    project,
+    selectedDate,
+    activities,
+    weather,
+    shift,
+    dailyNotes,
+    laborSummary,
+    isNoWorkDay,
+    noWorkReason,
+    noWorkNotes,
+    productionList,
+    equipmentFleet,
+    materialsList,
+    siteChallenges,
+    tomorrowPlans,
+    currentUserObj,
+    isReadonly
   });
 
-  const [noWorkReason, setNoWorkReason] = useState<string>(() => {
-    try {
-      const stored = localStorage.getItem(`era_no_work_reason_${project.id}_${selectedDate}`);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return STANDSTILL_REASONS[0];
-  });
-
-  const [noWorkNotes, setNoWorkNotes] = useState<string>(() => {
-    try {
-      const stored = localStorage.getItem(`era_no_work_notes_${project.id}_${selectedDate}`);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return '';
-  });
-
-  // Production Table State (Updatable, Editable, Totally Deletable)
-  const [productionList, setProductionList] = useState<DailyProductionItem[]>(() => {
-    try {
-      const stored = localStorage.getItem(`era_production_${project.id}_${selectedDate}`);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return [
-      { id: 'p1', facilityName: 'Asphalt Plant @ Ch. 203+400', itemProduced: 'Asphalt Concrete AC 60/70', unit: 'Tons', targetOutput: 450, actualOutput: 380, previousCumulative: 14200, operatingHours: 7.5, remarks: 'Continuous run' },
-      { id: 'p2', facilityName: 'Concrete Batching Plant #1', itemProduced: 'C-30 Concrete', unit: 'm³', targetOutput: 120, actualOutput: 95, previousCumulative: 3100, operatingHours: 6.0, remarks: 'Structure pour' },
-      { id: 'p3', facilityName: 'Primary Stone Crusher', itemProduced: 'Crushed Base Aggregate', unit: 'm³', targetOutput: 800, actualOutput: 720, previousCumulative: 42500, operatingHours: 8.0, remarks: 'Quarry B' },
-      { id: 'p4', facilityName: 'Precast RCP Yard', itemProduced: 'RCP Ø1000mm Pipes', unit: 'Pcs', targetOutput: 40, actualOutput: 35, previousCumulative: 890, operatingHours: 8.0, remarks: 'Curing chamber' },
-    ];
-  });
-
-  // Equipment Fleet Deployment State (Updatable, Editable, Totally Deletable)
-  const [equipmentFleet, setEquipmentFleet] = useState<EquipmentFleetItem[]>(() => {
-    try {
-      const stored = localStorage.getItem(`era_equipment_${project.id}_${selectedDate}`);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return [
-      { id: 'eq1', name: 'Bulldozer CAT D8R', typeCapacity: 'Heavy Earthmoving', status: 'Operating', workingHours: 8.0, remarks: 'Subgrade excavation km 213+860' },
-      { id: 'eq2', name: 'Motor Grader 140K', typeCapacity: 'Blade 14ft', status: 'Operating', workingHours: 7.5, remarks: 'Base course levelling km 209' },
-      { id: 'eq3', name: 'Vibratory Roller 15T', typeCapacity: 'Compaction 15 Ton', status: 'Operating', workingHours: 8.0, remarks: 'Sub-base rolling' },
-      { id: 'eq4', name: 'Water Truck 18,000L', typeCapacity: '18,000 Liters', status: 'Standby', workingHours: 4.0, remarks: 'Station Camp 203+400' }
-    ];
-  });
-
-  // Materials Tracker (Updatable, Editable, Totally Deletable)
-  const [materialsList, setMaterialsList] = useState<Array<{ id: string; material: string; received: number; used: number; remarks: string }>>(() => {
-    try {
-      const stored = localStorage.getItem(`era_materials_${project.id}_${selectedDate}`);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return [
-      { id: 'm1', material: 'Portland Cement (42.5N Grade)', received: 150, used: 85, remarks: 'Messobo cement' },
-      { id: 'm2', material: 'Crushed Base Aggregate (0-31.5mm)', received: 500, used: 320, remarks: 'Quarry #2' },
-      { id: 'm3', material: 'Asphalt Bitumen (60/70 Penetration)', received: 40, used: 25, remarks: 'Bitumen tanks full' }
-    ];
-  });
-
-  // Site Challenges & Obstructions (Updatable, Editable, Totally Deletable)
-  const [siteChallenges, setSiteChallenges] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem(`era_challenges_${project.id}_${selectedDate}`);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return [
-      'Traffic management & dust control along active detour km 210',
-      'Shortage of water trucks hinders earthwork compaction'
-    ];
-  });
-
-  // Tomorrow Work Plan (Updatable, Editable, Totally Deletable)
-  const [tomorrowPlans, setTomorrowPlans] = useState<Array<{ id: string; area: string; description: string; unit: string; target: number; remarks: string }>>(() => {
-    try {
-      const stored = localStorage.getItem(`era_plans_${project.id}_${selectedDate}`);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return [
-      { id: 'pl1', area: 'Km 209+880 - 210+080', description: 'Mixing, Placing & Rolling Sub-Base', unit: 'm³', target: 460, remarks: '2 rollers active' },
-      { id: 'pl2', area: 'Km 200+313', description: 'Pipe Installation and Backfill', unit: 'm', target: 25, remarks: 'Crane assigned' }
-    ];
-  });
+  latestStateRef.current = {
+    project,
+    selectedDate,
+    activities,
+    weather,
+    shift,
+    dailyNotes,
+    laborSummary,
+    isNoWorkDay,
+    noWorkReason,
+    noWorkNotes,
+    productionList,
+    equipmentFleet,
+    materialsList,
+    siteChallenges,
+    tomorrowPlans,
+    currentUserObj,
+    isReadonly
+  };
 
   // Consultant label based on DB vs DBB
   const consultantRoleLabel = project.contractType === 'DBB'
     ? 'Supervision Consultant'
     : "Employer's Representative";
 
-  // Clean up auto-save timer on unmount
+  const commitDailySync = useCallback((
+    overrideState?: Partial<typeof latestStateRef.current>,
+    overrideActivities?: DailyActivityRecord[],
+    actionDesc = 'Synchronized Daily Site Log & Notes'
+  ) => {
+    const s = { ...latestStateRef.current, ...(overrideState || {}) };
+    if (s.isReadonly) {
+      hasPendingDirtyRef.current = false;
+      setSaveStatus('saved');
+      return;
+    }
+
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    hasPendingDirtyRef.current = false;
+    pendingActivitiesRef.current = undefined;
+
+    const nowIso = new Date().toISOString();
+    lastLocalCommitAtRef.current = nowIso;
+
+    const entry: DailySiteLogEntry = {
+      date: s.selectedDate,
+      weather: s.weather,
+      shift: s.shift,
+      dailyNotes: s.dailyNotes,
+      isNoWorkDay: s.isNoWorkDay,
+      noWorkReason: s.noWorkReason,
+      noWorkNotes: s.noWorkNotes,
+      laborSummary: (s.laborSummary || []).map(l => ({ category: l.category, count: Number(l.count) || 0 })),
+      equipmentFleet: s.equipmentFleet || [],
+      materialsList: s.materialsList || [],
+      productionList: s.productionList || [],
+      siteChallenges: s.siteChallenges || [],
+      tomorrowPlans: s.tomorrowPlans || [],
+      updatedAt: nowIso,
+      updatedBy: s.currentUserObj?.username || s.currentUserObj?.name || 'Construction Manager'
+    };
+
+    const nextSiteLogs: Record<string, DailySiteLogEntry> = {
+      ...(s.project.dailySiteLogs || {}),
+      [s.selectedDate]: entry
+    };
+
+    const baseActivities = overrideActivities !== undefined ? overrideActivities : s.activities;
+    const syncedActivities = baseActivities.map(act => {
+      if (act.date === s.selectedDate) {
+        return {
+          ...act,
+          weatherCondition: s.weather,
+          shift: s.shift,
+          dailyNotes: s.dailyNotes,
+          updatedAt: act.updatedAt || nowIso
+        };
+      }
+      return act;
+    });
+
+    onUpdateProject(
+      {
+        dailyActivities: syncedActivities,
+        dailySiteLogs: nextSiteLogs
+      },
+      actionDesc
+    );
+
+    broadcastDailyActivitiesSync(s.project.id, s.selectedDate, nowIso);
+    lastHydratedKeyRef.current = `${s.project.id}_${s.selectedDate}_${nowIso}`;
+    setLastSyncedAt(nowIso);
+    setSaveStatus('saved');
+  }, [onUpdateProject]);
+
+  // Flush any pending unsaved changes cleanly on unmount so tab-switching to Comprehensive Analysis or Monthly Cumulative reflects latest inputs immediately
   useEffect(() => {
     return () => {
-      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      if (hasPendingDirtyRef.current && !latestStateRef.current.isReadonly) {
+        commitDailySync(undefined, pendingActivitiesRef.current, pendingActionDescRef.current);
+      }
     };
-  }, []);
+  }, [commitDailySync]);
 
-  // Debounced auto-save function
-  const triggerDebouncedSave = (updatedActivities: DailyActivityRecord[], actionDesc: string) => {
+  // Schedule unified real-time sync for resource / Daily Notes / weather / shift changes
+  const scheduleResourceSync = useCallback((
+    partialState: Partial<typeof latestStateRef.current>,
+    actionDesc: string,
+    overrideActivities?: DailyActivityRecord[]
+  ) => {
+    // Update ref synchronously so fast typing followed immediately by Save or Tab Switch always sees latest values
+    latestStateRef.current = { ...latestStateRef.current, ...partialState };
+    if (latestStateRef.current.isReadonly) return;
+
     setSaveStatus('saving');
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    hasPendingDirtyRef.current = true;
+    pendingActionDescRef.current = actionDesc;
+    if (overrideActivities !== undefined) {
+      pendingActivitiesRef.current = overrideActivities;
+    }
 
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
-      onUpdateProject({ ...project, dailyActivities: updatedActivities }, actionDesc);
-      setSaveStatus('saved');
-    }, 750);
+      commitDailySync(undefined, pendingActivitiesRef.current, pendingActionDescRef.current);
+    }, 450);
+  }, [commitDailySync]);
+
+  // Unified debounced save helper used by all Work Register activity mutations
+  const triggerDebouncedSave = (updatedActivities: DailyActivityRecord[], actionDesc: string) => {
+    scheduleResourceSync({ activities: updatedActivities }, actionDesc, updatedActivities);
   };
 
-  // Date change sync
+  // Explicit Save & Sync trigger for immediate commit into Comprehensive Analysis & Monthly Cumulative
+  const handleSaveAndSyncNow = () => {
+    if (isReadonly) return;
+    commitDailySync(undefined, pendingActivitiesRef.current, `Saved Daily Site Log & Notes for ${selectedDate}`);
+    setFeedbackNotice({
+      type: 'success',
+      text: `Daily Activities, Labor, Equipment, Materials & Daily Notes for ${selectedDate} saved and synced to Comprehensive Analysis and Monthly Cumulative.`
+    });
+    setTimeout(() => setFeedbackNotice(null), 4000);
+  };
+
+  // Switch selected date while flushing pending edits from previous date first
+  const handleSelectDate = (nextDate: string) => {
+    if (!nextDate || nextDate === selectedDate) return;
+    if (hasPendingDirtyRef.current && !latestStateRef.current.isReadonly) {
+      commitDailySync(undefined, pendingActivitiesRef.current, 'Auto-saved Daily Site Log prior to date switch');
+    }
+    setSelectedDate(nextDate);
+  };
+
+  // Re-hydrate whenever project, selectedDate, or remote dailySiteLogs timestamp changes
+  const remoteLogUpdatedAt = project.dailySiteLogs?.[selectedDate]?.updatedAt || '';
+  useEffect(() => {
+    const syncKey = `${project.id}_${selectedDate}_${remoteLogUpdatedAt}`;
+    if (remoteLogUpdatedAt && remoteLogUpdatedAt === lastLocalCommitAtRef.current) {
+      lastHydratedKeyRef.current = syncKey;
+      return;
+    }
+    if (hasPendingDirtyRef.current && lastHydratedKeyRef.current === syncKey) {
+      return;
+    }
+
+    const hydrated = hydrateDayFieldsFromProject(project, selectedDate);
+    setDailyNotes(hydrated.dailyNotes);
+    setLaborSummary(hydrated.laborSummary);
+    setWeather(hydrated.weather);
+    setShift(hydrated.shift);
+    setIsNoWorkDay(hydrated.isNoWorkDay);
+    setNoWorkReason(hydrated.noWorkReason);
+    setNoWorkNotes(hydrated.noWorkNotes);
+    setProductionList(hydrated.productionList);
+    setEquipmentFleet(hydrated.equipmentFleet);
+    setMaterialsList(hydrated.materialsList);
+    setSiteChallenges(hydrated.siteChallenges);
+    setTomorrowPlans(hydrated.tomorrowPlans);
+    setLastSyncedAt(hydrated.updatedAt);
+    setSelectedRowIds([]);
+    setPrintTargetDate(selectedDate);
+    lastHydratedKeyRef.current = syncKey;
+  }, [selectedDate, project.id, remoteLogUpdatedAt]);
+
+  // Persist local cache mirror per date
   useEffect(() => {
     try {
-      const storedNoWork = localStorage.getItem(`era_no_work_${project.id}_${selectedDate}`);
-      setIsNoWorkDay(storedNoWork ? JSON.parse(storedNoWork) : false);
-
-      const storedReason = localStorage.getItem(`era_no_work_reason_${project.id}_${selectedDate}`);
-      if (storedReason) setNoWorkReason(JSON.parse(storedReason));
-
-      const storedNotes = localStorage.getItem(`era_no_work_notes_${project.id}_${selectedDate}`);
-      if (storedNotes) setNoWorkNotes(JSON.parse(storedNotes));
-
-      const storedProd = localStorage.getItem(`era_production_${project.id}_${selectedDate}`);
-      if (storedProd) setProductionList(JSON.parse(storedProd));
-
-      const storedEq = localStorage.getItem(`era_equipment_${project.id}_${selectedDate}`);
-      if (storedEq) setEquipmentFleet(JSON.parse(storedEq));
-
-      const storedMat = localStorage.getItem(`era_materials_${project.id}_${selectedDate}`);
-      if (storedMat) setMaterialsList(JSON.parse(storedMat));
-
-      const storedChall = localStorage.getItem(`era_challenges_${project.id}_${selectedDate}`);
-      if (storedChall) setSiteChallenges(JSON.parse(storedChall));
-
-      const storedPl = localStorage.getItem(`era_plans_${project.id}_${selectedDate}`);
-      if (storedPl) setTomorrowPlans(JSON.parse(storedPl));
-
-      setSelectedRowIds([]);
-      setPrintTargetDate(selectedDate);
-    } catch {}
-  }, [selectedDate, project.id]);
-
-  // Persist local state updates
-  useEffect(() => {
-    try {
+      localStorage.setItem(`era_daily_notes_${project.id}_${selectedDate}`, JSON.stringify(dailyNotes));
+      localStorage.setItem(`era_labor_${project.id}_${selectedDate}`, JSON.stringify(laborSummary));
       localStorage.setItem(`era_no_work_${project.id}_${selectedDate}`, JSON.stringify(isNoWorkDay));
       localStorage.setItem(`era_no_work_reason_${project.id}_${selectedDate}`, JSON.stringify(noWorkReason));
       localStorage.setItem(`era_no_work_notes_${project.id}_${selectedDate}`, JSON.stringify(noWorkNotes));
@@ -579,7 +824,7 @@ export default function DailyActivitiesView({
       localStorage.setItem(`era_plans_${project.id}_${selectedDate}`, JSON.stringify(tomorrowPlans));
       localStorage.setItem(`era_active_sections_${project.id}`, JSON.stringify(sections));
     } catch {}
-  }, [isNoWorkDay, noWorkReason, noWorkNotes, productionList, equipmentFleet, materialsList, siteChallenges, tomorrowPlans, sections, project.id, selectedDate]);
+  }, [dailyNotes, laborSummary, isNoWorkDay, noWorkReason, noWorkNotes, productionList, equipmentFleet, materialsList, siteChallenges, tomorrowPlans, sections, project.id, selectedDate]);
 
   // Navigate date with Previous/Next buttons
   const handleDateNav = (offset: number) => {
@@ -589,7 +834,7 @@ export default function DailyActivitiesView({
     const newY = dateObj.getFullYear();
     const newM = String(dateObj.getMonth() + 1).padStart(2, '0');
     const newD = String(dateObj.getDate()).padStart(2, '0');
-    setSelectedDate(`${newY}-${newM}-${newD}`);
+    handleSelectDate(`${newY}-${newM}-${newD}`);
   };
 
   // Day's activities
@@ -597,11 +842,33 @@ export default function DailyActivitiesView({
     return activities.filter(a => a.date === selectedDate);
   }, [activities, selectedDate]);
 
+  // Recent dates that have recorded daily activities or daily site logs
+  const loggedDatesSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+    activities.forEach(a => {
+      if (!a.date) return;
+      counts.set(a.date, (counts.get(a.date) || 0) + 1);
+    });
+    if (project.dailySiteLogs) {
+      Object.keys(project.dailySiteLogs).forEach(d => {
+        if (!counts.has(d)) counts.set(d, 0);
+      });
+    }
+    return Array.from(counts.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [activities, project.dailySiteLogs]);
+
   // Summary aggregation
   const summaryStats = useMemo(() => {
-    let activeEquipment = equipmentFleet.filter(eq => eq.status === 'Operating').length;
-    let standbyEquipment = equipmentFleet.filter(eq => eq.status === 'Standby').length;
-    let breakdownEquipment = equipmentFleet.filter(eq => eq.status === 'Breakdown' || eq.status === 'Maintenance').length;
+    const activeEquipment = equipmentFleet.filter(eq => eq.status === 'Operating').length;
+    const standbyEquipment = equipmentFleet.filter(eq => eq.status === 'Standby').length;
+    const breakdownEquipment = equipmentFleet.filter(eq => eq.status === 'Breakdown' || eq.status === 'Maintenance').length;
+    const activeSectionsToday = new Set(currentActivities.map(a => a.activityType)).size;
+    const totalPlantActual = productionList.reduce((acc, p) => acc + (Number(p.actualOutput) || 0), 0);
+    const totalLaborCount = laborSummary.reduce((acc, l) => acc + (Number(l.count) || 0), 0);
+    const totalMaterialUsed = materialsList.reduce((acc, m) => acc + (Number(m.used) || 0), 0);
+    const totalMaterialReceived = materialsList.reduce((acc, m) => acc + (Number(m.received) || 0), 0);
 
     return {
       activeEquipment,
@@ -609,9 +876,14 @@ export default function DailyActivitiesView({
       breakdownEquipment,
       totalFleet: equipmentFleet.length,
       totalActivities: currentActivities.length,
-      totalProductionUnits: productionList.length
+      activeSectionsToday,
+      totalProductionUnits: productionList.length,
+      totalPlantActual,
+      totalLaborCount,
+      totalMaterialUsed,
+      totalMaterialReceived
     };
-  }, [equipmentFleet, currentActivities, productionList]);
+  }, [equipmentFleet, currentActivities, productionList, laborSummary, materialsList]);
 
   // Check activities exceeding BOQ quantity threshold (> 20% variance)
   const activitiesExceedingBoq = useMemo(() => {
@@ -648,7 +920,7 @@ export default function DailyActivitiesView({
       if (['1','2','6','7','8','9','10','11','12','16'].includes(sectionId)) {
         curVal += Number(a.metricKm) || Number(a.metricM3) || 0;
       } else if (['3.1','3.2','4','5'].includes(sectionId)) {
-        curVal += Number(a.metricM3) || 0;
+        curVal += Number(a.metricM3) || Number(a.metricKm) || 0;
       } else if (sectionId === '13') {
         curVal += Number(a.pcsThisDay) || 0;
       } else if (sectionId === '15') {
@@ -662,7 +934,7 @@ export default function DailyActivitiesView({
       if (['1','2','6','7','8','9','10','11','12','16'].includes(sectionId)) {
         prevVal += Number(a.metricKm) || Number(a.metricM3) || 0;
       } else if (['3.1','3.2','4','5'].includes(sectionId)) {
-        prevVal += Number(a.metricM3) || 0;
+        prevVal += Number(a.metricM3) || Number(a.metricKm) || 0;
       } else if (sectionId === '13') {
         prevVal += Number(a.pcsThisDay) || 0;
       } else if (sectionId === '15') {
@@ -1377,12 +1649,12 @@ export default function DailyActivitiesView({
     triggerDebouncedSave(updatedActivities, `Deleted section ${sectionId} (${title})`);
   };
 
-  // ADD BACK AN ACTIVITY FROM THE EXISTING 16 STANDARD ACTIVITIES
+  // ADD BACK AN ACTIVITY FROM THE EXISTING STANDARD ACTIVITIES
   const handleAddBackStandardSection = (sec: WorkRegisterSectionDef) => {
     const updated = [...sections, sec].sort((a, b) => {
-      const numA = parseFloat(a.id) || 99;
-      const numB = parseFloat(b.id) || 99;
-      return numA - numB;
+      const idxA = WORK_SECTIONS.findIndex(s => s.id === a.id);
+      const idxB = WORK_SECTIONS.findIndex(s => s.id === b.id);
+      return (idxA !== -1 ? idxA : 999) - (idxB !== -1 ? idxB : 999);
     });
     setSections(updated);
     handleAddRowAt(sec.id);
@@ -1408,18 +1680,63 @@ export default function DailyActivitiesView({
   const handleCellUpdate = (id: string, field: keyof DailyActivityRecord, value: any) => {
     const updated = activities.map(a => {
       if (a.id === id) {
-        let newAct = { ...a, [field]: value, updatedAt: new Date().toISOString() };
+        const newAct = { ...a, [field]: value, updatedAt: new Date().toISOString() };
         if (field === 'metricM' && (['1', '2', '6', '7', '8', '9', '10', '11', '12', '16'].includes(a.activityType))) {
            newAct.metricKm = (parseFloat(value) || 0) / 1000;
         }
         if (field === 'metricKm' && (['1', '2', '10', '11', '12'].includes(a.activityType))) {
            newAct.metricM = (parseFloat(value) || 0) * 1000;
         }
+        if (field === 'metricKm' && (['3.1', '3.2', '4', '5'].includes(a.activityType))) {
+           newAct.metricM3 = parseFloat(value) || 0;
+        }
         return newAct;
       }
       return a;
     });
     triggerDebouncedSave(updated, `Updated ${field}`);
+  };
+
+  // Quick-add a daily work row directly from the top of the Work Register
+  const handleQuickAddActivity = (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetSec = sections.find(s => s.id === quickSectionId) || sections[0];
+    if (!targetSec) return;
+    const qtyNum = parseFloat(quickQty) || 0;
+    const defaultUnit = getDefaultUnit(targetSec.id);
+    const isVol = ['3.1', '3.2', '4', '5'].includes(targetSec.id);
+    const isLengthKm = ['1', '2', '6', '7', '8', '9', '10', '11', '12'].includes(targetSec.id);
+
+    const newAct: DailyActivityRecord = {
+      id: 'act_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      date: selectedDate,
+      activityType: targetSec.id,
+      activityName: targetSec.name,
+      description: quickDesc.trim() || targetSec.name,
+      startStationKm: quickStation.trim(),
+      side: quickSide,
+      unit: defaultUnit,
+      metricKm: qtyNum,
+      metricM3: isVol ? qtyNum : undefined,
+      metricM: isLengthKm ? qtyNum * 1000 : qtyNum,
+      pcsThisDay: targetSec.id === '13' ? qtyNum : undefined,
+      quantityExecuted: qtyNum,
+      qcStatus: 'Approved',
+      status: 'Draft',
+      weatherCondition: weather,
+      workingHours: 8.0,
+      createdAt: new Date().toISOString(),
+      equipmentList: [{ id: 'eq_1', name: 'Heavy Machinery Unit', count: 1, status: 'Operating' }]
+    };
+
+    const updatedList = [...activities, newAct];
+    if (isNoWorkDay) setIsNoWorkDay(false);
+    triggerDebouncedSave(updatedList, `Logged work in ${targetSec.id}. ${targetSec.name}`);
+    setQuickDesc('');
+    setQuickStation('');
+    setQuickQty('');
+    setFeedbackNotice({ type: 'success', text: `Logged "${newAct.description}" under ${targetSec.id}. ${targetSec.name}` });
+    setTimeout(() => setFeedbackNotice(null), 3500);
   };
 
   const handleAddCustomSection = () => {
@@ -1510,7 +1827,7 @@ export default function DailyActivitiesView({
 
   // Handler to Print for Specific Day
   const handleExecutePrintForDate = (dateToPrint: string) => {
-    setSelectedDate(dateToPrint);
+    handleSelectDate(dateToPrint);
     setIsPrintSpecificDayOpen(false);
     setTimeout(() => {
       window.print();
@@ -1648,7 +1965,8 @@ export default function DailyActivitiesView({
   const handleSaveCurrentAsTemplate = () => {
     if (!newTemplateName.trim()) return;
     if (currentActivities.length === 0) {
-      alert('No activities recorded on this date to save as a template.');
+      setFeedbackNotice({ type: 'warning', text: 'No activities recorded on this date to save as a template.' });
+      setTimeout(() => setFeedbackNotice(null), 4000);
       return;
     }
     const newTpl: ActivityTemplate = {
@@ -1664,7 +1982,8 @@ export default function DailyActivitiesView({
     } catch {}
     setNewTemplateName('');
     setNewTemplateDesc('');
-    alert(`Template "${newTpl.name}" successfully saved!`);
+    setFeedbackNotice({ type: 'success', text: `Template "${newTpl.name}" saved for reuse.` });
+    setTimeout(() => setFeedbackNotice(null), 4000);
   };
 
   const handleDeleteTemplate = (tplId: string) => {
@@ -1677,26 +1996,20 @@ export default function DailyActivitiesView({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans p-3 md:p-6 print:p-0 print:bg-white relative">
-      
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans p-3 md:p-6 print:p-0 print:bg-white print:text-slate-900 relative">
+
       {/* SUBTLE CORNER AUTO-SAVE INDICATOR */}
       <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 print:hidden pointer-events-none">
         {saveStatus === 'saving' && (
-          <span className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50/95 backdrop-blur border border-amber-300 px-3 py-1.5 rounded-full shadow-lg font-medium animate-pulse">
+          <span className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50/95 backdrop-blur border border-amber-300 px-3 py-1.5 rounded-lg shadow-lg font-medium">
             <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
             <span>Saving changes...</span>
           </span>
         )}
-        {saveStatus === 'saved' && (
-          <span className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50/95 backdrop-blur border border-emerald-300 px-3 py-1.5 rounded-full shadow-lg font-medium transition-all duration-300">
-            <Check className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Saved</span>
-          </span>
-        )}
       </div>
 
-      <div className="max-w-[1180px] mx-auto space-y-4">
-        
+      <div className="max-w-7xl mx-auto space-y-4">
+
         {/* PRINT-ONLY OFFICIAL HEADER WITH MINIMIZED LOGO (ON HEADER ONLY) */}
         <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-3 print:break-inside-avoid">
           <div className="flex items-center justify-between gap-4">
@@ -1740,304 +2053,393 @@ export default function DailyActivitiesView({
           </div>
         </div>
 
-        {/* SIMPLE TOP NAV & SUMMARY BAR */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col md:flex-row justify-between items-center gap-3 print:hidden">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-black shrink-0 shadow-sm">
+        {/* CLEAN TOP HEADER & ACTION BAR */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3 print:hidden">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0">
               <ClipboardList className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-bold text-slate-900">
-                  Daily Project Progress Report
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                  Daily Activities &amp; Site Log
                 </h1>
-                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold border border-slate-200">
-                  ERA Standard
-                </span>
                 {saveStatus === 'saving' ? (
-                  <span className="text-[10px] text-amber-600 font-medium flex items-center gap-1 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                  <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
                     <RefreshCw className="w-3 h-3 animate-spin" /> Saving
                   </span>
                 ) : (
-                  <span className="text-[10px] text-emerald-700 font-medium flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                    <Check className="w-3 h-3 text-emerald-600" /> Saved
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                    <Check className="w-3 h-3" /> Synced
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500">Unified Daily Work Register, Plant Production & Site Operations</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                {project.name || 'Road Project'} · {formatDisplayDate(selectedDate)}
+              </p>
             </div>
           </div>
 
-          {/* SIMPLIFIED KPI METRIC PILLS & PRINT OPTIONS */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 flex items-center gap-2">
-              <Truck className="w-4 h-4 text-blue-600" />
-              <div>
-                <span className="text-slate-500 text-[10px] block leading-none">Active Fleet</span>
-                <span className="font-bold text-slate-900">{summaryStats.activeEquipment} / {summaryStats.totalFleet} operating</span>
-              </div>
-            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+            {!isReadonly && (
+              <button
+                type="button"
+                onClick={handleSaveAndSyncNow}
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-3.5 py-1.5 font-semibold flex items-center gap-1.5 transition"
+                title="Save Daily Site Log & Daily Notes and sync immediately to Comprehensive Analysis & Monthly Cumulative"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save &amp; Sync</span>
+              </button>
+            )}
 
-            <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 flex items-center gap-2">
-              <Factory className="w-4 h-4 text-purple-600" />
-              <div>
-                <span className="text-slate-500 text-[10px] block leading-none">Production Units</span>
-                <span className="font-bold text-slate-900">{summaryStats.totalProductionUnits} active</span>
-              </div>
-            </div>
-
-            <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-emerald-600" />
-              <div>
-                <span className="text-slate-500 text-[10px] block leading-none">Active Activities</span>
-                <span className="font-bold text-slate-900">{sections.length} sections</span>
-              </div>
-            </div>
-
-            {/* PRINT SPECIFIC DAY BUTTON */}
-            <button 
+            <button
               onClick={() => {
                 setPrintTargetDate(selectedDate);
                 setIsPrintSpecificDayOpen(true);
               }}
-              className="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg px-3 py-2 font-medium flex items-center gap-1.5 text-xs transition shadow-sm"
+              className="bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 font-medium flex items-center gap-1.5 transition"
               title="Select and Print a Specific Day"
             >
-              <Printer className="w-4 h-4 text-blue-600" />
-              <span>Print Specific Day</span>
+              <Printer className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Print Day</span>
             </button>
 
-            {/* EXPORT CSV REPORT BUTTON */}
-            <button 
+            <button
               onClick={handleExportCSV}
-              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg px-3 py-2 font-medium flex items-center gap-1.5 text-xs transition shadow-sm"
-              title="Export Current Weightage Progress Data as CSV"
+              className="bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 font-medium flex items-center gap-1.5 transition"
+              title="Export Current Day Activities as CSV"
             >
-              <DownloadCloud className="w-4 h-4 text-emerald-600" />
+              <DownloadCloud className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>Export CSV</span>
             </button>
 
-            {/* EXPORT PDF REPORT BUTTON */}
-            <button 
-              onClick={handleExportPDF}
-              className="bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-300 rounded-lg px-3 py-2 font-medium flex items-center gap-1.5 text-xs transition shadow-sm"
-              title="Export Current Progress as Formatted PDF Report"
-            >
-              <Printer className="w-4 h-4 text-purple-600" />
-              <span>Export PDF Report</span>
-            </button>
-
-            {/* TEMPLATES BUTTON */}
-            <button 
+            <button
               onClick={() => setIsTemplateModalOpen(true)}
-              className="bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-300 rounded-lg px-3 py-2 font-medium flex items-center gap-1.5 text-xs transition shadow-sm"
+              className="bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 font-medium flex items-center gap-1.5 transition"
               title="Save and Load Daily Activity Templates"
             >
-              <FileText className="w-4 h-4 text-blue-600" />
+              <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
               <span>Templates ({templates.length})</span>
             </button>
 
-            {/* VISIBLE PRINT STATUS INDICATOR */}
-            <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-lg px-3 py-2 flex items-center gap-1.5 text-xs font-bold shadow-2xs" title="Verified: Tables and columns auto-scale to fit A4 page margins">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>Print Status: Fit to Page (A4 Margins OK)</span>
-            </div>
-
-            {/* QUICK PRINT CURRENT DATE BUTTON */}
-            <button 
-              onClick={() => window.print()}
-              className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-3 py-2 font-medium flex items-center gap-1.5 text-xs transition shadow-sm"
-              title="Print Current Selected Date"
+            <button
+              onClick={handleExportPDF}
+              className="bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white rounded-lg px-3.5 py-1.5 font-semibold flex items-center gap-1.5 transition"
+              title="Print / Export Current DPR as PDF"
             >
-              <DownloadCloud className="w-4 h-4 text-slate-300" />
-              <span>Print DPR</span>
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print / PDF DPR</span>
             </button>
           </div>
         </div>
 
-        {/* PROMINENT CALENDAR DATE NAVIGATOR WITH PREVIOUS & NEXT BUTTONS (NO DROPDOWN NEEDED) */}
-        <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm flex flex-wrap items-center justify-between gap-3 print:hidden">
-          {/* Previous Day Navigation Button */}
-          <button 
-            onClick={() => handleDateNav(-1)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition shadow-xs active:scale-95 border border-slate-200"
-            title="Switch to Previous Day"
-          >
-            <ChevronLeft className="w-4 h-4 text-slate-600" />
-            <span>Previous Day</span>
-          </button>
-
-          {/* Center Calendar Picker with Formatted Day & Visual Date Input */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-300 rounded-xl px-3.5 py-1.5 shadow-inner transition cursor-pointer">
-              <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
-              <div className="flex flex-col text-left">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider leading-none mb-0.5">
-                  {formatDisplayDate(selectedDate)}
-                </span>
-                <input 
-                  type="date"
-                  value={selectedDate}
-                  onChange={e => setSelectedDate(e.target.value)}
-                  className="text-xs font-black text-slate-900 bg-transparent outline-none cursor-pointer"
-                  title="Click to open calendar date picker"
-                />
-              </div>
+        {/* 4-CARD SIMPLE DAILY SNAPSHOT */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 print:hidden">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <span>Work Logged Today</span>
+              <Activity className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             </div>
+            <div className="mt-1.5 text-xl font-bold text-slate-900 dark:text-white tabular-nums">
+              {summaryStats.totalActivities} {summaryStats.totalActivities === 1 ? 'entry' : 'entries'}
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
+              Across {summaryStats.activeSectionsToday} active work sections
+            </div>
+          </div>
 
-            {/* Jump to Today shortcut */}
-            {selectedDate !== new Date().toISOString().split('T')[0] && (
-              <button 
-                onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
-                className="text-[11px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1 shadow-xs"
-                title="Jump directly to today's date"
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <span>Labor &amp; Fleet</span>
+              <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="mt-1.5 text-xl font-bold text-slate-900 dark:text-white tabular-nums">
+              {summaryStats.totalLaborCount} crew · {summaryStats.activeEquipment}/{summaryStats.totalFleet} equip
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
+              {summaryStats.standbyEquipment} standby · {summaryStats.breakdownEquipment} maint.
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <span>Plant &amp; Materials</span>
+              <Factory className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div className="mt-1.5 text-xl font-bold text-slate-900 dark:text-white tabular-nums">
+              {summaryStats.totalPlantActual.toLocaleString()} units
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
+              {summaryStats.totalProductionUnits} plants · {summaryStats.totalMaterialUsed.toLocaleString()} mat. used
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              <span>Site Status &amp; Note</span>
+              <Sun className="w-4 h-4 text-amber-500" />
+            </div>
+            <div className="mt-1.5 text-xl font-bold text-slate-900 dark:text-white">
+              {isNoWorkDay ? 'Standstill Day' : 'Active Workday'}
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+              {weather} · {dailyNotes.trim() ? 'Daily Note Linked' : 'No Daily Note Yet'}
+            </div>
+          </div>
+        </div>
+
+        {/* INLINE FEEDBACK NOTICE (REPLACES BLOCKING ALERTS) */}
+        {feedbackNotice && (
+          <div className={`rounded-xl border px-4 py-2.5 text-xs flex items-center justify-between gap-2 print:hidden ${
+            feedbackNotice.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+              : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+          }`}>
+            <span className="font-medium">{feedbackNotice.text}</span>
+            <button onClick={() => setFeedbackNotice(null)} className="p-0.5 hover:opacity-70">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* DATE NAVIGATOR + RECENT LOGGED DATES STRIP */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3 shadow-sm space-y-2.5 print:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              onClick={() => handleDateNav(-1)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold transition border border-slate-200 dark:border-slate-700"
+              title="Switch to Previous Day"
+            >
+              <ChevronLeft className="w-4 h-4 text-slate-500" />
+              <span>Previous Day</span>
+            </button>
+
+            <div className="flex flex-wrap items-center justify-center gap-2.5">
+              <div className="flex items-center gap-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-1.5">
+                <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                <div className="flex flex-col text-left">
+                  <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider leading-none mb-0.5">
+                    {formatDisplayDate(selectedDate)}
+                  </span>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={e => handleSelectDate(e.target.value)}
+                    className="text-xs font-bold text-slate-900 dark:text-white bg-transparent outline-none cursor-pointer tabular-nums"
+                    title="Click to open calendar date picker"
+                  />
+                </div>
+              </div>
+
+              {selectedDate !== new Date().toISOString().split('T')[0] && (
+                <button
+                  onClick={() => handleSelectDate(new Date().toISOString().split('T')[0])}
+                  className="text-xs bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 px-3 py-2 rounded-lg font-semibold transition"
+                  title="Jump directly to today's date"
+                >
+                  Today
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  const next = !isNoWorkDay;
+                  setIsNoWorkDay(next);
+                  scheduleResourceSync({ isNoWorkDay: next }, next ? 'Marked Standstill Day' : 'Resumed Active Workday');
+                }}
+                className={`px-3 py-2 rounded-lg text-xs font-semibold transition border ${
+                  isNoWorkDay
+                    ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                    : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                }`}
               >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>Today</span>
+                {isNoWorkDay ? 'Standstill Day (Click to Resume)' : 'Active Workday'}
               </button>
-            )}
+            </div>
 
-            {/* Day Status Pill */}
-            <button 
-              onClick={() => setIsNoWorkDay(!isNoWorkDay)}
-              className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition border shadow-xs ${
-                isNoWorkDay 
-                  ? 'bg-amber-50 text-amber-800 border-amber-300' 
-                  : 'bg-emerald-50 text-emerald-800 border-emerald-300'
-              }`}
+            <button
+              onClick={() => handleDateNav(1)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold transition border border-slate-200 dark:border-slate-700"
+              title="Switch to Next Day"
             >
-              {isNoWorkDay ? '⚠️ Standstill Day' : '🟢 Active Work Day'}
+              <span>Next Day</span>
+              <ChevronRight className="w-4 h-4 text-slate-500" />
             </button>
           </div>
 
-          {/* Next Day Navigation Button */}
-          <button 
-            onClick={() => handleDateNav(1)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition shadow-xs active:scale-95 border border-slate-200"
-            title="Switch to Next Day"
-          >
-            <span>Next Day</span>
-            <ChevronRight className="w-4 h-4 text-slate-600" />
-          </button>
+          {loggedDatesSummary.length > 0 && (
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 overflow-x-auto text-[11px]">
+              <span className="text-slate-500 dark:text-slate-400 font-semibold shrink-0">
+                Recent Logged Dates:
+              </span>
+              {loggedDatesSummary.slice(0, 8).map(item => {
+                const isSelected = item.date === selectedDate;
+                return (
+                  <button
+                    key={item.date}
+                    onClick={() => handleSelectDate(item.date)}
+                    className={`px-2.5 py-1 rounded-md border font-medium tabular-nums shrink-0 transition ${
+                      isSelected
+                        ? 'bg-slate-900 dark:bg-blue-600 text-white border-slate-900 dark:border-blue-600'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {item.date} ({item.count})
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* EDITABLE PROJECT & CONTRACT HEADER (PRINTABLE) */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="p-3 bg-slate-100/70 border-b border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="text-slate-500 w-36 font-medium text-[11px]">Employer / Client:</span>
-                <input 
-                  value={project.client || ''} 
-                  onChange={e => onUpdateProject({ ...project, client: e.target.value }, 'Updated Client')}
-                  placeholder="Ethiopian Road Administration (ERA)"
-                  className="flex-1 bg-white border border-slate-200 rounded px-2 py-1 text-slate-800 font-medium text-xs outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-slate-500 w-36 font-medium text-[11px]">{consultantRoleLabel}:</span>
-                <input 
-                  value={project.consultant || project.supervisionConsultant?.firmName || ''} 
-                  onChange={e => onUpdateProject({ 
-                    ...project, 
-                    consultant: e.target.value,
-                    supervisionConsultant: project.supervisionConsultant ? { ...project.supervisionConsultant, firmName: e.target.value } : undefined 
-                  }, 'Updated Consultant')}
-                  placeholder="Associated Engineering Consultants (AEC)"
-                  className="flex-1 bg-white border border-slate-200 rounded px-2 py-1 text-slate-800 font-medium text-xs outline-none focus:border-blue-500"
-                />
-              </div>
+        {/* COMPACT PROJECT PARTIES, WEATHER & SHIFT BAR (COLLAPSIBLE PARTY INPUTS) */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+          <div className="px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs border-b border-slate-100 dark:border-slate-800">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-600 dark:text-slate-300 min-w-0">
+              <span className="truncate">
+                <strong className="text-slate-900 dark:text-white">{project.name || 'Road Project'}</strong>
+              </span>
+              <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
+              <span className="truncate">
+                Contractor: <strong className="text-slate-800 dark:text-slate-100">{project.contractor || '—'}</strong>
+              </span>
+              <span className="text-slate-300 dark:text-slate-700 hidden md:inline">|</span>
+              <span className="truncate hidden md:inline">
+                {consultantRoleLabel}: <strong className="text-slate-800 dark:text-slate-100">{project.consultant || project.supervisionConsultant?.firmName || '—'}</strong>
+              </span>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="text-slate-500 w-28 font-medium text-[11px]">Contractor:</span>
-                <input 
-                  value={project.contractor || ''} 
-                  onChange={e => onUpdateProject({ ...project, contractor: e.target.value }, 'Updated Contractor')}
-                  placeholder="Welabu Construction SC"
-                  className="flex-1 bg-white border border-slate-200 rounded px-2 py-1 text-slate-800 font-medium text-xs outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-slate-500 w-28 font-medium text-[11px]">Project Name:</span>
-                <input 
-                  value={project.name || ''} 
-                  onChange={e => onUpdateProject({ ...project, name: e.target.value }, 'Updated Project Name')}
-                  placeholder="Daye-Chiri-Nansebo Road Project"
-                  className="flex-1 bg-white border border-slate-200 rounded px-2 py-1 text-slate-900 font-bold text-xs outline-none focus:border-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* WEATHER & SHIFT CONTROLS */}
-          <div className="p-2.5 bg-white flex flex-wrap items-center justify-between gap-3 text-xs border-b border-slate-200">
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-3 print:hidden">
               <div className="flex items-center gap-1.5">
                 <Sun className="w-3.5 h-3.5 text-amber-500" />
-                <span className="text-slate-500 font-medium">Weather:</span>
-                <select 
-                  value={weather} 
-                  onChange={e => setWeather(e.target.value)}
-                  className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer"
+                <select
+                  value={weather}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setWeather(val);
+                    scheduleResourceSync({ weather: val }, `Updated site weather to ${val}`);
+                  }}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 font-semibold text-slate-800 dark:text-slate-100 outline-none cursor-pointer text-xs"
+                  aria-label="Site Weather"
                 >
-                  <option value="Sunny">☀️ Sunny</option>
-                  <option value="Sunny & Cloudy">🌤️ Sunny & Cloudy</option>
-                  <option value="Rainy">🌧️ Rainy / Wet</option>
-                  <option value="Overcast">☁️ Overcast</option>
+                  <option value="Sunny">Sunny</option>
+                  <option value="Sunny & Cloudy">Sunny &amp; Cloudy</option>
+                  <option value="Rainy">Rainy / Wet</option>
+                  <option value="Overcast">Overcast</option>
                 </select>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <span className="text-slate-500 font-medium">Shift:</span>
-                <select 
-                  value={shift} 
-                  onChange={e => setShift(e.target.value)}
-                  className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer"
-                >
-                  <option value="Day Shift (Standard)">Day Shift</option>
-                  <option value="Night Shift">Night Shift</option>
-                  <option value="Extended / Overtime">Overtime</option>
-                </select>
+              <select
+                value={shift}
+                onChange={e => {
+                  const val = e.target.value;
+                  setShift(val);
+                  scheduleResourceSync({ shift: val }, `Updated site shift to ${val}`);
+                }}
+                className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 font-semibold text-slate-800 dark:text-slate-100 outline-none cursor-pointer text-xs"
+                aria-label="Work Shift"
+              >
+                <option value="Day Shift (Standard)">Day Shift</option>
+                <option value="Night Shift">Night Shift</option>
+                <option value="Extended / Overtime">Overtime</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={() => setShowPartyEditor(!showPartyEditor)}
+                className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+              >
+                <span>{showPartyEditor ? 'Hide Parties' : 'Edit Parties'}</span>
+                {showPartyEditor ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          <div className={`${showPartyEditor ? 'grid' : 'hidden print:grid'} p-3 bg-slate-50/70 dark:bg-slate-800/50 grid-cols-1 md:grid-cols-2 gap-3 text-xs`}>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 dark:text-slate-400 w-36 font-medium text-[11px]">Employer / Client:</span>
+                <input
+                  value={project.client || ''}
+                  onChange={e => onUpdateProject({ client: e.target.value }, 'Updated Client')}
+                  placeholder="Ethiopian Road Administration (ERA)"
+                  className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-slate-100 font-medium text-xs outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 dark:text-slate-400 w-36 font-medium text-[11px]">{consultantRoleLabel}:</span>
+                <input
+                  value={project.consultant || project.supervisionConsultant?.firmName || ''}
+                  onChange={e => onUpdateProject({
+                    consultant: e.target.value,
+                    supervisionConsultant: project.supervisionConsultant ? { ...project.supervisionConsultant, firmName: e.target.value } : undefined
+                  }, 'Updated Consultant')}
+                  placeholder="Supervision Consultant Firm"
+                  className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-slate-100 font-medium text-xs outline-none focus:border-blue-500"
+                />
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 font-medium">
-              Report Date: <strong className="text-slate-900">{formatDisplayDate(selectedDate)}</strong>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 dark:text-slate-400 w-28 font-medium text-[11px]">Contractor:</span>
+                <input
+                  value={project.contractor || ''}
+                  onChange={e => onUpdateProject({ contractor: e.target.value }, 'Updated Contractor')}
+                  placeholder="Contractor Name"
+                  className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-slate-100 font-medium text-xs outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 dark:text-slate-400 w-28 font-medium text-[11px]">Project Name:</span>
+                <input
+                  value={project.name || ''}
+                  onChange={e => onUpdateProject({ name: e.target.value }, 'Updated Project Name')}
+                  placeholder="Road Project Name"
+                  className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-900 dark:text-white font-bold text-xs outline-none focus:border-blue-500"
+                />
+              </div>
             </div>
           </div>
         </div>
 
         {/* STANDSTILL / NO WORK DAY BANNER IF TOGGLED */}
         {isNoWorkDay && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 shadow-sm space-y-3">
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 shadow-sm space-y-3">
             <div className="flex flex-col md:flex-row justify-between md:items-center gap-2">
               <div className="flex items-center gap-2.5">
                 <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
                 <div>
-                  <h3 className="text-sm font-bold text-amber-900">
+                  <h3 className="text-sm font-bold text-amber-900 dark:text-amber-200">
                     No Construction Activity Recorded for {formatDisplayDate(selectedDate)}
                   </h3>
-                  <p className="text-xs text-amber-700">Cumulative totals are preserved to date without daily increment.</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-300">Cumulative totals are preserved to date without daily increment.</p>
                 </div>
               </div>
 
-              <button 
-                onClick={() => setIsNoWorkDay(false)}
-                className="text-xs bg-white text-amber-800 border border-amber-300 hover:bg-amber-100/50 px-3 py-1.5 rounded-lg font-medium transition self-start md:self-auto"
+              <button
+                onClick={() => {
+                  setIsNoWorkDay(false);
+                  scheduleResourceSync({ isNoWorkDay: false }, 'Switched to Active Workday');
+                }}
+                className="text-xs bg-white dark:bg-slate-900 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 hover:bg-amber-100/50 px-3 py-1.5 rounded-lg font-medium transition self-start md:self-auto"
               >
-                Switch to Active Work Day
+                Switch to Active Workday
               </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pt-1">
               <div>
-                <label className="block text-[11px] font-medium text-amber-900 mb-1">Reason for No Activity / Standstill:</label>
-                <select 
+                <label className="block text-[11px] font-medium text-amber-900 dark:text-amber-200 mb-1">Reason for No Activity / Standstill:</label>
+                <select
                   value={noWorkReason}
-                  onChange={e => setNoWorkReason(e.target.value)}
-                  className="w-full bg-white border border-amber-300 rounded-lg p-1.5 font-medium text-slate-800 outline-none"
+                  onChange={e => {
+                    const val = e.target.value;
+                    setNoWorkReason(val);
+                    scheduleResourceSync({ noWorkReason: val }, 'Updated standstill reason');
+                  }}
+                  className="w-full bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg p-1.5 font-medium text-slate-800 dark:text-slate-100 outline-none"
                 >
                   {STANDSTILL_REASONS.map((r, i) => (
                     <option key={i} value={r}>{r}</option>
@@ -2045,99 +2447,171 @@ export default function DailyActivitiesView({
                 </select>
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-amber-900 mb-1">Observations & Site Notes:</label>
-                <input 
+                <label className="block text-[11px] font-medium text-amber-900 dark:text-amber-200 mb-1">Observations &amp; Site Notes:</label>
+                <input
                   value={noWorkNotes}
-                  onChange={e => setNoWorkNotes(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setNoWorkNotes(val);
+                    scheduleResourceSync({ noWorkNotes: val }, 'Updated standstill notes');
+                  }}
                   placeholder="Enter notes (e.g. 45mm rain recorded, site flooded)..."
-                  className="w-full bg-white border border-amber-300 rounded-lg p-1.5 text-slate-800 outline-none"
+                  className="w-full bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg p-1.5 text-slate-800 dark:text-slate-100 outline-none"
                 />
               </div>
             </div>
           </div>
         )}
 
-        {/* NAVIGATION TABS & BULK EDIT TRIGGER */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-1 print:hidden">
-          <div className="flex items-center gap-1">
-            <button 
+        {/* CONSTRUCTION MANAGER DAILY NOTES & REAL-TIME SYNC PANEL */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+          <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <div className="min-w-0">
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wide">
+                  Daily Notes — Construction Manager Field Context
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Add textual context for today&apos;s labor, equipment fleet, and material inputs. Synced in real time to Comprehensive Analysis &amp; Monthly Cumulative.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono tabular-nums print:hidden">
+              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                Labor: {summaryStats.totalLaborCount}
+              </span>
+              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                Equip: {summaryStats.activeEquipment}/{summaryStats.totalFleet}
+              </span>
+              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                Mat Used: {summaryStats.totalMaterialUsed.toLocaleString()}
+              </span>
+              {lastSyncedAt && (
+                <span className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
+                  Synced {new Date(lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="p-3.5 space-y-2.5">
+            <label htmlFor="daily-manager-notes-input" className="sr-only">
+              Construction Manager Daily Notes for {selectedDate}
+            </label>
+            <textarea
+              id="daily-manager-notes-input"
+              rows={3}
+              disabled={isReadonly}
+              value={dailyNotes}
+              onChange={e => {
+                const val = e.target.value;
+                setDailyNotes(val);
+                scheduleResourceSync({ dailyNotes: val }, `Updated Daily Notes for ${selectedDate}`);
+              }}
+              placeholder="Summarize today's crew allocation, equipment bottlenecks, quarry/batching throughput, material deliveries, QA inspections, or schedule mitigation actions..."
+              className="w-full bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 resize-y disabled:opacity-70"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] print:hidden">
+              <span className="text-slate-500 dark:text-slate-400 tabular-nums">
+                {dailyNotes.length} characters · Linked to date <strong className="font-mono text-slate-700 dark:text-slate-200">{selectedDate}</strong>
+              </span>
+              {!isReadonly && (
+                <button
+                  type="button"
+                  onClick={handleSaveAndSyncNow}
+                  className="bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Save &amp; Sync to Analysis &amp; Monthly</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* NAVIGATION TABS & WORKSPACE CONTROLS */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 print:hidden">
+          <div className="flex flex-wrap items-center gap-1">
+            <button
               onClick={() => setActiveTab('all')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
-                activeTab === 'all' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+                activeTab === 'all' ? 'bg-slate-900 dark:bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               All Sections
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('register')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
-                activeTab === 'register' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition tabular-nums ${
+                activeTab === 'register' ? 'bg-slate-900 dark:bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              Work Register ({sections.length})
+              Work Register · {currentActivities.length}
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('production')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
-                activeTab === 'production' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition tabular-nums ${
+                activeTab === 'production' ? 'bg-slate-900 dark:bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              Plant Production
+              Plant Production · {productionList.length}
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('resources')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
-                activeTab === 'resources' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition tabular-nums ${
+                activeTab === 'resources' ? 'bg-slate-900 dark:bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              Equipment & Material Fleet
+              Labor, Equip &amp; Mat · {summaryStats.totalLaborCount} crew
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('challenges')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
-                activeTab === 'challenges' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition tabular-nums ${
+                activeTab === 'challenges' ? 'bg-slate-900 dark:bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              Site Challenges & Plan
+              Challenges &amp; Plan · {siteChallenges.length + tomorrowPlans.length}
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* BULK EDIT MODE TOGGLE BUTTON */}
-            <button 
+          <div className="flex flex-wrap items-center gap-2">
+            {(activeTab === 'all' || activeTab === 'register') && (
+              <button
+                onClick={() => setShowActiveOnly(!showActiveOnly)}
+                className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium transition ${
+                  showActiveOnly
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                {showActiveOnly ? 'Showing Active Today Only' : 'Show Active Today Only'}
+              </button>
+            )}
+
+            <button
               onClick={() => {
                 setIsBulkEditMode(!isBulkEditMode);
                 if (isBulkEditMode) setSelectedRowIds([]);
               }}
-              className={`text-xs px-3 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition shadow-sm ${
-                isBulkEditMode 
-                  ? 'bg-amber-500 text-white border-amber-600' 
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+              className={`text-xs px-3 py-1.5 rounded-lg border font-semibold flex items-center gap-1.5 transition ${
+                isBulkEditMode
+                  ? 'bg-amber-500 text-white border-amber-600'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
             >
               <Sliders className="w-3.5 h-3.5" />
-              <span>{isBulkEditMode ? 'Exit Bulk Edit' : '⚡ Bulk Edit Mode'}</span>
+              <span>{isBulkEditMode ? 'Exit Bulk Edit' : 'Bulk Edit'}</span>
             </button>
 
-            {(activeTab === 'all' || activeTab === 'register') && (
-              <button 
-                onClick={() => setShowActiveOnly(!showActiveOnly)}
-                className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium transition ${
-                  showActiveOnly ? 'bg-blue-50 text-blue-700 border-blue-300' : 'bg-white text-slate-600 border-slate-200'
-                }`}
-              >
-                {showActiveOnly ? 'Active Only' : 'All Sections'}
-              </button>
-            )}
-
-            {/* ADD / MANAGE ACTIVITIES FROM 16 STANDARD BUTTON */}
             {!isReadonly && (
-              <button 
+              <button
                 onClick={() => setIsAddSectionOpen(true)}
-                className="text-xs text-blue-700 hover:text-blue-900 font-bold flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-300 transition shadow-xs"
+                className="text-xs text-blue-700 dark:text-blue-300 hover:text-blue-900 font-semibold flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 border border-blue-200 dark:border-blue-800 transition"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Add / Manage Activities</span>
+                <span>Manage Sections</span>
               </button>
             )}
           </div>
@@ -2275,44 +2749,139 @@ export default function DailyActivitiesView({
           </div>
         )}
 
-        {/* 1. WORK REGISTER TABLE (WITH OPTION TO DELETE & ADD FROM 16 ACTIVITIES) */}
+        {/* 1. WORK REGISTER TABLE (SEARCH + QUICK LOG + STRUCTURED SUMMARY) */}
         {(activeTab === 'all' || activeTab === 'register') && (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="p-3 bg-slate-100/70 border-b border-slate-200 flex justify-between items-center">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+            <div className="p-3 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 flex flex-wrap justify-between items-center gap-2">
               <div className="flex items-center gap-2">
-                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                  1. ERA Work Register & Execution Summary
+                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wide">
+                  1. Work Register &amp; Daily Execution Summary
                 </h3>
-                <span className="text-[11px] text-slate-500 font-normal">
-                  ({sections.length} active activities, {currentActivities.length} recorded today)
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium tabular-nums">
+                  {sections.length} sections · {currentActivities.length} logged today
                 </span>
               </div>
 
-              <div className="flex items-center gap-2 print:hidden">
+              <div className="flex flex-wrap items-center gap-2 print:hidden">
+                {/* Search Work Register */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Filter section, station, work..."
+                    className="pl-8 pr-7 py-1 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500 w-52"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      title="Clear search"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
                 {!isReadonly && (
-                  <button 
+                  <button
                     onClick={() => setIsAddSectionOpen(true)}
-                    className="text-xs text-blue-700 hover:text-blue-900 font-bold flex items-center gap-1 px-2.5 py-1 rounded bg-blue-50 border border-blue-200"
+                    className="text-xs text-blue-700 dark:text-blue-300 hover:text-blue-900 font-semibold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800"
                     title="Add from 16 activities or create custom"
                   >
-                    <Plus className="w-3 h-3" /> Add Activity
+                    <Plus className="w-3 h-3" /> Add Section
                   </button>
                 )}
 
                 {!isReadonly && currentActivities.length > 0 && (
-                  <button 
+                  <button
                     onClick={() => {
                       if (!confirm(`Clear all activities recorded on ${selectedDate}?`)) return;
                       const updated = activities.filter(a => a.date !== selectedDate);
                       triggerDebouncedSave(updated, 'Cleared all activities for the day');
                     }}
-                    className="text-[11px] text-rose-600 hover:text-rose-800 font-medium flex items-center gap-1 hover:underline"
+                    className="text-[11px] text-rose-600 dark:text-rose-400 hover:text-rose-800 font-medium flex items-center gap-1 hover:underline"
                   >
-                    <Trash2 className="w-3 h-3" /> Clear Today's Rows
+                    <Trash2 className="w-3 h-3" /> Clear Day
                   </button>
                 )}
               </div>
             </div>
+
+            {/* QUICK-ADD WORK ENTRY BAR */}
+            {!isReadonly && (
+              <form
+                onSubmit={handleQuickAddActivity}
+                className="bg-slate-50/70 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 px-3 py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center print:hidden"
+              >
+                <div className="sm:col-span-3">
+                  <select
+                    value={quickSectionId}
+                    onChange={e => setQuickSectionId(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
+                    aria-label="Select Work Section"
+                  >
+                    {sections.filter(s => !s.isSpecial).map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.customLabel || s.id}. {s.name} ({getDefaultUnit(s.id)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-4">
+                  <input
+                    type="text"
+                    value={quickDesc}
+                    onChange={e => setQuickDesc(e.target.value)}
+                    placeholder="Quick log description (e.g. Sub-base placement & rolling)..."
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <input
+                    type="text"
+                    value={quickStation}
+                    onChange={e => setQuickStation(e.target.value)}
+                    placeholder="Station (e.g. Km 210+200)"
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="sm:col-span-1">
+                  <select
+                    value={quickSide}
+                    onChange={e => setQuickSide(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none"
+                    aria-label="Road Side"
+                  >
+                    <option value="BHS">BHS</option>
+                    <option value="LHS">LHS</option>
+                    <option value="RHS">RHS</option>
+                    <option value="CL">CL</option>
+                  </select>
+                </div>
+                <div className="sm:col-span-1">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={quickQty}
+                    onChange={e => setQuickQty(e.target.value)}
+                    placeholder="Qty"
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-500 text-center tabular-nums"
+                  />
+                </div>
+                <div className="sm:col-span-1 flex justify-end">
+                  <button
+                    type="submit"
+                    className="w-full px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Log</span>
+                  </button>
+                </div>
+              </form>
+            )}
 
             {/* BOQ Quantity Variance Warning Alert Banner */}
             {activitiesExceedingBoq.length > 0 && (
@@ -2474,6 +3043,22 @@ export default function DailyActivitiesView({
                     const defaultUnit = getDefaultUnit(sec.id);
 
                     if (showActiveOnly && secActivities.length === 0) return null;
+
+                    const normalizedSearch = searchQuery.trim().toLowerCase();
+                    if (normalizedSearch) {
+                      const matchesSection =
+                        sec.id.toLowerCase().includes(normalizedSearch) ||
+                        sec.name.toLowerCase().includes(normalizedSearch);
+                      const matchesEntry = secActivities.some(a =>
+                        (a.description || '').toLowerCase().includes(normalizedSearch) ||
+                        (a.startStationKm || '').toLowerCase().includes(normalizedSearch) ||
+                        (a.pipeLocation || '').toLowerCase().includes(normalizedSearch) ||
+                        (a.boxCulvertLocation || '').toLowerCase().includes(normalizedSearch) ||
+                        (a.slabCulvertLocation || '').toLowerCase().includes(normalizedSearch) ||
+                        (a.bridgeLocation || '').toLowerCase().includes(normalizedSearch)
+                      );
+                      if (!matchesSection && !matchesEntry) return null;
+                    }
 
                     // SPECIALIZED RENDERING FOR SECTION 14: RCP PIPE CONSTRUCTION
                     if (sec.id === '14') {
@@ -4723,18 +5308,22 @@ export default function DailyActivitiesView({
 
         {/* 2. PRODUCTION TABLE (PLANT & QUARRY OUTPUT - FULLY EDITABLE & DELETABLE) */}
         {(activeTab === 'all' || activeTab === 'production') && (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="p-3 bg-slate-100/70 border-b border-slate-200 flex justify-between items-center">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+            <div className="p-3 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <Factory className="w-4 h-4 text-purple-600" />
-                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wide">
                   2. Site & Industrial Production Table (Batching, Crushing & Precast Plants)
                 </h3>
               </div>
               {!isReadonly && (
                 <div className="flex items-center gap-2 print:hidden">
                   <button 
-                    onClick={() => setProductionList([...productionList, { id: 'p_' + Date.now(), facilityName: 'New Processing Unit', itemProduced: 'Aggregate / Concrete', unit: 'm³', targetOutput: 200, actualOutput: 150, previousCumulative: 0, operatingHours: 8.0, remarks: 'Active' }])}
+                    onClick={() => {
+                      const next = [...productionList, { id: 'p_' + Date.now(), facilityName: 'New Processing Unit', itemProduced: 'Aggregate / Concrete', unit: 'm³', targetOutput: 200, actualOutput: 150, previousCumulative: 0, operatingHours: 8.0, remarks: 'Active' }];
+                      setProductionList(next);
+                      scheduleResourceSync({ productionList: next }, 'Added plant production unit');
+                    }}
                     className="text-xs text-purple-700 hover:text-purple-900 font-medium flex items-center gap-1 px-2.5 py-1 rounded bg-purple-50 border border-purple-200 transition"
                   >
                     <Plus className="w-3.5 h-3.5" /> Add Plant Row
@@ -4744,6 +5333,7 @@ export default function DailyActivitiesView({
                       onClick={() => {
                         if (!confirm('Clear all production units from the table?')) return;
                         setProductionList([]);
+                        scheduleResourceSync({ productionList: [] }, 'Cleared plant production table');
                       }}
                       className="text-xs text-rose-600 hover:text-rose-800 font-medium px-2 py-1"
                       title="Delete all production rows"
@@ -4758,53 +5348,53 @@ export default function DailyActivitiesView({
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
-                    <th className="p-2.5 border-r border-slate-200">Facility / Plant Name</th>
-                    <th className="p-2.5 border-r border-slate-200">Material / Item</th>
-                    <th className="p-2.5 w-20 text-center border-r border-slate-200">Unit</th>
-                    <th className="p-2.5 w-24 text-center border-r border-slate-200">Target</th>
-                    <th className="p-2.5 w-24 text-center border-r border-slate-200 text-blue-700">Actual Today</th>
-                    <th className="p-2.5 w-24 text-center border-r border-slate-200 text-slate-500">Previous Total</th>
-                    <th className="p-2.5 w-28 text-center border-r border-slate-200 text-rose-600 font-bold">Cumulative To Date</th>
-                    <th className="p-2.5 w-20 text-center border-r border-slate-200">Hours</th>
-                    <th className="p-2.5 border-r border-slate-200">Remarks</th>
+                  <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold text-[11px]">
+                    <th className="p-2.5 border-r border-slate-200 dark:border-slate-700">Facility / Plant Name</th>
+                    <th className="p-2.5 border-r border-slate-200 dark:border-slate-700">Material / Item</th>
+                    <th className="p-2.5 w-20 text-center border-r border-slate-200 dark:border-slate-700">Unit</th>
+                    <th className="p-2.5 w-24 text-center border-r border-slate-200 dark:border-slate-700">Target</th>
+                    <th className="p-2.5 w-24 text-center border-r border-slate-200 dark:border-slate-700 text-blue-700 dark:text-blue-400">Actual Today</th>
+                    <th className="p-2.5 w-24 text-center border-r border-slate-200 dark:border-slate-700 text-slate-500">Previous Total</th>
+                    <th className="p-2.5 w-28 text-center border-r border-slate-200 dark:border-slate-700 text-rose-600 font-bold">Cumulative To Date</th>
+                    <th className="p-2.5 w-20 text-center border-r border-slate-200 dark:border-slate-700">Hours</th>
+                    <th className="p-2.5 border-r border-slate-200 dark:border-slate-700">Remarks</th>
                     {!isReadonly && <th className="p-2.5 w-12 text-center print:hidden">Action</th>}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {productionList.length > 0 ? productionList.map((prod, idx) => {
                     const cumTotal = (prod.previousCumulative || 0) + (prod.actualOutput || 0);
                     return (
-                      <tr key={prod.id || idx} className="hover:bg-slate-50 transition text-slate-800">
-                        <td className="p-1.5 border-r border-slate-200 font-medium">
+                      <tr key={prod.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition text-slate-800 dark:text-slate-100">
+                        <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 font-medium">
                           <input 
                             value={prod.facilityName}
                             onChange={e => {
-                              const list = [...productionList];
-                              list[idx].facilityName = e.target.value;
+                              const list = productionList.map((item, i) => i === idx ? { ...item, facilityName: e.target.value } : item);
                               setProductionList(list);
+                              scheduleResourceSync({ productionList: list }, 'Updated plant production unit');
                             }}
-                            className="w-full bg-transparent px-1.5 py-0.5 outline-none focus:bg-white rounded font-medium"
+                            className="w-full bg-transparent px-1.5 py-0.5 outline-none focus:bg-white dark:focus:bg-slate-900 rounded font-medium"
                           />
                         </td>
-                        <td className="p-1.5 border-r border-slate-200">
+                        <td className="p-1.5 border-r border-slate-200 dark:border-slate-700">
                           <input 
                             value={prod.itemProduced}
                             onChange={e => {
-                              const list = [...productionList];
-                              list[idx].itemProduced = e.target.value;
+                              const list = productionList.map((item, i) => i === idx ? { ...item, itemProduced: e.target.value } : item);
                               setProductionList(list);
+                              scheduleResourceSync({ productionList: list }, 'Updated plant item produced');
                             }}
-                            className="w-full bg-transparent px-1.5 py-0.5 outline-none focus:bg-white rounded"
+                            className="w-full bg-transparent px-1.5 py-0.5 outline-none focus:bg-white dark:focus:bg-slate-900 rounded"
                           />
                         </td>
-                        <td className="p-1.5 border-r border-slate-200 text-center">
+                        <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 text-center">
                           <select 
                             value={prod.unit}
                             onChange={e => {
-                              const list = [...productionList];
-                              list[idx].unit = e.target.value;
+                              const list = productionList.map((item, i) => i === idx ? { ...item, unit: e.target.value } : item);
                               setProductionList(list);
+                              scheduleResourceSync({ productionList: list }, 'Updated plant unit');
                             }}
                             className="w-full text-center bg-transparent px-1 py-0.5 outline-none font-bold text-xs cursor-pointer"
                           >
@@ -4813,73 +5403,77 @@ export default function DailyActivitiesView({
                             ))}
                           </select>
                         </td>
-                        <td className="p-1.5 border-r border-slate-200 text-center">
+                        <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 text-center">
                           <input 
                             type="number"
                             value={prod.targetOutput}
                             onChange={e => {
-                              const list = [...productionList];
-                              list[idx].targetOutput = parseFloat(e.target.value) || 0;
+                              const list = productionList.map((item, i) => i === idx ? { ...item, targetOutput: parseFloat(e.target.value) || 0 } : item);
                               setProductionList(list);
+                              scheduleResourceSync({ productionList: list }, 'Updated plant target output');
                             }}
-                            className="w-full text-center bg-transparent px-1 py-0.5 outline-none focus:bg-white rounded"
+                            className="w-full text-center bg-transparent px-1 py-0.5 outline-none focus:bg-white dark:focus:bg-slate-900 rounded tabular-nums"
                           />
                         </td>
-                        <td className="p-1.5 border-r border-slate-200 text-center text-blue-700 font-bold">
+                        <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 text-center text-blue-700 dark:text-blue-400 font-bold">
                           <input 
                             type="number"
                             value={prod.actualOutput}
                             onChange={e => {
-                              const list = [...productionList];
-                              list[idx].actualOutput = parseFloat(e.target.value) || 0;
+                              const list = productionList.map((item, i) => i === idx ? { ...item, actualOutput: parseFloat(e.target.value) || 0 } : item);
                               setProductionList(list);
+                              scheduleResourceSync({ productionList: list }, 'Updated plant actual output');
                             }}
-                            className="w-full text-center bg-transparent px-1 py-0.5 outline-none focus:bg-white rounded font-bold text-blue-700"
+                            className="w-full text-center bg-transparent px-1 py-0.5 outline-none focus:bg-white dark:focus:bg-slate-900 rounded font-bold text-blue-700 dark:text-blue-400 tabular-nums"
                           />
                         </td>
-                        <td className="p-1.5 border-r border-slate-200 text-center">
+                        <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 text-center">
                           <input 
                             type="number"
                             value={prod.previousCumulative || 0}
                             onChange={e => {
-                              const list = [...productionList];
-                              list[idx].previousCumulative = parseFloat(e.target.value) || 0;
+                              const list = productionList.map((item, i) => i === idx ? { ...item, previousCumulative: parseFloat(e.target.value) || 0 } : item);
                               setProductionList(list);
+                              scheduleResourceSync({ productionList: list }, 'Updated plant previous cumulative');
                             }}
-                            className="w-full text-center bg-transparent px-1 py-0.5 outline-none focus:bg-white rounded text-slate-500 font-medium"
+                            className="w-full text-center bg-transparent px-1 py-0.5 outline-none focus:bg-white dark:focus:bg-slate-900 rounded text-slate-500 font-medium tabular-nums"
                           />
                         </td>
-                        <td className="p-2 border-r border-slate-200 text-center font-bold text-rose-600">
+                        <td className="p-2 border-r border-slate-200 dark:border-slate-700 text-center font-bold text-rose-600 tabular-nums">
                           {cumTotal.toLocaleString()} {prod.unit}
                         </td>
-                        <td className="p-1.5 border-r border-slate-200 text-center">
+                        <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 text-center">
                           <input 
                             type="number"
                             value={prod.operatingHours || 8}
                             onChange={e => {
-                              const list = [...productionList];
-                              list[idx].operatingHours = parseFloat(e.target.value) || 0;
+                              const list = productionList.map((item, i) => i === idx ? { ...item, operatingHours: parseFloat(e.target.value) || 0 } : item);
                               setProductionList(list);
+                              scheduleResourceSync({ productionList: list }, 'Updated plant operating hours');
                             }}
-                            className="w-full text-center bg-transparent px-1 py-0.5 outline-none focus:bg-white rounded"
+                            className="w-full text-center bg-transparent px-1 py-0.5 outline-none focus:bg-white dark:focus:bg-slate-900 rounded tabular-nums"
                           />
                         </td>
-                        <td className="p-1.5 border-r border-slate-200">
+                        <td className="p-1.5 border-r border-slate-200 dark:border-slate-700">
                           <input 
                             value={prod.remarks || ''}
                             onChange={e => {
-                              const list = [...productionList];
-                              list[idx].remarks = e.target.value;
+                              const list = productionList.map((item, i) => i === idx ? { ...item, remarks: e.target.value } : item);
                               setProductionList(list);
+                              scheduleResourceSync({ productionList: list }, 'Updated plant remarks');
                             }}
                             placeholder="Remarks..."
-                            className="w-full bg-transparent px-1.5 py-0.5 outline-none focus:bg-white rounded text-slate-600"
+                            className="w-full bg-transparent px-1.5 py-0.5 outline-none focus:bg-white dark:focus:bg-slate-900 rounded text-slate-600 dark:text-slate-300"
                           />
                         </td>
                         {!isReadonly && (
                           <td className="p-1.5 text-center print:hidden">
                             <button 
-                              onClick={() => setProductionList(productionList.filter((_, i) => i !== idx))}
+                              onClick={() => {
+                                const list = productionList.filter((_, i) => i !== idx);
+                                setProductionList(list);
+                                scheduleResourceSync({ productionList: list }, 'Removed plant production row');
+                              }}
                               className="text-slate-400 hover:text-rose-600 p-1 rounded"
                               title="Delete row"
                             >
@@ -4902,34 +5496,46 @@ export default function DailyActivitiesView({
           </div>
         )}
 
-        {/* 3. SITE RESOURCES (EQUIPMENT FLEET & MATERIAL TRACKER - FULLY EDITABLE & DELETABLE) */}
+        {/* 3. SITE RESOURCES (LABOR ROSTER + EQUIPMENT FLEET + MATERIAL TRACKER - REAL-TIME SYNCED) */}
         {(activeTab === 'all' || activeTab === 'resources') && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Equipment Fleet Deployment Table */}
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="p-3 bg-slate-100/70 border-b border-slate-200 flex justify-between items-center">
+          <div className="space-y-4">
+            {/* 3.0 Daily Labor Deployment Table */}
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+              <div className="p-3 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 flex flex-wrap justify-between items-center gap-2">
                 <div className="flex items-center gap-2">
-                  <Truck className="w-4 h-4 text-blue-600" />
-                  <h3 className="text-xs font-bold text-slate-800 uppercase">3.1 Equipment / Machinery Fleet Deployment</h3>
+                  <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase">
+                    3.0 Daily Labor Deployment (Site Workforce Roster)
+                  </h3>
+                  <span className="text-[11px] font-mono font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 rounded tabular-nums">
+                    Total Crew: {summaryStats.totalLaborCount}
+                  </span>
                 </div>
                 {!isReadonly && (
                   <div className="flex items-center gap-2 print:hidden">
-                    <button 
-                      onClick={() => setEquipmentFleet([...equipmentFleet, { id: 'eq_' + Date.now(), name: 'New Equipment Unit', typeCapacity: 'Standard Capacity', status: 'Operating', workingHours: 8.0, remarks: 'On active section' }])}
-                      className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const list = [...laborSummary, { category: 'Specialty Subcontractor Crew', count: 0 }];
+                        setLaborSummary(list);
+                        scheduleResourceSync({ laborSummary: list }, 'Added labor role category');
+                      }}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 font-medium"
                     >
-                      + Add Fleet
+                      + Add Role
                     </button>
-                    {equipmentFleet.length > 0 && (
-                      <button 
+                    {laborSummary.length > 0 && (
+                      <button
+                        type="button"
                         onClick={() => {
-                          if (!confirm('Clear all equipment from this list?')) return;
-                          setEquipmentFleet([]);
+                          const cleared = createDefaultLaborSummary();
+                          setLaborSummary(cleared);
+                          scheduleResourceSync({ laborSummary: cleared }, 'Reset daily labor headcounts to zero');
                         }}
                         className="text-xs text-rose-500 hover:text-rose-700"
-                        title="Clear all fleet items"
+                        title="Reset labor counts"
                       >
-                        Clear
+                        Reset Counts
                       </button>
                     )}
                   </div>
@@ -4938,207 +5544,340 @@ export default function DailyActivitiesView({
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 text-[11px]">
-                      <th className="p-2 border-r border-slate-200">Equipment Name</th>
-                      <th className="p-2 w-24 border-r border-slate-200">Status</th>
-                      <th className="p-2 w-16 text-center border-r border-slate-200">Hours</th>
-                      <th className="p-2 border-r border-slate-200">Location & Remarks</th>
-                      {!isReadonly && <th className="p-2 w-8 text-center print:hidden"></th>}
+                    <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-[11px]">
+                      <th className="p-2 border-r border-slate-200 dark:border-slate-700">Workforce Role / Category</th>
+                      <th className="p-2 w-28 text-center border-r border-slate-200 dark:border-slate-700">Headcount</th>
+                      <th className="p-2 w-24 text-center border-r border-slate-200 dark:border-slate-700">Share (%)</th>
+                      {!isReadonly && <th className="p-2 w-10 text-center print:hidden"></th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {equipmentFleet.length > 0 ? equipmentFleet.map((eq, idx) => (
-                      <tr key={eq.id || idx} className="hover:bg-slate-50 transition">
-                        <td className="p-1.5 border-r border-slate-200 font-medium">
-                          <input 
-                            value={eq.name} 
-                            onChange={e => {
-                              const list = [...equipmentFleet];
-                              list[idx].name = e.target.value;
-                              setEquipmentFleet(list);
-                            }}
-                            className="w-full bg-transparent px-1 py-0.5 outline-none focus:bg-white rounded font-medium text-slate-800"
-                          />
-                        </td>
-                        <td className="p-1.5 border-r border-slate-200">
-                          <select 
-                            value={eq.status}
-                            onChange={e => {
-                              const list = [...equipmentFleet];
-                              list[idx].status = e.target.value as any;
-                              setEquipmentFleet(list);
-                            }}
-                            className="w-full bg-transparent text-[11px] font-bold outline-none cursor-pointer"
-                          >
-                            <option value="Operating">🟢 Operating</option>
-                            <option value="Standby">🟡 Standby</option>
-                            <option value="Breakdown">🔴 Breakdown</option>
-                            <option value="Maintenance">🔧 Maint.</option>
-                          </select>
-                        </td>
-                        <td className="p-1.5 text-center border-r border-slate-200">
-                          <input 
-                            type="number"
-                            value={eq.workingHours}
-                            onChange={e => {
-                              const list = [...equipmentFleet];
-                              list[idx].workingHours = parseFloat(e.target.value) || 0;
-                              setEquipmentFleet(list);
-                            }}
-                            className="w-full text-center bg-transparent px-1 py-0.5 outline-none font-medium"
-                          />
-                        </td>
-                        <td className="p-1.5 border-r border-slate-200">
-                          <input 
-                            value={eq.remarks}
-                            onChange={e => {
-                              const list = [...equipmentFleet];
-                              list[idx].remarks = e.target.value;
-                              setEquipmentFleet(list);
-                            }}
-                            className="w-full bg-transparent px-1 py-0.5 outline-none text-slate-600"
-                            placeholder="Assignment..."
-                          />
-                        </td>
-                        {!isReadonly && (
-                          <td className="p-1 text-center print:hidden">
-                            <button 
-                              onClick={() => setEquipmentFleet(equipmentFleet.filter((_, i) => i !== idx))}
-                              className="text-slate-400 hover:text-rose-600 p-0.5 rounded"
-                              title="Delete row"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {laborSummary.map((lab, idx) => {
+                      const pct = summaryStats.totalLaborCount > 0
+                        ? Math.round(((Number(lab.count) || 0) / summaryStats.totalLaborCount) * 100)
+                        : 0;
+                      return (
+                        <tr key={`${lab.category}_${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                          <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 font-medium">
+                            <input
+                              value={lab.category}
+                              disabled={isReadonly}
+                              onChange={e => {
+                                const list = laborSummary.map((item, i) => i === idx ? { ...item, category: e.target.value } : item);
+                                setLaborSummary(list);
+                                scheduleResourceSync({ laborSummary: list }, 'Updated labor role name');
+                              }}
+                              className="w-full bg-transparent px-1.5 py-0.5 outline-none focus:bg-white dark:focus:bg-slate-900 rounded text-slate-800 dark:text-slate-100 font-medium"
+                            />
                           </td>
-                        )}
-                      </tr>
-                    )) : (
-                      <tr>
-                        <td colSpan={5} className="p-3 text-center text-slate-400 italic">
-                          No fleet equipment listed. Click "+ Add Fleet" above to add bulldozers, rollers, or trucks.
-                        </td>
-                      </tr>
-                    )}
+                          <td className="p-1.5 text-center border-r border-slate-200 dark:border-slate-700">
+                            <input
+                              type="number"
+                              min={0}
+                              disabled={isReadonly}
+                              value={lab.count}
+                              onChange={e => {
+                                const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                const list = laborSummary.map((item, i) => i === idx ? { ...item, count: val } : item);
+                                setLaborSummary(list);
+                                scheduleResourceSync({ laborSummary: list }, 'Updated daily labor deployment');
+                              }}
+                              className="w-full text-center bg-transparent px-1 py-0.5 outline-none font-bold font-mono tabular-nums text-indigo-700 dark:text-indigo-300"
+                            />
+                          </td>
+                          <td className="p-2 text-center border-r border-slate-200 dark:border-slate-700 font-mono tabular-nums text-slate-500 dark:text-slate-400">
+                            {pct}%
+                          </td>
+                          {!isReadonly && (
+                            <td className="p-1 text-center print:hidden">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const list = laborSummary.filter((_, i) => i !== idx);
+                                  setLaborSummary(list);
+                                  scheduleResourceSync({ laborSummary: list }, 'Removed labor role');
+                                }}
+                                className="text-slate-400 hover:text-rose-600 p-0.5 rounded"
+                                title="Remove role"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-slate-100">
+                      <td className="p-2 border-r border-slate-200 dark:border-slate-700">Total Daily Personnel on Site</td>
+                      <td className="p-2 text-center border-r border-slate-200 dark:border-slate-700 font-mono tabular-nums text-indigo-700 dark:text-indigo-300">
+                        {summaryStats.totalLaborCount}
+                      </td>
+                      <td className="p-2 text-center border-r border-slate-200 dark:border-slate-700 font-mono tabular-nums">
+                        {summaryStats.totalLaborCount > 0 ? '100%' : '0%'}
+                      </td>
+                      {!isReadonly && <td className="print:hidden"></td>}
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
 
-            {/* Material Received / Used Tracker */}
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="p-3 bg-slate-100/70 border-b border-slate-200 flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <Package className="w-4 h-4 text-emerald-600" />
-                  <h3 className="text-xs font-bold text-slate-800 uppercase">3.2 Material Received / Used Tracker</h3>
-                </div>
-                {!isReadonly && (
-                  <div className="flex items-center gap-2 print:hidden">
-                    <button 
-                      onClick={() => setMaterialsList([...materialsList, { id: 'm_' + Date.now(), material: PRESET_MATERIALS[0], received: 100, used: 40, remarks: 'On site' }])}
-                      className="text-xs text-emerald-600 hover:text-emerald-800 font-medium"
-                    >
-                      + Add Material
-                    </button>
-                    {materialsList.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Equipment Fleet Deployment Table */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+                <div className="p-3 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <Truck className="w-4 h-4 text-blue-600" />
+                    <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase">3.1 Equipment / Machinery Fleet Deployment</h3>
+                  </div>
+                  {!isReadonly && (
+                    <div className="flex items-center gap-2 print:hidden">
                       <button 
                         onClick={() => {
-                          if (!confirm('Clear all materials from this list?')) return;
-                          setMaterialsList([]);
+                          const list: EquipmentFleetItem[] = [...equipmentFleet, { id: 'eq_' + Date.now(), name: 'New Equipment Unit', typeCapacity: 'Standard Capacity', status: 'Operating', workingHours: 8.0, remarks: 'On active section' }];
+                          setEquipmentFleet(list);
+                          scheduleResourceSync({ equipmentFleet: list }, 'Added equipment fleet unit');
                         }}
-                        className="text-xs text-rose-500 hover:text-rose-700"
-                        title="Clear all materials"
+                        className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                       >
-                        Clear
+                        + Add Fleet
                       </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 text-[11px]">
-                      <th className="p-2 border-r border-slate-200">Material</th>
-                      <th className="p-2 w-16 text-center border-r border-slate-200">Received</th>
-                      <th className="p-2 w-16 text-center border-r border-slate-200">Used</th>
-                      <th className="p-2 w-16 text-center border-r border-slate-200 text-blue-700 font-bold">Balance</th>
-                      <th className="p-2 border-r border-slate-200">Remarks</th>
-                      {!isReadonly && <th className="p-2 w-8 text-center print:hidden"></th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {materialsList.length > 0 ? materialsList.map((m, idx) => (
-                      <tr key={m.id || idx} className="hover:bg-slate-50 transition">
-                        <td className="p-1.5 border-r border-slate-200 font-medium">
-                          <input 
-                            value={m.material}
-                            onChange={e => {
-                              const list = [...materialsList];
-                              list[idx].material = e.target.value;
-                              setMaterialsList(list);
-                            }}
-                            className="w-full bg-transparent px-1 py-0.5 outline-none text-slate-800 font-medium"
-                          />
-                        </td>
-                        <td className="p-1.5 text-center border-r border-slate-200">
-                          <input 
-                            type="number"
-                            value={m.received}
-                            onChange={e => {
-                              const list = [...materialsList];
-                              list[idx].received = parseFloat(e.target.value) || 0;
-                              setMaterialsList(list);
-                            }}
-                            className="w-full text-center bg-transparent outline-none font-medium"
-                          />
-                        </td>
-                        <td className="p-1.5 text-center border-r border-slate-200">
-                          <input 
-                            type="number"
-                            value={m.used}
-                            onChange={e => {
-                              const list = [...materialsList];
-                              list[idx].used = parseFloat(e.target.value) || 0;
-                              setMaterialsList(list);
-                            }}
-                            className="w-full text-center bg-transparent outline-none text-rose-600 font-medium"
-                          />
-                        </td>
-                        <td className="p-2 text-center border-r border-slate-200 font-bold text-blue-700">
-                          {m.received - m.used}
-                        </td>
-                        <td className="p-1.5 border-r border-slate-200">
-                          <input 
-                            value={m.remarks}
-                            onChange={e => {
-                              const list = [...materialsList];
-                              list[idx].remarks = e.target.value;
-                              setMaterialsList(list);
-                            }}
-                            className="w-full bg-transparent outline-none text-slate-600"
-                          />
-                        </td>
-                        {!isReadonly && (
-                          <td className="p-1 text-center print:hidden">
-                            <button 
-                              onClick={() => setMaterialsList(materialsList.filter((_, i) => i !== idx))}
-                              className="text-slate-400 hover:text-rose-600 p-0.5 rounded"
-                              title="Delete row"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                      {equipmentFleet.length > 0 && (
+                        <button 
+                          onClick={() => {
+                            if (!confirm('Clear all equipment from this list?')) return;
+                            setEquipmentFleet([]);
+                            scheduleResourceSync({ equipmentFleet: [] }, 'Cleared daily equipment fleet');
+                          }}
+                          className="text-xs text-rose-500 hover:text-rose-700"
+                          title="Clear all fleet items"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-[11px]">
+                        <th className="p-2 border-r border-slate-200 dark:border-slate-700">Equipment Name</th>
+                        <th className="p-2 w-24 border-r border-slate-200 dark:border-slate-700">Status</th>
+                        <th className="p-2 w-16 text-center border-r border-slate-200 dark:border-slate-700">Hours</th>
+                        <th className="p-2 border-r border-slate-200 dark:border-slate-700">Location &amp; Remarks</th>
+                        {!isReadonly && <th className="p-2 w-8 text-center print:hidden"></th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {equipmentFleet.length > 0 ? equipmentFleet.map((eq, idx) => (
+                        <tr key={eq.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                          <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 font-medium">
+                            <input 
+                              value={eq.name} 
+                              onChange={e => {
+                                const list = equipmentFleet.map((item, i) => i === idx ? { ...item, name: e.target.value } : item);
+                                setEquipmentFleet(list);
+                                scheduleResourceSync({ equipmentFleet: list }, 'Updated equipment fleet name');
+                              }}
+                              className="w-full bg-transparent px-1 py-0.5 outline-none focus:bg-white dark:focus:bg-slate-900 rounded font-medium text-slate-800 dark:text-slate-100"
+                            />
                           </td>
-                        )}
+                          <td className="p-1.5 border-r border-slate-200 dark:border-slate-700">
+                            <select 
+                              value={eq.status}
+                              onChange={e => {
+                                const list = equipmentFleet.map((item, i) => i === idx ? { ...item, status: e.target.value as EquipmentFleetItem['status'] } : item);
+                                setEquipmentFleet(list);
+                                scheduleResourceSync({ equipmentFleet: list }, 'Updated equipment fleet status');
+                              }}
+                              className="w-full bg-transparent text-[11px] font-bold outline-none cursor-pointer"
+                            >
+                              <option value="Operating">🟢 Operating</option>
+                              <option value="Standby">🟡 Standby</option>
+                              <option value="Breakdown">🔴 Breakdown</option>
+                              <option value="Maintenance">🔧 Maint.</option>
+                            </select>
+                          </td>
+                          <td className="p-1.5 text-center border-r border-slate-200 dark:border-slate-700">
+                            <input 
+                              type="number"
+                              value={eq.workingHours}
+                              onChange={e => {
+                                const list = equipmentFleet.map((item, i) => i === idx ? { ...item, workingHours: parseFloat(e.target.value) || 0 } : item);
+                                setEquipmentFleet(list);
+                                scheduleResourceSync({ equipmentFleet: list }, 'Updated equipment working hours');
+                              }}
+                              className="w-full text-center bg-transparent px-1 py-0.5 outline-none font-medium tabular-nums"
+                            />
+                          </td>
+                          <td className="p-1.5 border-r border-slate-200 dark:border-slate-700">
+                            <input 
+                              value={eq.remarks}
+                              onChange={e => {
+                                const list = equipmentFleet.map((item, i) => i === idx ? { ...item, remarks: e.target.value } : item);
+                                setEquipmentFleet(list);
+                                scheduleResourceSync({ equipmentFleet: list }, 'Updated equipment remarks');
+                              }}
+                              className="w-full bg-transparent px-1 py-0.5 outline-none text-slate-600 dark:text-slate-300"
+                              placeholder="Assignment..."
+                            />
+                          </td>
+                          {!isReadonly && (
+                            <td className="p-1 text-center print:hidden">
+                              <button 
+                                onClick={() => {
+                                  const list = equipmentFleet.filter((_, i) => i !== idx);
+                                  setEquipmentFleet(list);
+                                  scheduleResourceSync({ equipmentFleet: list }, 'Deleted equipment fleet item');
+                                }}
+                                className="text-slate-400 hover:text-rose-600 p-0.5 rounded"
+                                title="Delete row"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      )) : (
+                        <tr>
+                          <td colSpan={5} className="p-3 text-center text-slate-400 italic">
+                            No fleet equipment listed. Click "+ Add Fleet" above to add bulldozers, rollers, or trucks.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Material Received / Used Tracker */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+                <div className="p-3 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-4 h-4 text-emerald-600" />
+                    <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase">3.2 Material Received / Used Tracker</h3>
+                  </div>
+                  {!isReadonly && (
+                    <div className="flex items-center gap-2 print:hidden">
+                      <button 
+                        onClick={() => {
+                          const list = [...materialsList, { id: 'm_' + Date.now(), material: PRESET_MATERIALS[0], received: 100, used: 40, remarks: 'On site' }];
+                          setMaterialsList(list);
+                          scheduleResourceSync({ materialsList: list }, 'Added material tracker item');
+                        }}
+                        className="text-xs text-emerald-600 hover:text-emerald-800 font-medium"
+                      >
+                        + Add Material
+                      </button>
+                      {materialsList.length > 0 && (
+                        <button 
+                          onClick={() => {
+                            if (!confirm('Clear all materials from this list?')) return;
+                            setMaterialsList([]);
+                            scheduleResourceSync({ materialsList: [] }, 'Cleared material tracker');
+                          }}
+                          className="text-xs text-rose-500 hover:text-rose-700"
+                          title="Clear all materials"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-[11px]">
+                        <th className="p-2 border-r border-slate-200 dark:border-slate-700">Material</th>
+                        <th className="p-2 w-16 text-center border-r border-slate-200 dark:border-slate-700">Received</th>
+                        <th className="p-2 w-16 text-center border-r border-slate-200 dark:border-slate-700">Used</th>
+                        <th className="p-2 w-16 text-center border-r border-slate-200 dark:border-slate-700 text-blue-700 dark:text-blue-400 font-bold">Balance</th>
+                        <th className="p-2 border-r border-slate-200 dark:border-slate-700">Remarks</th>
+                        {!isReadonly && <th className="p-2 w-8 text-center print:hidden"></th>}
                       </tr>
-                    )) : (
-                      <tr>
-                        <td colSpan={6} className="p-3 text-center text-slate-400 italic">
-                          No materials recorded. Click "+ Add Material" above to track cement, bitumen, or rebar.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {materialsList.length > 0 ? materialsList.map((m, idx) => (
+                        <tr key={m.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                          <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 font-medium">
+                            <input 
+                              value={m.material}
+                              onChange={e => {
+                                const list = materialsList.map((item, i) => i === idx ? { ...item, material: e.target.value } : item);
+                                setMaterialsList(list);
+                                scheduleResourceSync({ materialsList: list }, 'Updated material name');
+                              }}
+                              className="w-full bg-transparent px-1 py-0.5 outline-none text-slate-800 dark:text-slate-100 font-medium"
+                            />
+                          </td>
+                          <td className="p-1.5 text-center border-r border-slate-200 dark:border-slate-700">
+                            <input 
+                              type="number"
+                              value={m.received}
+                              onChange={e => {
+                                const list = materialsList.map((item, i) => i === idx ? { ...item, received: parseFloat(e.target.value) || 0 } : item);
+                                setMaterialsList(list);
+                                scheduleResourceSync({ materialsList: list }, 'Updated material received quantity');
+                              }}
+                              className="w-full text-center bg-transparent outline-none font-medium tabular-nums"
+                            />
+                          </td>
+                          <td className="p-1.5 text-center border-r border-slate-200 dark:border-slate-700">
+                            <input 
+                              type="number"
+                              value={m.used}
+                              onChange={e => {
+                                const list = materialsList.map((item, i) => i === idx ? { ...item, used: parseFloat(e.target.value) || 0 } : item);
+                                setMaterialsList(list);
+                                scheduleResourceSync({ materialsList: list }, 'Updated material used quantity');
+                              }}
+                              className="w-full text-center bg-transparent outline-none text-rose-600 font-medium tabular-nums"
+                            />
+                          </td>
+                          <td className="p-2 text-center border-r border-slate-200 dark:border-slate-700 font-bold text-blue-700 dark:text-blue-400 tabular-nums">
+                            {m.received - m.used}
+                          </td>
+                          <td className="p-1.5 border-r border-slate-200 dark:border-slate-700">
+                            <input 
+                              value={m.remarks}
+                              onChange={e => {
+                                const list = materialsList.map((item, i) => i === idx ? { ...item, remarks: e.target.value } : item);
+                                setMaterialsList(list);
+                                scheduleResourceSync({ materialsList: list }, 'Updated material remarks');
+                              }}
+                              className="w-full bg-transparent outline-none text-slate-600 dark:text-slate-300"
+                            />
+                          </td>
+                          {!isReadonly && (
+                            <td className="p-1 text-center print:hidden">
+                              <button 
+                                onClick={() => {
+                                  const list = materialsList.filter((_, i) => i !== idx);
+                                  setMaterialsList(list);
+                                  scheduleResourceSync({ materialsList: list }, 'Deleted material item');
+                                }}
+                                className="text-slate-400 hover:text-rose-600 p-0.5 rounded"
+                                title="Delete row"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      )) : (
+                        <tr>
+                          <td colSpan={6} className="p-3 text-center text-slate-400 italic">
+                            No materials recorded. Click "+ Add Material" above to track cement, bitumen, or rebar.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
@@ -5148,17 +5887,21 @@ export default function DailyActivitiesView({
         {(activeTab === 'all' || activeTab === 'challenges') && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Problems & Field Challenges */}
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="p-3 bg-amber-50/80 border-b border-amber-200 flex justify-between items-center">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+              <div className="p-3 bg-amber-50/80 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-700" />
-                  <h3 className="text-xs font-bold text-amber-900 uppercase">4.1 Problems & Field Challenges</h3>
+                  <AlertTriangle className="w-4 h-4 text-amber-700 dark:text-amber-400" />
+                  <h3 className="text-xs font-bold text-amber-900 dark:text-amber-200 uppercase">4.1 Problems &amp; Field Challenges</h3>
                 </div>
                 {!isReadonly && (
                   <div className="flex items-center gap-2 print:hidden">
                     <button 
-                      onClick={() => setSiteChallenges([...siteChallenges, 'New site issue or delay remark...'])}
-                      className="text-xs text-amber-800 hover:text-amber-950 font-medium"
+                      onClick={() => {
+                        const updated = [...siteChallenges, 'New site issue or delay remark...'];
+                        setSiteChallenges(updated);
+                        scheduleResourceSync({ siteChallenges: updated }, 'Added site challenge');
+                      }}
+                      className="text-xs text-amber-800 dark:text-amber-300 hover:text-amber-950 font-medium"
                     >
                       + Add Issue
                     </button>
@@ -5167,6 +5910,7 @@ export default function DailyActivitiesView({
                         onClick={() => {
                           if (!confirm('Clear all problems & challenges?')) return;
                           setSiteChallenges([]);
+                          scheduleResourceSync({ siteChallenges: [] }, 'Cleared site challenges');
                         }}
                         className="text-xs text-rose-500 hover:text-rose-700"
                       >
@@ -5183,15 +5927,19 @@ export default function DailyActivitiesView({
                     <input 
                       value={item}
                       onChange={e => {
-                        const updated = [...siteChallenges];
-                        updated[idx] = e.target.value;
+                        const updated = siteChallenges.map((c, i) => i === idx ? e.target.value : c);
                         setSiteChallenges(updated);
+                        scheduleResourceSync({ siteChallenges: updated }, 'Updated site challenge');
                       }}
-                      className="flex-1 bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-800 outline-none focus:border-amber-500"
+                      className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-slate-100 outline-none focus:border-amber-500"
                     />
                     {!isReadonly && (
                       <button 
-                        onClick={() => setSiteChallenges(siteChallenges.filter((_, i) => i !== idx))}
+                        onClick={() => {
+                          const updated = siteChallenges.filter((_, i) => i !== idx);
+                          setSiteChallenges(updated);
+                          scheduleResourceSync({ siteChallenges: updated }, 'Removed site challenge');
+                        }}
                         className="text-slate-400 hover:text-rose-600 p-1 rounded print:hidden"
                         title="Delete challenge"
                       >
@@ -5208,16 +5956,20 @@ export default function DailyActivitiesView({
             </div>
 
             {/* Work Plan for Tomorrow */}
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="p-3 bg-slate-100/70 border-b border-slate-200 flex justify-between items-center">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+              <div className="p-3 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-blue-600" />
-                  <h3 className="text-xs font-bold text-slate-800 uppercase">4.2 Work Plan for Tomorrow</h3>
+                  <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase">4.2 Work Plan for Tomorrow</h3>
                 </div>
                 {!isReadonly && (
                   <div className="flex items-center gap-2 print:hidden">
                     <button 
-                      onClick={() => setTomorrowPlans([...tomorrowPlans, { id: 'pl_' + Date.now(), area: 'Km 210+000', description: 'Next scheduled activity', unit: 'm³', target: 200, remarks: 'Normal' }])}
+                      onClick={() => {
+                        const list = [...tomorrowPlans, { id: 'pl_' + Date.now(), area: 'Km 210+000', description: 'Next scheduled activity', unit: 'm³', target: 200, remarks: 'Normal' }];
+                        setTomorrowPlans(list);
+                        scheduleResourceSync({ tomorrowPlans: list }, 'Added tomorrow work plan');
+                      }}
                       className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                     >
                       + Add Plan
@@ -5227,6 +5979,7 @@ export default function DailyActivitiesView({
                         onClick={() => {
                           if (!confirm('Clear all plans for tomorrow?')) return;
                           setTomorrowPlans([]);
+                          scheduleResourceSync({ tomorrowPlans: [] }, 'Cleared tomorrow work plan');
                         }}
                         className="text-xs text-rose-500 hover:text-rose-700"
                       >
@@ -5242,36 +5995,40 @@ export default function DailyActivitiesView({
                     <input 
                       value={pl.area}
                       onChange={e => {
-                        const list = [...tomorrowPlans];
-                        list[idx].area = e.target.value;
+                        const list = tomorrowPlans.map((item, i) => i === idx ? { ...item, area: e.target.value } : item);
                         setTomorrowPlans(list);
+                        scheduleResourceSync({ tomorrowPlans: list }, 'Updated tomorrow plan location');
                       }}
                       placeholder="Location..."
-                      className="col-span-4 bg-slate-50 border border-slate-200 rounded px-2 py-1 outline-none text-slate-800 font-mono text-[11px]"
+                      className="col-span-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-800 dark:text-slate-100 font-mono text-[11px]"
                     />
                     <input 
                       value={pl.description}
                       onChange={e => {
-                        const list = [...tomorrowPlans];
-                        list[idx].description = e.target.value;
+                        const list = tomorrowPlans.map((item, i) => i === idx ? { ...item, description: e.target.value } : item);
                         setTomorrowPlans(list);
+                        scheduleResourceSync({ tomorrowPlans: list }, 'Updated tomorrow plan description');
                       }}
                       placeholder="Planned work..."
-                      className="col-span-5 bg-slate-50 border border-slate-200 rounded px-2 py-1 outline-none text-slate-800"
+                      className="col-span-5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-800 dark:text-slate-100"
                     />
                     <input 
                       type="number"
                       value={pl.target}
                       onChange={e => {
-                        const list = [...tomorrowPlans];
-                        list[idx].target = parseFloat(e.target.value) || 0;
+                        const list = tomorrowPlans.map((item, i) => i === idx ? { ...item, target: parseFloat(e.target.value) || 0 } : item);
                         setTomorrowPlans(list);
+                        scheduleResourceSync({ tomorrowPlans: list }, 'Updated tomorrow plan target');
                       }}
-                      className="col-span-2 text-center bg-slate-50 border border-slate-200 rounded px-1 py-1 outline-none font-bold text-blue-700"
+                      className="col-span-2 text-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1 py-1 outline-none font-bold text-blue-700 dark:text-blue-400 tabular-nums"
                     />
                     {!isReadonly && (
                       <button 
-                        onClick={() => setTomorrowPlans(tomorrowPlans.filter((_, i) => i !== idx))}
+                        onClick={() => {
+                          const list = tomorrowPlans.filter((_, i) => i !== idx);
+                          setTomorrowPlans(list);
+                          scheduleResourceSync({ tomorrowPlans: list }, 'Removed tomorrow plan item');
+                        }}
                         className="col-span-1 text-slate-400 hover:text-rose-600 p-1 rounded print:hidden"
                         title="Delete plan item"
                       >

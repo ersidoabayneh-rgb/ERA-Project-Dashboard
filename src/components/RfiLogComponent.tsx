@@ -49,6 +49,32 @@ import {
   User
 } from '../types';
 import { checkSubmittalDelay } from './ConsultantPerformanceKpiWidget';
+import { isRfiRecord, deduplicateSubmittals } from './SubmittalLogView';
+
+function getNextUniqueRfiNo(existingList: ConsultantSubmittalKpi[]): string {
+  const usedNos = new Set(
+    existingList.map(item => String(item.submittalNo || '').trim().toUpperCase()).filter(Boolean)
+  );
+  let maxNum = 0;
+  existingList.forEach(item => {
+    if (!isRfiRecord(item)) return;
+    const match = String(item.submittalNo || '').trim().match(/^rfi[-_\s#]*(\d+)$/i);
+    if (match) {
+      const parsed = parseInt(match[1], 10);
+      if (!isNaN(parsed) && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    }
+  });
+  let candidateNum = maxNum + 1;
+  while (true) {
+    const candidate = `RFI-${String(candidateNum).padStart(3, '0')}`;
+    if (!usedNos.has(candidate.toUpperCase())) {
+      return candidate;
+    }
+    candidateNum++;
+  }
+}
 
 interface RfiLogComponentProps {
   project: Project;
@@ -173,9 +199,9 @@ export default function RfiLogComponent({
     return isMasterAdmin || isConsultantApprover;
   }, [currentUserObj]);
 
-  // Extract all RFI items from submittals
+  // Extract all RFI items strictly (isolated from technical submittals and deduplicated)
   const rfiItems = useMemo(() => {
-    return allSubmittals.filter(item => item.type === 'RFI');
+    return deduplicateSubmittals(allSubmittals.filter(isRfiRecord));
   }, [allSubmittals]);
 
   // Filtering & Search states
@@ -225,8 +251,9 @@ export default function RfiLogComponent({
 
   // New RFI Modal state
   const [isNewRfiModalOpen, setIsNewRfiModalOpen] = useState(false);
-  const [newRfiForm, setNewRfiForm] = useState<Partial<ConsultantSubmittalKpi>>({
-    submittalNo: `RFI-0${rfiItems.length + 14 < 10 ? '0' + (rfiItems.length + 14) : rfiItems.length + 14}`,
+  const [newRfiError, setNewRfiError] = useState<string | null>(null);
+  const createDefaultRfiForm = (): Partial<ConsultantSubmittalKpi> => ({
+    submittalNo: getNextUniqueRfiNo(allSubmittals),
     type: 'RFI',
     title: '',
     discipline: RFI_INSPECTION_CATEGORIES[0],
@@ -247,6 +274,13 @@ export default function RfiLogComponent({
     attachmentsCount: 0,
     attachments: []
   });
+  const [newRfiForm, setNewRfiForm] = useState<Partial<ConsultantSubmittalKpi>>(() => createDefaultRfiForm());
+
+  const handleOpenNewRfiModal = () => {
+    setNewRfiError(null);
+    setNewRfiForm(createDefaultRfiForm());
+    setIsNewRfiModalOpen(true);
+  };
 
   // Respond / Issue Clarification Modal state
   const [isRespondModalOpen, setIsRespondModalOpen] = useState(false);
@@ -264,6 +298,7 @@ export default function RfiLogComponent({
   // Edit RFI Modal state
   const [isEditRfiModalOpen, setIsEditRfiModalOpen] = useState(false);
   const [editingRfiDraft, setEditingRfiDraft] = useState<ConsultantSubmittalKpi | null>(null);
+  const [editRfiError, setEditRfiError] = useState<string | null>(null);
 
   // Correspondence reply form inside active thread
   const [replyMessage, setReplyMessage] = useState('');
@@ -834,7 +869,21 @@ export default function RfiLogComponent({
 
   // Save New RFI
   const handleSaveNewRfi = () => {
-    if (!newRfiForm.submittalNo || !newRfiForm.title) return;
+    const trimmedNo = (newRfiForm.submittalNo || '').trim();
+    const trimmedTitle = (newRfiForm.title || '').trim();
+    if (!trimmedNo || !trimmedTitle) {
+      setNewRfiError('RFI Reference Number and Clarification Subject / Title are required.');
+      return;
+    }
+
+    const normNo = trimmedNo.toUpperCase();
+    const duplicateExists = allSubmittals.some(
+      item => String(item.submittalNo || '').trim().toUpperCase() === normNo
+    );
+    if (duplicateExists) {
+      setNewRfiError(`Reference number "${trimmedNo}" already exists. Please use a unique RFI Reference Number.`);
+      return;
+    }
 
     const target = Number(newRfiForm.targetDays) || 7;
     const initialThread: RfiCorrespondenceMessage[] = [];
@@ -851,10 +900,10 @@ export default function RfiLogComponent({
     }
 
     const newRecord: ConsultantSubmittalKpi = {
-      id: `rfi_${Date.now()}`,
-      submittalNo: newRfiForm.submittalNo,
+      id: `rfi_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      submittalNo: trimmedNo,
       type: 'RFI',
-      title: newRfiForm.title,
+      title: trimmedTitle,
       discipline: newRfiForm.discipline || 'Structures & Bridges',
       stationKm: newRfiForm.stationKm || undefined,
       drawingRef: newRfiForm.drawingRef || undefined,
@@ -877,20 +926,35 @@ export default function RfiLogComponent({
       correspondenceThread: initialThread
     };
 
-    const updatedList = [newRecord, ...allSubmittals];
+    const updatedList = deduplicateSubmittals([newRecord, ...allSubmittals]);
     onUpdateSubmittals(updatedList, `Created RFI ${newRecord.submittalNo} - ${newRecord.title}`);
+    setNewRfiError(null);
     setIsNewRfiModalOpen(false);
   };
 
   // Open Edit RFI Modal
   const handleOpenEditModal = (rfi: ConsultantSubmittalKpi) => {
-    setEditingRfiDraft({ ...rfi });
+    setEditRfiError(null);
+    setEditingRfiDraft({ ...rfi, type: 'RFI' });
     setIsEditRfiModalOpen(true);
   };
 
   // Save Edit RFI Draft
   const handleSaveEditDraft = () => {
     if (!editingRfiDraft) return;
+    const trimmedNo = (editingRfiDraft.submittalNo || '').trim();
+    const trimmedTitle = (editingRfiDraft.title || '').trim();
+    if (!trimmedNo || !trimmedTitle) {
+      setEditRfiError('RFI Reference Number and Title are required.');
+      return;
+    }
+    const duplicateExists = allSubmittals.some(
+      item => item.id !== editingRfiDraft.id && String(item.submittalNo || '').trim().toUpperCase() === trimmedNo.toUpperCase()
+    );
+    if (duplicateExists) {
+      setEditRfiError(`Reference number "${trimmedNo}" already exists.`);
+      return;
+    }
 
     let actualDays = editingRfiDraft.actualDays;
     if (editingRfiDraft.respondedDate && editingRfiDraft.submittedDate) {
@@ -903,11 +967,17 @@ export default function RfiLogComponent({
 
     const finalDraft: ConsultantSubmittalKpi = {
       ...editingRfiDraft,
+      submittalNo: trimmedNo,
+      title: trimmedTitle,
+      type: 'RFI',
       actualDays
     };
 
-    const updatedList = allSubmittals.map(item => item.id === finalDraft.id ? finalDraft : item);
+    const updatedList = deduplicateSubmittals(
+      allSubmittals.map(item => item.id === finalDraft.id ? finalDraft : item)
+    );
     onUpdateSubmittals(updatedList, `Updated RFI ${finalDraft.submittalNo}`);
+    setEditRfiError(null);
     setIsEditRfiModalOpen(false);
     if (activeRfi && activeRfi.id === finalDraft.id) {
       setActiveRfi(finalDraft);
@@ -1155,7 +1225,7 @@ export default function RfiLogComponent({
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             {!isReadonly && (
               <button
-                onClick={() => setIsNewRfiModalOpen(true)}
+                onClick={handleOpenNewRfiModal}
                 className="px-4 py-2.5 text-xs font-bold bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl shadow-md flex items-center gap-2 transition cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
@@ -2502,13 +2572,23 @@ export default function RfiLogComponent({
                 </button>
               </div>
 
+              {newRfiError && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{newRfiError}</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase">RFI Reference Number *</label>
                   <input
                     type="text"
                     value={newRfiForm.submittalNo || ''}
-                    onChange={(e) => setNewRfiForm({ ...newRfiForm, submittalNo: e.target.value })}
+                    onChange={(e) => {
+                      setNewRfiError(null);
+                      setNewRfiForm({ ...newRfiForm, submittalNo: e.target.value });
+                    }}
                     className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-mono font-bold"
                   />
                 </div>
@@ -3011,12 +3091,21 @@ export default function RfiLogComponent({
               )}
 
               <div className="space-y-3 text-xs">
+                {editRfiError && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{editRfiError}</span>
+                  </div>
+                )}
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase">Subject / Title</label>
                   <input
                     type="text"
                     value={editingRfiDraft.title}
-                    onChange={(e) => setEditingRfiDraft({ ...editingRfiDraft, title: e.target.value })}
+                    onChange={(e) => {
+                      setEditRfiError(null);
+                      setEditingRfiDraft({ ...editingRfiDraft, title: e.target.value });
+                    }}
                     className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
                   />
                 </div>

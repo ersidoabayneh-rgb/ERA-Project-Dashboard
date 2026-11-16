@@ -228,6 +228,7 @@ export function normalizeProject(p: any): Project {
     annual: Array.isArray(p.annual) ? p.annual : tmpl.annual,
     images: Array.isArray(p.images) ? p.images : tmpl.images,
     dailyActivities: Array.isArray(p.dailyActivities) ? p.dailyActivities : (p.id === 'proj_default' ? (tmpl.dailyActivities || []) : []),
+    dailySiteLogs: p.dailySiteLogs && typeof p.dailySiteLogs === 'object' && !Array.isArray(p.dailySiteLogs) ? p.dailySiteLogs : {},
     supervisionConsultant: p.supervisionConsultant ? {
       ...tmpl.supervisionConsultant,
       ...p.supervisionConsultant,

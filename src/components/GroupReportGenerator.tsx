@@ -77,6 +77,7 @@ import { QtyItem } from '../types';
 import { calculateIpcMaturation } from '../lib/ipcCalculations';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { printWorkloadReportDocument } from '../lib/workloadReportPrinter';
+import { isRfiRecord, deduplicateSubmittals, isSubmittalApproved } from '../lib/submittalHelpers';
 import WorkloadReportModal from './WorkloadReportModal';
 import FirmsManagementView from './FirmsManagementView';
 import FinancialInstitutesAndGuarantiesModal from './FinancialInstitutesAndGuarantiesModal';
@@ -1375,6 +1376,19 @@ export default function GroupReportGenerator({
         const parsed = JSON.parse(saved);
         if (typeof parsed.fidic === 'number' && typeof parsed.projectMgmt === 'number' &&
             typeof parsed.evm === 'number' && typeof parsed.kpi === 'number' && typeof parsed.linear === 'number') {
+          if (parsed.labels) {
+            delete parsed.labels.materialApproval;
+            delete parsed.labels.workInspection;
+            if (parsed.labels.resourceMobilization && (parsed.labels.resourceMobilization.startsWith('9.') || parsed.labels.resourceMobilization.startsWith('8.'))) {
+              parsed.labels.resourceMobilization = '7. Resource Mobilization';
+            }
+          }
+          if (parsed.descriptions) {
+            delete parsed.descriptions.materialApproval;
+            delete parsed.descriptions.workInspection;
+          }
+          delete parsed.materialApproval;
+          delete parsed.workInspection;
           return parsed;
         }
       }
@@ -1694,14 +1708,12 @@ export default function GroupReportGenerator({
 
     // 6. Comprehensive Weightage-Based Score Calculation
     // Total: 100 Points across Master Admin customizable dimensions:
-    const wFidic = Number(contractorWeights.fidic ?? 10);
-    const wPm = Number(contractorWeights.projectMgmt ?? 20);
+    const wFidic = Number(contractorWeights.fidic ?? 15);
+    const wPm = Number(contractorWeights.projectMgmt ?? 15);
     const wEvm = Number(contractorWeights.evm ?? 15);
-    const wKpi = Number(contractorWeights.kpi ?? 10);
+    const wKpi = Number(contractorWeights.kpi ?? 15);
     const wLinear = Number(contractorWeights.linear ?? 15);
-    const wRfi = Number(contractorWeights.rfi ?? 10);
-    const wMaterial = Number(contractorWeights.materialApproval ?? 10);
-    const wWorkInspection = Number(contractorWeights.workInspection ?? 5);
+    const wRfi = Number(contractorWeights.rfi ?? 20);
     const wResourceMobilization = Number(contractorWeights.resourceMobilization ?? 5);
 
     // Dimension 1: FIDIC Contract Compliance (Bonds, Securities & Risk Register Obligations)
@@ -1762,8 +1774,10 @@ export default function GroupReportGenerator({
     // Dimension 4: Key Performance Indicators & Quality Milestones
     const kpiScores = getProjectKpiScores(p);
     let kpiScorePct = 85;
+    let validKpiGoalsCount = 0;
     if (kpiScores && kpiScores.length > 0) {
       const validScores = kpiScores.filter(k => k.score >= 0);
+      validKpiGoalsCount = validScores.length;
       if (validScores.length > 0) {
         kpiScorePct = Math.round(validScores.reduce((sum, k) => sum + k.score, 0) / validScores.length);
       }
@@ -1777,7 +1791,7 @@ export default function GroupReportGenerator({
     const kpiAccomplishment = `${kpiScorePct}% Quality Milestone Score`;
     const kpiVariance = `${(kpiScorePct - 100).toFixed(1)}% Variance`;
     const kpiAccomplishmentRatio = kpiScorePct;
-    const kpiDetails = `Plan: 100% KPI milestone delivery | Accomplished: ${kpiScorePct}% across ${kpiScores?.length || 0} quality, safety and engineering work packages.`;
+    const kpiDetails = `Plan: 100% ERA KPI milestone delivery | Accomplished: ${kpiScorePct}% across ${validKpiGoalsCount}/${kpiScores?.length || 0} ERA KPI Goals${expiredBondsCount > 0 || criticalRisksCount > 0 ? ` (adjusted for ${expiredBondsCount} expired bonds & ${criticalRisksCount} critical risks)` : ''}.`;
     const kpiScore = kpiEarned;
 
     // Dimension 5: Specific Pavement Layers Progress vs. Baseline Plan
@@ -1835,65 +1849,77 @@ export default function GroupReportGenerator({
     const linearRatio = specificLayersRatio;
     const averageLayerPct = Math.round((subgradePct + cappingPct + subbasePct + basecoursePct + asphaltPct) / 5);
 
-    // Submittals List (shared for Dimensions 6, 7, 8)
+    // Submittals List (shared & cleanly separated for Dimensions 6, 7, 8)
     const rawSubs = (p.supervisionConsultant?.submittalKpis && p.supervisionConsultant.submittalKpis.length > 0) 
       ? p.supervisionConsultant.submittalKpis 
       : DEFAULT_SUBMITTAL_KPIS;
+    const dedupSubs = deduplicateSubmittals(rawSubs);
 
-    // Dimension 6: Technical RFIs Performance
-    const rfiList = rawSubs.filter(s => s.type === 'RFI');
-    const approvedRfiCount = rfiList.filter(s => 
-      s.status === 'Approved' || s.status === 'Closed' || s.status === 'Approved with Comment' || 
-      s.status === 'Approved / Closed' || s.status === 'Approved with Comments'
-    ).length;
-    const rfiScorePct = rfiList.length > 0 ? Math.round((approvedRfiCount / rfiList.length) * 100) : 90;
+    // Dimension 6: Technical RFIs, Material Approvals & WIR Performance (Consolidated)
+    const rfiList = dedupSubs.filter(isRfiRecord);
+    const techSubs = dedupSubs.filter(s => !isRfiRecord(s));
+    const materialList = techSubs.filter(s => String(s.type || '').toLowerCase().includes('material'));
+    const wirList = techSubs.filter(s => {
+      const t = String(s.type || '').toLowerCase();
+      return t.includes('wir') || t.includes('work inspection');
+    });
+
+    const approvedRfiCount = rfiList.filter(s => isSubmittalApproved(s.status)).length;
+    const approvedMatCount = materialList.filter(s => isSubmittalApproved(s.status)).length;
+    const approvedWirCount = wirList.filter(s => isSubmittalApproved(s.status)).length;
+    const materialScorePct = materialList.length > 0 ? Math.round((approvedMatCount / materialList.length) * 100) : 90;
+    const wirScorePct = wirList.length > 0 ? Math.round((approvedWirCount / wirList.length) * 100) : 95;
+
+    const totalSubmittalUnits = rfiList.length + materialList.length + wirList.length;
+    const totalApprovedUnits = approvedRfiCount + approvedMatCount + approvedWirCount;
+    const rfiScorePct = totalSubmittalUnits > 0
+      ? Math.round((totalApprovedUnits / totalSubmittalUnits) * 100)
+      : (rfiList.length > 0 ? Math.round((approvedRfiCount / rfiList.length) * 100) : 90);
     const rfiEarned = Number(((rfiScorePct / 100) * wRfi).toFixed(2));
     const rfiRating: 'Compliant' | 'Minor Deficiency' | 'Critical Breach' = rfiScorePct >= 80 ? 'Compliant' : (rfiScorePct >= 60 ? 'Minor Deficiency' : 'Critical Breach');
-    const rfiPlanTarget = `${rfiList.length}/${rfiList.length} (100%) RFIs Resolved`;
-    const rfiAccomplishment = `${approvedRfiCount}/${rfiList.length} RFIs Approved`;
-    const rfiVariance = `${-(rfiList.length - approvedRfiCount)} Pending RFIs`;
+    const rfiPlanTarget = `${totalSubmittalUnits}/${totalSubmittalUnits} (100%) Submittals Resolved`;
+    const rfiAccomplishment = `${totalApprovedUnits}/${totalSubmittalUnits} Approved (RFIs: ${approvedRfiCount}/${rfiList.length}, Mats: ${approvedMatCount}/${materialList.length}, WIR: ${approvedWirCount}/${wirList.length})`;
+    const pendingCount = totalSubmittalUnits - totalApprovedUnits;
+    const rfiVariance = `${-pendingCount} Pending Submittals`;
     const rfiAccomplishmentRatio = rfiScorePct;
-    const rfiDetails = `Plan: 100% (${rfiList.length}/${rfiList.length}) approved/closed | Accomplished: ${approvedRfiCount}/${rfiList.length} (${rfiScorePct}% accomplishment rate, ${rfiList.length - approvedRfiCount} pending/open).`;
+    const rfiDetails = `Plan: 100% (${totalSubmittalUnits}/${totalSubmittalUnits}) approved/closed across Technical RFIs (${approvedRfiCount}/${rfiList.length}), Material Approval Submittals (${approvedMatCount}/${materialList.length}), and WIR Work Inspections (${approvedWirCount}/${wirList.length}) | Accomplished: ${totalApprovedUnits}/${totalSubmittalUnits} (${rfiScorePct}% compliance rate, ${pendingCount} pending).`;
     const rfiScore = rfiEarned;
 
-    // Dimension 7: Material Approval Submittals Performance
-    const materialList = rawSubs.filter(s => s.type === 'Material Approval');
-    const approvedMatCount = materialList.filter(s => 
-      s.status === 'Approved' || s.status === 'Closed' || s.status === 'Approved with Comment' || 
-      s.status === 'Approved / Closed' || s.status === 'Approved with Comments'
-    ).length;
-    const materialScorePct = materialList.length > 0 ? Math.round((approvedMatCount / materialList.length) * 100) : 88;
-    const materialEarned = Number(((materialScorePct / 100) * wMaterial).toFixed(2));
-    const materialRating: 'Compliant' | 'Minor Deficiency' | 'Critical Breach' = materialScorePct >= 80 ? 'Compliant' : (materialScorePct >= 60 ? 'Minor Deficiency' : 'Critical Breach');
-    const materialPlanTarget = `${materialList.length}/${materialList.length} (100%) Samples Approved`;
-    const materialAccomplishment = `${approvedMatCount}/${materialList.length} Materials Approved`;
-    const materialVariance = `${-(materialList.length - approvedMatCount)} Pending Tests`;
-    const materialAccomplishmentRatio = materialScorePct;
-    const materialDetails = `Plan: 100% (${materialList.length}/${materialList.length}) approved materials | Accomplished: ${approvedMatCount}/${materialList.length} (${materialScorePct}% compliance rate, ${materialList.length - approvedMatCount} pending approvals).`;
-    const materialScore = materialEarned;
-
-    // Dimension 8: Work Inspection Requests (WIR) Performance
-    const wirList = rawSubs.filter(s => s.type === 'Work Inspection (WIR)');
-    const approvedWirCount = wirList.filter(s => 
-      s.status === 'Approved' || s.status === 'Closed' || s.status === 'Approved with Comment' || 
-      s.status === 'Approved / Closed' || s.status === 'Approved with Comments'
-    ).length;
-    const wirScorePct = wirList.length > 0 ? Math.round((approvedWirCount / wirList.length) * 100) : 92;
-    const wirEarned = Number(((wirScorePct / 100) * wWorkInspection).toFixed(2));
-    const wirRating: 'Compliant' | 'Minor Deficiency' | 'Critical Breach' = wirScorePct >= 80 ? 'Compliant' : (wirScorePct >= 60 ? 'Minor Deficiency' : 'Critical Breach');
-    const wirPlanTarget = `${wirList.length}/${wirList.length} (100%) Inspections Passed`;
-    const wirAccomplishment = `${approvedWirCount}/${wirList.length} Requests Approved`;
-    const wirVariance = `${-(wirList.length - approvedWirCount)} Re-inspections Required`;
-    const wirAccomplishmentRatio = wirScorePct;
-    const wirDetails = `Plan: 100% (${wirList.length}/${wirList.length}) passed | Accomplished: ${approvedWirCount}/${wirList.length} (${wirScorePct}% first-time pass accomplishment rate).`;
-    const workInspectionScore = wirEarned;
-
-    // Dimension 9: Mobilization of Resources (Equipment & Key Personnel)
+    // Dimension 9: Mobilization of Resources (Multi-month MonthlyResourceRecord avg, fallback to snapshot/personnel)
+    const monthlyResRecords = [...(p.monthlyResourceRecords || [])].sort((a, b) =>
+      (b.month || b.recordedDate || '').localeCompare(a.month || a.recordedDate || '')
+    ).slice(0, 6);
     const hasResMob = p.resourceMobilization && p.resourceMobilization.length > 0;
     let resourceScorePct = 85;
     let totalResourcePlanUnits = 20;
     let totalResourceAvailUnits = 18;
-    if (hasResMob) {
+    let resourceWindowNote = 'snapshot';
+    if (monthlyResRecords.length > 0) {
+      let planSum = 0;
+      let availSum = 0;
+      let prodPlan = 0;
+      let prodAct = 0;
+      monthlyResRecords.forEach(rec => {
+        (rec.resourceMobilization || []).forEach(r => {
+          planSum += r.revisedPlan || r.originalPlan || 0;
+          availSum += r.available || 0;
+        });
+        (rec.materialProduction || []).forEach(m => {
+          if ((m.monthlyTarget || 0) > 0) {
+            prodPlan += m.monthlyTarget;
+            prodAct += m.thisMonth || 0;
+          }
+        });
+      });
+      totalResourcePlanUnits = Math.round(planSum / monthlyResRecords.length);
+      totalResourceAvailUnits = Math.round(availSum / monthlyResRecords.length);
+      const eqPct = planSum > 0 ? Math.min(100, (availSum / planSum) * 100) : 0;
+      const matPct = prodPlan > 0 ? Math.min(100, (prodAct / prodPlan) * 100) : eqPct;
+      resourceScorePct = planSum > 0
+        ? Math.round(prodPlan > 0 ? (eqPct * 0.6 + matPct * 0.4) : eqPct)
+        : 85;
+      resourceWindowNote = `${monthlyResRecords.length}-mo avg`;
+    } else if (hasResMob) {
       totalResourcePlanUnits = p.resourceMobilization!.reduce((s, r) => s + (r.revisedPlan || r.originalPlan || 0), 0);
       totalResourceAvailUnits = p.resourceMobilization!.reduce((s, r) => s + (r.available || 0), 0);
       resourceScorePct = totalResourcePlanUnits > 0 ? Math.min(100, Math.round((totalResourceAvailUnits / totalResourcePlanUnits) * 100)) : 85;
@@ -1911,7 +1937,7 @@ export default function GroupReportGenerator({
     const resourceAccomplishment = `${totalResourceAvailUnits} Units Mobilized on Site`;
     const resourceVariance = `${resourceVarianceUnits >= 0 ? '+' : ''}${resourceVarianceUnits} Units (${resourceScorePct}% of Plan)`;
     const resourceAccomplishmentRatio = resourceScorePct;
-    const resourceDetails = `Plan: ${totalResourcePlanUnits} plant/machinery & key staff units planned | Accomplished: ${totalResourceAvailUnits} units deployed on site (${resourceVarianceUnits >= 0 ? '+' : ''}${resourceVarianceUnits} units variance, ${resourceScorePct}% mobilization accomplishment).`;
+    const resourceDetails = `Plan (${resourceWindowNote}): ${totalResourcePlanUnits} plant/machinery & key staff units planned | Accomplished: ${totalResourceAvailUnits} units deployed on site (${resourceVarianceUnits >= 0 ? '+' : ''}${resourceVarianceUnits} units variance, ${resourceScorePct}% mobilization accomplishment).`;
     const resourceScore = resourceEarned;
 
     // Dimension 10: Custom Added Evaluation Criteria
@@ -1940,8 +1966,8 @@ export default function GroupReportGenerator({
       });
     }
 
-    const totalWeightsSum = wFidic + wPm + wEvm + wKpi + wLinear + wRfi + wMaterial + wWorkInspection + wResourceMobilization + customCriteriaTotalWeight;
-    const totalEarnedPoints = fidicEarned + pmEarned + evmEarned + kpiEarned + linearEarned + rfiEarned + materialEarned + wirEarned + resourceEarned + customCriteriaEarned;
+    const totalWeightsSum = wFidic + wPm + wEvm + wKpi + wLinear + wRfi + wResourceMobilization + customCriteriaTotalWeight;
+    const totalEarnedPoints = fidicEarned + pmEarned + evmEarned + kpiEarned + linearEarned + rfiEarned + resourceEarned + customCriteriaEarned;
 
     const rawComplianceScore = totalWeightsSum > 0 
       ? Math.round((totalEarnedPoints / totalWeightsSum) * 100) 
@@ -2090,8 +2116,8 @@ export default function GroupReportGenerator({
       },
       {
         key: 'rfi',
-        label: contractorWeights.labels?.rfi || '6. Technical RFIs Performance',
-        desc: contractorWeights.descriptions?.rfi || 'RFI response, quality & resolution compliance ratio',
+        label: contractorWeights.labels?.rfi || '6. Technical RFIs, Material Approvals & WIR Performance',
+        desc: contractorWeights.descriptions?.rfi || 'RFI response, material submittals & WIR inspection pass rates',
         weight: wRfi,
         scorePct: rfiScorePct,
         earned: rfiEarned,
@@ -2103,36 +2129,8 @@ export default function GroupReportGenerator({
         accomplishmentRatio: rfiAccomplishmentRatio
       },
       {
-        key: 'materialApproval',
-        label: contractorWeights.labels?.materialApproval || '7. Material Approval Submittals',
-        desc: contractorWeights.descriptions?.materialApproval || 'Timeliness & specification compliance of material samples',
-        weight: wMaterial,
-        scorePct: materialScorePct,
-        earned: materialEarned,
-        status: materialRating,
-        details: materialDetails,
-        planTarget: materialPlanTarget,
-        accomplishment: materialAccomplishment,
-        variance: materialVariance,
-        accomplishmentRatio: materialAccomplishmentRatio
-      },
-      {
-        key: 'workInspection',
-        label: contractorWeights.labels?.workInspection || '8. Work Inspections (WIR)',
-        desc: contractorWeights.descriptions?.workInspection || 'First-time pass rate and quality inspection submittals',
-        weight: wWorkInspection,
-        scorePct: wirScorePct,
-        earned: wirEarned,
-        status: wirRating,
-        details: wirDetails,
-        planTarget: wirPlanTarget,
-        accomplishment: wirAccomplishment,
-        variance: wirVariance,
-        accomplishmentRatio: wirAccomplishmentRatio
-      },
-      {
         key: 'resourceMobilization',
-        label: contractorWeights.labels?.resourceMobilization || '9. Resource Mobilization',
+        label: contractorWeights.labels?.resourceMobilization || '7. Resource Mobilization',
         desc: contractorWeights.descriptions?.resourceMobilization || 'Equipment, machinery & key personnel site presence',
         weight: wResourceMobilization,
         scorePct: resourceScorePct,
@@ -4981,7 +4979,7 @@ export default function GroupReportGenerator({
         `• FIDIC (${contractorWeights.fidic}%): Bonds & Risks  • Progress (${contractorWeights.projectMgmt}%): Orig. Plan vs Acc.  • EVM (${contractorWeights.evm}%): SPI+CPI  • KPIs (${contractorWeights.kpi}%): Milestones  • Linear (${contractorWeights.linear}%): Layers`, 48, curY + 18
       );
       doc.text(
-        `• RFIs (${contractorWeights.rfi ?? 10}%): Resolution  • Materials (${contractorWeights.materialApproval ?? 10}%): Submittals  • WIR (${contractorWeights.workInspection ?? 5}%): Pass Rate  • Mobilization (${contractorWeights.resourceMobilization ?? 5}%): Machinery & Plant  • Scale: A(>=90%) B(75-89%) C(60-74%) D(45-59%) F(<45%)`, 48, curY + 24
+        `• RFIs & Submittals (${contractorWeights.rfi ?? 20}%): Resolution & Pass Rate  • Mobilization (${contractorWeights.resourceMobilization ?? 5}%): Machinery & Plant  • Scale: A(>=90%) B(75-89%) C(60-74%) D(45-59%) F(<45%)`, 48, curY + 24
       );
     }
 
@@ -11387,20 +11385,12 @@ export default function GroupReportGenerator({
                         <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.linear || '5. Linear Layers'}</span>
                       </div>
                       <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.rfi ?? 10}% WEIGHT</span>
-                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.rfi || '6. Technical RFIs'}</span>
-                      </div>
-                      <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.materialApproval ?? 10}% WEIGHT</span>
-                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.materialApproval || '7. Material Approval'}</span>
-                      </div>
-                      <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.workInspection ?? 5}% WEIGHT</span>
-                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.workInspection || '8. Work Inspection'}</span>
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.rfi ?? 20}% WEIGHT</span>
+                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.rfi || '6. Technical RFIs & Submittals'}</span>
                       </div>
                       <div className="bg-white dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs">
                         <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5 text-[11px]">{contractorWeights.resourceMobilization ?? 5}% WEIGHT</span>
-                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.resourceMobilization || '9. Mobilization'}</span>
+                        <span className="text-[9px] font-semibold text-slate-700 dark:text-slate-300 block">{contractorWeights.labels?.resourceMobilization || '7. Mobilization'}</span>
                       </div>
                       {(contractorWeights.customCriteria || []).map((c) => (
                         <div key={c.id} className="bg-indigo-50/50 dark:bg-indigo-950/30 p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 shadow-2xs">
@@ -13238,7 +13228,7 @@ export default function GroupReportGenerator({
                                         <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-2.5 rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 flex items-center justify-between">
                                           <div>
                                             <span className="text-[9px] font-black text-indigo-700 dark:text-indigo-300 uppercase block tracking-wider">Weightage-Based Score</span>
-                                            <span className="text-[9.5px] text-slate-500 dark:text-slate-400 font-medium">Evaluated on {audit.dimensionBreakdown?.length || 9} dimensions</span>
+                                            <span className="text-[9.5px] text-slate-500 dark:text-slate-400 font-medium">Evaluated on {audit.dimensionBreakdown?.length || 7} dimensions</span>
                                           </div>
                                           <div className="text-right">
                                             <span className={`text-base font-black ${audit.complianceScore >= 80 ? 'text-emerald-600' : audit.complianceScore >= 65 ? 'text-amber-600' : 'text-rose-600'}`}>
@@ -14395,9 +14385,7 @@ export default function GroupReportGenerator({
                       Number(tempContractorWeights.evm || 0) +
                       Number(tempContractorWeights.kpi || 0) +
                       Number(tempContractorWeights.linear || 0) +
-                      Number(tempContractorWeights.rfi ?? 10) +
-                      Number(tempContractorWeights.materialApproval ?? 10) +
-                      Number(tempContractorWeights.workInspection ?? 5) +
+                      Number(tempContractorWeights.rfi ?? 20) +
                       Number(tempContractorWeights.resourceMobilization ?? 5) +
                       (tempContractorWeights.customCriteria || []).reduce((s, c) => s + (Number(c.weight) || 0), 0)
                     )
@@ -14413,7 +14401,7 @@ export default function GroupReportGenerator({
 
                 const autoBalance = () => {
                   if (auditPerspective === 'contractor') {
-                    const keys = ['fidic', 'projectMgmt', 'evm', 'kpi', 'linear', 'rfi', 'materialApproval', 'workInspection', 'resourceMobilization'] as const;
+                    const keys = ['fidic', 'projectMgmt', 'evm', 'kpi', 'linear', 'rfi', 'resourceMobilization'] as const;
                     const customList = tempContractorWeights.customCriteria || [];
                     const items: { key?: string; customIndex?: number; val: number }[] = [];
                     keys.forEach((k) => items.push({ key: k, val: Number(tempContractorWeights[k] ?? (DEFAULT_CONTRACTOR_SCORING_WEIGHTS as any)[k] ?? 0) }));
@@ -14568,15 +14556,13 @@ export default function GroupReportGenerator({
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                     {[
-                      { key: 'fidic', defaultLabel: '1. FIDIC Contract Compliance', defaultDesc: 'Performance/Mobilization Guarantees & Risk notices', defaultWeight: 10 },
-                      { key: 'projectMgmt', defaultLabel: '2. Project Management (Time)', defaultDesc: 'Schedule overrun & EOT extension compliance', defaultWeight: 20 },
+                      { key: 'fidic', defaultLabel: '1. FIDIC Contract Compliance', defaultDesc: 'Performance/Mobilization Guarantees & Risk notices', defaultWeight: 15 },
+                      { key: 'projectMgmt', defaultLabel: '2. Project Management (Time)', defaultDesc: 'Schedule overrun & EOT extension compliance', defaultWeight: 15 },
                       { key: 'evm', defaultLabel: '3. EVM Metrics (CPI & SPI)', defaultDesc: 'Cost Efficiency Index (CPI) & Schedule Performance (SPI)', defaultWeight: 15 },
-                      { key: 'kpi', defaultLabel: '4. KPIs & Quality Milestones', defaultDesc: 'Key milestone completions & critical risk mitigations', defaultWeight: 10 },
+                      { key: 'kpi', defaultLabel: '4. KPIs & Quality Milestones', defaultDesc: 'Key milestone completions & critical risk mitigations', defaultWeight: 15 },
                       { key: 'linear', defaultLabel: '5. Linear Layer Physical Progress', defaultDesc: 'Earthwork, Subgrade, Subbase, Basecourse, & Asphalt pavement layers', defaultWeight: 15 },
-                      { key: 'rfi', defaultLabel: '6. Technical RFIs Performance', defaultDesc: 'RFI response, quality & resolution compliance ratio', defaultWeight: 10 },
-                      { key: 'materialApproval', defaultLabel: '7. Material Approval Submittals', defaultDesc: 'Timeliness & specification compliance of material samples', defaultWeight: 10 },
-                      { key: 'workInspection', defaultLabel: '8. Work Inspections (WIR)', defaultDesc: 'First-time pass rate and quality inspection submittals', defaultWeight: 5 },
-                      { key: 'resourceMobilization', defaultLabel: '9. Resource Mobilization', defaultDesc: 'Equipment, machinery & key personnel site presence', defaultWeight: 5 }
+                      { key: 'rfi', defaultLabel: '6. Technical RFIs, Material Approvals & WIR Performance', defaultDesc: 'RFI response, material submittals & WIR inspection pass rates', defaultWeight: 20 },
+                      { key: 'resourceMobilization', defaultLabel: '7. Resource Mobilization', defaultDesc: 'Equipment, machinery & key personnel site presence', defaultWeight: 5 }
                     ].map((item) => {
                       const currentLabel = tempContractorWeights.labels?.[item.key] ?? item.defaultLabel;
                       const currentDesc = tempContractorWeights.descriptions?.[item.key] ?? item.defaultDesc;
@@ -14914,9 +14900,7 @@ export default function GroupReportGenerator({
                         Number(tempContractorWeights.evm || 0) +
                         Number(tempContractorWeights.kpi || 0) +
                         Number(tempContractorWeights.linear || 0) +
-                        Number(tempContractorWeights.rfi ?? 10) +
-                        Number(tempContractorWeights.materialApproval ?? 10) +
-                        Number(tempContractorWeights.workInspection ?? 5) +
+                        Number(tempContractorWeights.rfi ?? 20) +
                         Number(tempContractorWeights.resourceMobilization ?? 5) +
                         (tempContractorWeights.customCriteria || []).reduce((s, c) => s + (Number(c.weight) || 0), 0)
                       )
