@@ -586,7 +586,7 @@ export function getFidicSubClauseReferences(project: Project): FidicClauseRef[] 
 export function generateFidicContractualAnalysis(project: Project): FidicAnalysisCategory[] {
   const info = getFidicContractInfo(project);
   const evm = calculateProjectEvm(project);
-  const { CPI, SPI, plannedPct } = evm;
+  const { SPI, plannedPct } = evm;
   const phys = project.physicalProgress || 0;
   const isDb = info.contractType === 'DB';
   const is1987 = info.editionYear === '1987';
@@ -856,7 +856,7 @@ export function generateFidicContractualAnalysis(project: Project): FidicAnalysi
 export function generateFidicExecutiveRecommendations(project: Project): FidicExecutiveRecommendation[] {
   const info = getFidicContractInfo(project);
   const evm = calculateProjectEvm(project);
-  const { CPI, SPI, plannedPct } = evm;
+  const { SPI, plannedPct } = evm;
   const phys = project.physicalProgress || 0;
   const isDb = info.contractType === 'DB';
   const is1987 = info.editionYear === '1987';

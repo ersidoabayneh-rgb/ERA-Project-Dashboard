@@ -530,7 +530,6 @@ export function evaluateContractorPerformance(input: ContractorEvaluationInput):
     ? Math.min(100, Math.max(0, (actualProgressVal / origPlanPct) * 100))
     : (actualProgressVal > 0 ? 100 : 0);
 
-  const g1Score = getGoalScore('G1');
   const sc11Score = Math.max(0, getSscScore('SC1.1'));
   const sc12Score = Math.max(0, getSscScore('SC1.2'));
   const g2Score = getGoalScore('G2');

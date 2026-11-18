@@ -14,8 +14,7 @@ import {
   ShieldCheck, 
   FileText, 
   Clock, 
-  AlertTriangle,
-  ChevronDown
+  AlertTriangle
 } from 'lucide-react';
 import { Project, AiChatMessage } from '../types';
 

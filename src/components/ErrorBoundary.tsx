@@ -11,7 +11,7 @@ interface State {
   componentStack?: string | null;
 }
 
-export default class ErrorBoundary extends (Component as any) {
+export default class ErrorBoundary extends Component<Props, State> {
   state: State = {
     hasError: false,
     error: null,
@@ -112,6 +112,6 @@ export default class ErrorBoundary extends (Component as any) {
       );
     }
 
-    return (this as any).props.children;
+    return this.props.children;
   }
 }

@@ -1,9 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  GitMerge, 
   Layers, 
-  TrendingUp, 
   Clock, 
   Activity, 
   Search, 
@@ -17,11 +15,10 @@ import {
   Download,
   CheckCircle2,
   CalendarRange,
-  Eye,
   Filter
 } from 'lucide-react';
 import { Project, WorkProgramActivity } from '../types';
-import { parseAnyDate, formatDateString } from '../lib/mppParser';
+import { parseAnyDate } from '../lib/mppParser';
 
 interface CPMChartProps {
   project: Project;

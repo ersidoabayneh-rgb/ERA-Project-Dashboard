@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { initAuth, User } from '../lib/auth';
+import { initAuth } from '../lib/auth';
 import { safeSyncProject } from '../lib/apiSync';
 import { safeDispatchCustomEvent } from '../lib/storage';
 import { 
@@ -7,7 +7,6 @@ import {
   Database, 
   RefreshCw, 
   ShieldCheck,
-  ChevronRight,
   Zap,
 } from 'lucide-react';
 
@@ -17,13 +16,6 @@ interface WorkspaceViewProps {
 }
 
 export default function WorkspaceView({ projects = [], onRestoreProjects }: WorkspaceViewProps) {
-  const [authUser, setAuthUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Sync status
-  const [syncStatus, setSyncStatus] = useState<string | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
 
   // Offline Sync Queue State & Sync Manager Logs
   const [offlineQueue, setOfflineQueue] = useState<any[]>([]);
@@ -60,13 +52,7 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
   }, []);
 
   useEffect(() => {
-    const unsubscribe = initAuth((currentUser, accessToken) => {
-      setAuthUser(currentUser);
-      setToken(accessToken);
-    }, () => {
-      setAuthUser(null);
-      setToken(null);
-    });
+    const unsubscribe = initAuth(() => {}, () => {});
     return () => unsubscribe();
   }, []);
 
@@ -84,9 +70,8 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
         { id: String(Date.now()), time, level: 'success', message: 'Sync Now trigger executed: Verified active Firestore snapshot channel & database schema' },
         ...prev
       ]);
-      setSyncStatus('Sync Now operation finished successfully.');
     } catch (e: any) {
-      setSyncError('Sync Now notice: ' + (e?.message || e));
+      console.warn('Sync Now notice:', e?.message || e);
     } finally {
       setIsSingleSyncing(false);
     }
@@ -118,8 +103,6 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
       }
 
       setIsBatchSyncing(true);
-      setSyncStatus('Initiating batch synchronization with backend server...');
-      setSyncError(null);
 
       // Clear/Synchronize local queue updates to backend Express REST API
       const remaining: any[] = [];
@@ -143,19 +126,16 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
           { id: String(Date.now()), time, level: 'success', message: `Batch Sync completed! Processed ${queue.length} updates successfully.` },
           ...prev
         ]);
-        setSyncStatus('Batch synchronization completed successfully! All pending changes have been synchronized.');
         alert('Batch synchronization completed successfully! All pending changes have been synchronized.');
       } else {
         setFirestoreLogs(prev => [
           { id: String(Date.now()), time, level: 'warn', message: `Batch Sync completed with ${remaining.length} items remaining in queue.` },
           ...prev
         ]);
-        setSyncError(`Batch synchronization finished, but ${remaining.length} items could not be synchronized and remain in the offline queue.`);
         alert(`Batch synchronization finished, but ${remaining.length} items could not be synchronized and remain in the offline queue.`);
       }
     } catch (error) {
       console.error('Error during manual batch synchronization:', error);
-      setSyncError('Failed to perform batch synchronization. Please try again.');
       alert('Failed to perform batch synchronization. Please try again.');
     } finally {
       setIsBatchSyncing(false);

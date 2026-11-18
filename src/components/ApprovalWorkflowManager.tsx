@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState } from 'react';
 import {
-  Shield, CheckCircle2, XCircle, AlertTriangle, Clock, Eye,
-  Send, Lock, Users, FileText, ArrowRight, UserCheck, RefreshCw,
-  Search, Filter, ChevronDown, ChevronUp, KeyRound, Smartphone,
-  Check, ExternalLink, Sparkles, Building2, Briefcase, Award,
-  Layers, ShieldAlert, History, ShieldCheck, UserX, MessageSquare
+  Shield, CheckCircle2, XCircle, AlertTriangle, Clock,
+  Send, Lock, Users, FileText, ArrowRight,
+  Search, Filter, ChevronDown, ChevronUp, KeyRound,
+  ExternalLink, Sparkles, Award,
+  History, ShieldCheck, MessageSquare
 } from 'lucide-react';
-import { User, Project, PrivateDraft, ApprovalRequest, WorkflowAuditLogEntry, ALL_EDITABLE_PAGES } from '../types';
+import { User, Project, PrivateDraft, ApprovalRequest, WorkflowAuditLogEntry } from '../types';
 import MfaVerificationModal from './MfaVerificationModal';
 import ExplicitAccessModal from './ExplicitAccessModal';
 
@@ -44,15 +43,6 @@ export default function ApprovalWorkflowManager({
 }: ApprovalWorkflowManagerProps) {
   // Navigation tabs inside workflow manager
   const [activeTab, setActiveTab] = useState<'drafts' | 'queue' | 'audit' | 'governance'>('drafts');
-  
-  // Local 1-second interval timer to update draft session countdowns
-  const [localTimer, setLocalTimer] = useState(Date.now());
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLocalTimer(Date.now());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
   
   // Selection and expansion states
   const [expandedDraftId, setExpandedDraftId] = useState<string | null>(null);

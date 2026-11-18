@@ -784,7 +784,7 @@ export default function DailyActivitiesView({
     commitDailySync(undefined, pendingActivitiesRef.current, `Saved Daily Site Log & Notes for ${selectedDate}`);
     setFeedbackNotice({
       type: 'success',
-      text: `Daily Activities, Labor, Equipment, Materials & Daily Notes for ${selectedDate} saved and synced to Comprehensive Analysis and Monthly Cumulative.`
+      text: `Daily Activities, Labor, Materials & Daily Notes for ${selectedDate} saved and synced to Comprehensive Analysis and Monthly Cumulative.`
     });
     setTimeout(() => setFeedbackNotice(null), 4000);
   };
@@ -2532,7 +2532,7 @@ export default function DailyActivitiesView({
                   Daily Notes — Construction Manager Field Context
                 </h3>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Add textual context for today&apos;s labor, equipment fleet, and material inputs. Synced in real time to Comprehensive Analysis &amp; Monthly Cumulative.
+                  Add textual context for today&apos;s labor and material inputs. Synced in real time to Comprehensive Analysis &amp; Monthly Cumulative.
                 </p>
               </div>
             </div>
@@ -2540,9 +2540,6 @@ export default function DailyActivitiesView({
             <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono tabular-nums print:hidden">
               <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
                 Labor: {summaryStats.totalLaborCount}
-              </span>
-              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
-                Equip: {summaryStats.activeEquipment}/{summaryStats.totalFleet}
               </span>
               <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
                 Mat Used: {summaryStats.totalMaterialUsed.toLocaleString()}
@@ -2623,7 +2620,7 @@ export default function DailyActivitiesView({
                 activeTab === 'resources' ? 'bg-slate-900 dark:bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              Labor, Equip &amp; Mat · {summaryStats.totalLaborCount} crew
+              Labor &amp; Materials · {summaryStats.totalLaborCount} crew
             </button>
             <button
               onClick={() => setActiveTab('challenges')}
@@ -5725,7 +5722,7 @@ export default function DailyActivitiesView({
                 <div className="p-3 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <Package className="w-4 h-4 text-emerald-600" />
-                    <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase">3.2 Material Received / Used Tracker</h3>
+                    <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase">3.1 Material Received / Used Tracker</h3>
                   </div>
                   {!isReadonly && (
                     <div className="flex items-center gap-2 print:hidden">

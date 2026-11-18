@@ -9,9 +9,6 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { drawEraLogo, drawStandardDocumentHeader } from '../lib/pdfReportEngine';
-import { 
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, AreaChart, Area 
-} from 'recharts';
 import { Project, IssueLogItem, IssueTransferRecord, IssueHistoryRecord, ResolutionStepRecord, DeptTimeRecord, IssueColumnChangeDetail, User, HistoryItem, formatAccounting } from '../types';
 
 interface IssueLogViewProps {

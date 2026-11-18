@@ -2,24 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Printer, 
-  Download, 
   X, 
   Search, 
-  Filter, 
   Users, 
   Briefcase, 
-  Award, 
-  Clock, 
   Building2, 
-  CheckCircle2, 
-  AlertCircle, 
-  SlidersHorizontal,
-  ChevronDown,
-  Layers,
   FileSpreadsheet,
   Calendar
 } from 'lucide-react';
-import { Project, formatAccounting, User, ConsultantPersonnel } from '../types';
+import { Project, User, ConsultantPersonnel } from '../types';
 import { filterProjectsForGroupReports } from '../lib/reportExclusionUtils';
 import { 
   compileWorkloadReportData, 

@@ -1,6 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { formatDateStr, getRevisedCompletionDateStr, parseLocalDate } from '../lib/dateUtils';
-
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Building, 
@@ -44,13 +42,12 @@ import {
   Tooltip, 
   Legend, 
   PieChart, 
-  Pie, 
   Cell,
   LineChart,
   Line,
   LabelList
 } from 'recharts';
-import { Project, KpiAllocatedItem, LinearData, formatAccounting, User, ProjectLifecycleStatus, isProjectClosed, isCpmOrMasterAdmin, isMasterAdminOnly, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG, ProgressPlanHistoryItem } from '../types';
+import { Project, LinearData, formatAccounting, User, ProjectLifecycleStatus, isProjectClosed, isMasterAdminOnly, ProgressPlanHistoryItem } from '../types';
 import CircularGauge from './CircularGauge';
 import BillSummaryPriceAdjChart from './BillSummaryPriceAdjChart';
 import DlpDefectModal from './DlpDefectModal';
@@ -59,7 +56,6 @@ import { buildKpiHierarchy, getIntegratedKpiAllocated, parseStation } from '../d
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { getProjectDlpInfo, calculateCappedElapsedTimePct } from '../lib/dlpUtils';
 import { resolveCurrentMonthKey, getLastActualProgress, isSameMonth } from '../lib/monthlySync';
-import { QtyItem } from '../types';
 
 export const sortProgressPlanHistoryDescending = (items: ProgressPlanHistoryItem[]): ProgressPlanHistoryItem[] => {
   return [...(items || [])].sort((a, b) => {
@@ -78,112 +74,6 @@ export const sortProgressPlanHistoryDescending = (items: ProgressPlanHistoryItem
     };
     return parseM(b.monthLabel) - parseM(a.monthLabel);
   });
-};
-
-interface CriticalQtyAnalysis {
-  name: string;
-  unit: string;
-  designValue: number;
-  plannedValue: number;
-  actualValue: number;
-  execRatio: number; // actual / design %
-  planRatio: number; // plan / design %
-  variance: number; // actual - plan
-  criticalFinding: string;
-}
-
-function evaluateEngineeringQuantities(quantities: QtyItem[]): {
-  items: CriticalQtyAnalysis[];
-  summaryNarrative: string;
-} {
-  const analysisItems: CriticalQtyAnalysis[] = [];
-  let totalsCount = 0;
-  let behindCount = 0;
-  let aheadCount = 0;
-  let severeSlippageCount = 0;
-
-  (quantities || []).forEach(q => {
-    // Extract UoM (unit of measurement) from parentheses
-    const match = q.name.match(/^(.*?)\s*\((.*?)\)$/);
-    const displayName = match ? match[1].trim() : q.name;
-    const unit = match ? match[2].trim() : 'Units';
-
-    const design = q.design || 0;
-    const plan = q.plan || 0;
-    const actual = q.exec || 0;
-
-    const execRatio = design > 0 ? (actual / design) * 100 : 0;
-    const planRatio = design > 0 ? (plan / design) * 100 : 0;
-    const variance = actual - plan;
-    const varianceRatio = plan > 0 ? (variance / plan) * 100 : 0;
-
-    let finding = '';
-    if (plan === 0 && actual === 0) {
-      finding = `No activity recorded for this ${unit}-measured scope.`;
-    } else if (variance < 0) {
-      behindCount++;
-      if (varianceRatio < -20) {
-        severeSlippageCount++;
-        finding = `Severe deficit of ${Math.abs(variance).toFixed(2)} ${unit} (${Math.abs(varianceRatio).toFixed(2)}% slippage) vs work program plan. Urgent mobilization required.`;
-      } else {
-        finding = `Moderate lag of ${Math.abs(variance).toFixed(2)} ${unit} (${Math.abs(varianceRatio).toFixed(2)}% variance). Target for acceleration.`;
-      }
-    } else {
-      aheadCount++;
-      if (varianceRatio > 20) {
-        finding = `Aggressive progress exceeding plan by ${variance.toFixed(2)} ${unit} (+${varianceRatio.toFixed(2)}%). Review quality control of quick output.`;
-      } else {
-        finding = `Healthy progress alignment. Executed ${actual.toFixed(2)} of ${plan.toFixed(2)} planned ${unit}.`;
-      }
-    }
-
-    analysisItems.push({
-      name: displayName,
-      unit,
-      designValue: design,
-      plannedValue: plan,
-      actualValue: actual,
-      execRatio,
-      planRatio,
-      variance,
-      criticalFinding: finding
-    });
-    totalsCount++;
-  });
-
-  // Synthesize a detailed diagnostic narrative
-  let summaryNarrative = '';
-  if (totalsCount === 0) {
-    summaryNarrative = "No engineering quantities registry was found. Unit of measurement critical evaluation is inconclusive.";
-  } else {
-    summaryNarrative = `A comprehensive audit was performed across ${totalsCount} key physical deliverables. `;
-    if (severeSlippageCount > 0) {
-      summaryNarrative += `Critical concern: ${severeSlippageCount} scope items exhibit severe execution deficits exceeding 20% of their planned volumes. `;
-    }
-    summaryNarrative += `Analysis shows ${aheadCount} items are meeting or exceeding scheduled targets, while ${behindCount} items are lagging. `;
-    
-    // Check specific units
-    const kmItems = analysisItems.filter(i => i.unit.toLowerCase() === 'km');
-    const kmLagging = kmItems.filter(i => i.variance < 0);
-    if (kmLagging.length > 0) {
-      summaryNarrative += `Linear layer completion (measured in Km) shows a critical bottleneck. Out of ${kmItems.length} linear layers, ${kmLagging.length} are currently lagging behind plan, which indicates subgrade, basecourse, or asphalt paving speed constraints. `;
-    }
-
-    const m3Items = analysisItems.filter(i => i.unit.toLowerCase() === 'm3');
-    const m3Lagging = m3Items.filter(i => i.variance < 0);
-    if (m3Lagging.length > 0) {
-      summaryNarrative += `Earthwork and bulk material processing (measured in M3) is lagging by a cumulative total of ${m3Lagging.reduce((sum, item) => sum + Math.abs(item.variance), 0).toFixed(0)} M3. This lag is indicative of equipment bottlenecks or suboptimal material extraction rates. `;
-    } else if (m3Items.length > 0) {
-      summaryNarrative += `Earthwork extraction and filling operations (measured in M3) show satisfactory volume execution rates. `;
-    }
-    
-    summaryNarrative += `Auditorial recommendation: Re-align equipment rosters to mitigate the ${behindCount} lagging indicators and optimize site clearing (Ha) or structural culvert (No.) mobilization.`;
-  }
-
-  return {
-    items: analysisItems,
-    summaryNarrative
-  };
 }
 
 interface DashboardViewProps {
@@ -211,8 +101,6 @@ export default function DashboardView({
   onDeleteProject,
   onUpdateProjectStatus
 }: DashboardViewProps) {
-  const dashboardRef = useRef<HTMLDivElement>(null);
-
   const [selectedRowMetric, setSelectedRowMetric] = useState(
     (project.rowMetrics && project.rowMetrics[4] ? project.rowMetrics[4].name : null) || project.rowMetrics?.[0]?.name || 'ROW Obstruction free Section'
   );
@@ -226,7 +114,6 @@ export default function DashboardView({
   const [physicalInput, setPhysicalInput] = useState(project.physicalProgress.toString());
   const [progressError, setProgressError] = useState<string | null>(null);
   const [progressSuccess, setProgressSuccess] = useState<string | null>(null);
-  const [isKpiHistoryOpen, setIsKpiHistoryOpen] = useState(false);
   const [dashboardRoadType, setDashboardRoadType] = useState<'combined' | 'main' | 'spur'>('combined');
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
 
@@ -390,15 +277,6 @@ export default function DashboardView({
     : 0;
 
   const timeOverrun = project.origDays > 0 ? (project.eotDays / project.origDays) * 100 : 0;
-
-  // Project Risk Exposure index calculation
-  const projectRisks = project.risks || [];
-  const activeRisks = projectRisks.filter(r => r.status === 'Active');
-  const activeRisksCount = activeRisks.length;
-  const totalActiveExposure = activeRisks.reduce((sum, r) => sum + r.probability * r.impact, 0);
-  const averageRiskExposure = projectRisks.length 
-    ? (projectRisks.reduce((sum, r) => sum + r.probability * r.impact, 0) / projectRisks.length).toFixed(2) 
-    : '0.00';
 
   // Immediate safe resolution of selected dropdowns (ensures zero delay/glitch on project switches or table edits)
   const availableRowMetrics = project.rowMetrics || [];
@@ -863,13 +741,6 @@ export default function DashboardView({
   const spurRoadTargetKm = hasSpurRoad ? (project.spurRoadLengthKm ?? 8.8) : 0;
   const mainRoadTargetKm = hasSpurRoad ? Math.max(0, Number((totalProjectKm - spurRoadTargetKm).toFixed(2))) : totalProjectKm;
 
-  let maxLinearRoadKm = totalProjectKm;
-  if (activeRoadType === 'main') {
-    maxLinearRoadKm = mainRoadTargetKm;
-  } else if (activeRoadType === 'spur') {
-    maxLinearRoadKm = spurRoadTargetKm;
-  }
-
   const linearSections: { id: keyof LinearData; name: string; color: string; hex: string; hover: string }[] = [
     { id: 'subgrade', name: 'Sub-Grade', color: 'bg-amber-800', hex: '#92400e', hover: 'hover:bg-amber-700' },
     ...(project.hasCappingLayer !== false ? [{ id: 'capping' as keyof LinearData, name: 'Capping Layers', color: 'bg-yellow-700', hex: '#a16207', hover: 'hover:bg-yellow-600' }] : []),
@@ -941,143 +812,14 @@ export default function DashboardView({
     }
   };
 
-  const formattedMoney = (v: number) => 
-    formatAccounting(v, '');
-
   // Integrated Performance calculations for Alerts and Reports via unified EVM engine
   const evm = calculateProjectEvm(project);
-  const { BAC, AC, EV, PV, plannedPct, CPI, SPI, EAC, TCPI } = evm;
-
-  const seriesList = project.series || [];
-  const te = seriesList.reduce((sum, item) => sum + (item.execAmt || 0), 0);
-  const totalOrigExec = te * 1.15;
-  const paymentList = project.payment || [];
-  const pa = (paymentList.find(x => x.item === 'Price Adjustment') || { amount: 0 }).amount;
-  const advPay = (paymentList.find(x => x.item === 'Advance Payment') || { amount: 0 }).amount;
-  const advRepay = (paymentList.find(x => x.item === 'Advance Repayment') || { amount: 0 }).amount;
-  const ipc = (paymentList.find(x => x.item.trim().toLowerCase().includes('total todate certified ipc')) || { amount: 0 }).amount;
+  const { BAC, AC, EV, PV, plannedPct, CPI, SPI } = evm;
 
   const rateIpc = project.usdExchangeRate || 57.50;
   const trackerIpcs = project.ipcTracker || [];
 
-  const CV_Mil = (EV - AC) / 1_000_000;
-  const SV_Mil = (EV - PV) / 1_000_000;
-  const CV_pct = AC > 0 ? ((EV - AC) / AC) * 100 : 0;
   const SV_pct = PV > 0 ? ((EV - PV) / PV) * 100 : 0;
-
-  // Generate last 5 CPI/SPI records based on actual progress comparison milestones and EVM metrics
-  const kpiHistoryRecords = React.useMemo(() => {
-    const currentActualKm = project.progressPlan?.actual?.todate || 0;
-    const currentPhysical = (typeof project.physicalProgress === 'number' && project.physicalProgress > 0)
-      ? project.physicalProgress
-      : (project.lengthKm > 0 && currentActualKm > 0 ? (currentActualKm / project.lengthKm) * 100 : (project.physicalProgress || 0));
-
-    const currentRecord = {
-      period: project.progressPlanLabels?.monthLabel || 'Current Month',
-      isCurrent: true,
-      physical: currentPhysical,
-      elapsed: elapsed,
-      ratio: ratio,
-      cpi: CPI,
-      spi: SPI,
-      ev: EV / 1_000_000,
-      pv: PV / 1_000_000,
-      ac: AC / 1_000_000,
-    };
-
-    const historyList = project.progressPlanHistory || [];
-    let pastRecords: any[] = [];
-
-    if (historyList.length > 0) {
-      pastRecords = historyList.map((histItem) => {
-        const monthLabel = histItem.monthLabel;
-        
-        let histPhysical: number;
-        if (typeof histItem.physicalProgress === 'number' && histItem.physicalProgress > 0) {
-          histPhysical = histItem.physicalProgress;
-        } else if (typeof histItem.actualTodate === 'number' && histItem.actualTodate > 0 && project.lengthKm > 0) {
-          histPhysical = Number(((histItem.actualTodate / project.lengthKm) * 100).toFixed(2));
-        } else {
-          const matchMonth = (project.monthly || []).find(m => {
-            const cleanM = (m.month || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-            const cleanLabel = monthLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
-            return cleanLabel.includes(cleanM) || cleanM.includes(cleanLabel);
-          });
-          if (matchMonth && typeof matchMonth.actual === 'number') {
-            histPhysical = matchMonth.actual;
-          } else if (typeof histItem.actualEfy === 'number' && histItem.actualEfy > 0 && project.lengthKm > 0) {
-            histPhysical = Number(((histItem.actualEfy / project.lengthKm) * 100).toFixed(2));
-          } else {
-            histPhysical = currentPhysical;
-          }
-        }
-
-        const pastEv = (BAC * (histPhysical / 100)) / 1_000_000;
-        
-        const matchMonth = (project.monthly || []).find(m => {
-          const cleanM = (m.month || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-          const cleanLabel = monthLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
-          return cleanLabel.includes(cleanM) || cleanM.includes(cleanLabel);
-        });
-        const matchPlanned = matchMonth && typeof matchMonth.originalPlan === 'number' ? matchMonth.originalPlan : null;
-        
-        const pastPv = matchPlanned !== null 
-          ? (BAC * (matchPlanned / 100)) / 1_000_000
-          : (PV / 1_000_000) * (currentPhysical > 0 ? histPhysical / currentPhysical : 1);
-          
-        const pastSpi = pastPv > 0 ? Number((pastEv / pastPv).toFixed(3)) : SPI;
-        const pastCpi = CPI;
-        const pastAc = pastCpi > 0 ? Number((pastEv / pastCpi).toFixed(2)) : pastEv;
-        const pastElapsed = Math.max(0, currentPhysical > 0 ? elapsed * (histPhysical / currentPhysical) : elapsed);
-        const pastRatio = pastElapsed > 0 ? (histPhysical / pastElapsed) * 100 : 0;
-
-        return {
-          period: monthLabel,
-          isCurrent: false,
-          physical: histPhysical,
-          elapsed: pastElapsed,
-          ratio: pastRatio,
-          cpi: pastCpi,
-          spi: pastSpi,
-          ev: pastEv,
-          pv: pastPv,
-          ac: pastAc,
-        };
-      });
-    } else if (project.monthly && project.monthly.length > 1) {
-      const pastMonths = project.monthly
-        .filter(m => typeof m.actual === 'number' && m.actual > 0)
-        .slice(-5, -1)
-        .reverse();
-
-      pastRecords = pastMonths.map(m => {
-        const histPhysical = typeof m.actual === 'number' ? m.actual : 0;
-        const histPlanned = typeof m.originalPlan === 'number' ? m.originalPlan : (typeof m.revisedPlan === 'number' ? m.revisedPlan : histPhysical);
-        const pastEv = (BAC * (histPhysical / 100)) / 1_000_000;
-        const pastPv = (BAC * (histPlanned / 100)) / 1_000_000;
-        const pastSpi = pastPv > 0 ? Number((pastEv / pastPv).toFixed(3)) : 1.0;
-        const pastCpi = CPI;
-        const pastAc = pastCpi > 0 ? Number((pastEv / pastCpi).toFixed(2)) : pastEv;
-        const pastElapsed = Math.max(0, currentPhysical > 0 ? elapsed * (histPhysical / currentPhysical) : elapsed);
-        const pastRatio = pastElapsed > 0 ? (histPhysical / pastElapsed) * 100 : 0;
-
-        return {
-          period: m.month,
-          isCurrent: false,
-          physical: histPhysical,
-          elapsed: pastElapsed,
-          ratio: pastRatio,
-          cpi: pastCpi,
-          spi: pastSpi,
-          ev: pastEv,
-          pv: pastPv,
-          ac: pastAc,
-        };
-      });
-    }
-
-    return [currentRecord, ...pastRecords];
-  }, [project.progressPlanLabels, project.physicalProgress, project.progressPlanHistory, project.progressPlan, project.monthly, project.lengthKm, elapsed, ratio, CPI, SPI, EV, PV, AC, BAC]);
 
   // Comprehensive Payment Maturity Audit Calculations (FIDIC 56-Day Window)
   const todayDate = new Date();
@@ -1103,10 +845,9 @@ export default function DashboardView({
   let maturedIpcCount = 0;
   let withinMaturityIpcCount = 0;
 
-  const ipcDetails = trackerIpcs.map(item => {
+  trackerIpcs.forEach(item => {
     const etbAmt = item.certifiedEtb || 0;
     const usdAmt = item.certifiedUsd || 0;
-    const combinedEtb = etbAmt + (usdAmt * rateIpc);
 
     totalCertifiedEtbSum += etbAmt;
     totalCertifiedUsdSum += usdAmt;
@@ -1145,19 +886,6 @@ export default function DashboardView({
         if (isUsdUnpaid) withinMaturityUnpaidUsdSum += usdAmt;
       }
     }
-
-    return {
-      ...item,
-      etbAmt,
-      usdAmt,
-      combinedEtb,
-      isEtbUnpaid,
-      isUsdUnpaid,
-      isFullyPaid,
-      daysElapsed,
-      isMatured,
-      isWithinMaturity
-    };
   });
 
   const totalCertifiedCombined = totalCertifiedEtbSum + (totalCertifiedUsdSum * rateIpc);
@@ -2479,7 +2207,6 @@ export default function DashboardView({
                     const eVal = Number(pData?.ERA ?? 0);
                     const aVal = Number(pData?.Actual ?? 0);
                     const diffEra = aVal - eVal;
-                    const diffContractor = aVal - cVal;
                     return (
                       <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-xl shadow-xl border border-slate-700/60 text-xs min-w-[220px] space-y-2">
                         <div className="border-b border-slate-700 pb-1.5">

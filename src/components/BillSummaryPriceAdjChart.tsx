@@ -1,15 +1,10 @@
 import React, { useState } from 'react';
-import { motion } from 'motion/react';
 import { 
-  Calculator, 
   TrendingUp, 
   Coins, 
-  BarChart3, 
-  Layers, 
   Table as TableIcon, 
   ChevronDown, 
   ChevronUp,
-  HelpCircle,
   FileSpreadsheet
 } from 'lucide-react';
 import { 

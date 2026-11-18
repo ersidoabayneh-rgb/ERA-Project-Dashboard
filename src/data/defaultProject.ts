@@ -10,13 +10,11 @@ import {
   RiskItem, 
   DailyActivityRecord, 
   SupervisionConsultantInfo, 
-  MonthlyResourceRecord, 
   MonthlyGradingRecord, 
   isProjectClosed 
 } from '../types';
 import { parseLocalDate, addDaysToDate } from '../lib/dateUtils';
 import { calculateProjectEvm } from '../lib/evmCalculations';
-import { resolveCurrentMonthKey, isSameMonth } from '../lib/monthlySync';
 import { getProjectConsultantEvaluation } from './consultantEvaluationMatrix';
 import { calculateProgressKpiScores } from '../lib/kpiProgressCalculator';
 import { isRfiRecord, deduplicateSubmittals, isSubmittalApproved, isSubmittalRejected } from '../lib/submittalHelpers';
@@ -961,10 +959,7 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
 
   // 4. EVM Calculations for SC4.2 (Schedule Variance) via unified engine
   const evm = calculateProjectEvm(project);
-  const { BAC, AC, EV, PV, plannedPct, SV_pct } = evm;
-  const te = (project.series || []).reduce((sum, item) => sum + (item.execAmt || 0), 0);
-  const totalOrigExec = te * 1.15;
-  const pa = ((project.payment || []).find(x => x.item === 'Price Adjustment') || { amount: 0 }).amount;
+  const { SV_pct } = evm;
 
   // 4b. Live Telemetry for Linear Asphalt, Submittals (RFI/WIR/Materials), Daily Activities, and Defects
   const linearAsphaltExecKm =
@@ -1175,7 +1170,6 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
     } else if (k.itemId === 'RK-1' || k.itemId === 'RK-2' || k.itemId === 'RK-3' || k.itemId === 'RK-4') {
       const roadRisks = project.risks || [];
       const activeRisks = roadRisks.filter(r => r.status === 'Active');
-      const activeExposureSum = activeRisks.reduce((sum, r) => sum + r.probability * r.impact, 0);
 
       if (k.itemId === 'RK-1') {
         // SC8.1: Risk Register - if there is a risk registered give 0%, if not give 100%

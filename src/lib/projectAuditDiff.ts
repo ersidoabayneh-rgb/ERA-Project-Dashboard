@@ -123,7 +123,6 @@ export function generateAuditChangeDetails(
     if (key === 'ipcTracker' && Array.isArray(newVal)) {
       const oldIpcs = Array.isArray(oldVal) ? oldVal : [];
       const newIpcs = newVal;
-      const diffCount = Math.abs(newIpcs.length - oldIpcs.length);
       
       // Look for individual modified IPCs
       const modifiedIpcNotes: string[] = [];

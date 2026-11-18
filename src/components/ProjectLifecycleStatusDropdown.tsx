@@ -113,10 +113,6 @@ export default function ProjectLifecycleStatusDropdown({
       left = Math.max(8, window.innerWidth - menuWidth - 8);
     }
 
-    const top = openUpward
-      ? Math.max(8, rect.top - estimatedHeight - 6)
-      : Math.min(window.innerHeight - estimatedHeight - 8, rect.bottom + 6);
-
     setCoords({
       top: openUpward ? rect.top - 6 : rect.bottom + 6,
       left,

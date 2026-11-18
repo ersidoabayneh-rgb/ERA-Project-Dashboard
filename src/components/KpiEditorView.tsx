@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { CheckCircle, Info, HelpCircle, Plus, Trash2, Edit, Save, X, Sliders, FolderPlus, Lock, Target, Calendar, Clock, AlertTriangle, Bell, Award, History, ArrowRight, ShieldCheck, TrendingUp, RefreshCw, BarChart2, Zap, Check, Activity, Scale, HardHat, DollarSign, Users, CheckCircle2, FileText, Truck } from 'lucide-react';
+import { CheckCircle, Info, HelpCircle, Plus, Trash2, Edit, Save, X, Sliders, FolderPlus, Lock, Target, Calendar, Clock, Bell, Award, ShieldCheck, TrendingUp, RefreshCw, BarChart2, Zap, Check, Activity, Scale, HardHat, DollarSign, Users, FileText, Truck } from 'lucide-react';
 import { Project, KpiAllocatedItem, User, KpiMonthlyRecord } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
 import { isKpiAuthorizedRole } from '../App';
@@ -14,7 +14,6 @@ import {
   type PerformanceGrade,
   type PerformanceAuditPillar,
 } from '../lib/contractorEvaluationEngine';
-import CircularGauge from './CircularGauge';
 import KpiProgressTrendsChart from './KpiProgressTrendsChart';
 
 export { getPerformanceAuditGrade, type PerformanceGrade, type PerformanceAuditPillar };
@@ -198,13 +197,6 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
   });
   const kpis = draftKpis;
 
-  const currentPp1Item = draftKpis.find(k => k.itemId === 'PP-1');
-  const isPp1Synced = Boolean(
-    currentPp1Item &&
-    !currentPp1Item.isOverridden &&
-    Math.abs((currentPp1Item.alloc ?? 0) - progressKpiResult.pp1Score) < 0.05
-  );
-
   const prevProjectKpiIdRef = React.useRef(project.id);
   const prevKpiAllocatedLengthRef = React.useRef(project.kpiAllocated?.length || 0);
 
@@ -359,9 +351,6 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
   const [editingTargetGoalId, setEditingTargetGoalId] = React.useState<string | null>(null);
   const [tempTargetInput, setTempTargetInput] = React.useState<string>('');
 
-  const [showTargetModal, setShowTargetModal] = React.useState(false);
-  const [modalTargets, setModalTargets] = React.useState<Record<string, number>>({});
-
   const handleUpdateGroupTarget = (goalId: string, val: number) => {
     const cleanVal = Math.max(0, Math.min(100, isNaN(val) ? 100 : val));
     const updated = {
@@ -371,25 +360,6 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
     onProjectUpdate?.({ kpiGroupTargets: updated }, `Set Target for KPI Group ${goalId} to ${cleanVal}%`);
     setSaveMessage(`Target for ${goalId} set to ${cleanVal}%`);
     setTimeout(() => setSaveMessage(null), 2500);
-  };
-
-  const handleSaveAllTargets = () => {
-    const updated = {
-      ...groupTargets,
-      ...modalTargets
-    };
-    onProjectUpdate?.({ kpiGroupTargets: updated }, `Updated KPI category group targets`);
-    setShowTargetModal(false);
-    setSaveMessage('All KPI category group targets saved successfully!');
-    setTimeout(() => setSaveMessage(null), 2500);
-  };
-
-  const handleApplyPresetTarget = (presetVal: number) => {
-    const updated: Record<string, number> = {};
-    hierarchy.forEach(g => {
-      updated[g.id] = presetVal;
-    });
-    setModalTargets(updated);
   };
 
   // Auto-generate subgroup ID and first KPI ID based on selected parent category group
@@ -1812,10 +1782,6 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                         {ssc.items.map((it, itIdx) => {
                           const kpi = kpis.find(k => k.itemId === it.id);
                           if (!kpi) return null;
-
-                          const actualVal = kpi.naActive ? 0 : kpi.alloc;
-                          const targetMax = it.max || 100;
-                          const pctCompletion = Math.min(100, Math.max(0, (actualVal / targetMax) * 100));
 
                           return (
                             <div 

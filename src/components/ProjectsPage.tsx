@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  FolderOpen, 
   Trash2, 
   Plus, 
   User as UserIcon, 
@@ -12,7 +11,6 @@ import {
   Search, 
   TrendingUp, 
   Briefcase,
-  Building,
   DollarSign,
   AlertTriangle,
   AlertCircle,
@@ -20,7 +18,6 @@ import {
   ShieldAlert,
   X,
   FileText,
-  Download,
   Sliders,
   ChevronDown,
   ChevronUp,
@@ -28,24 +25,16 @@ import {
   Sparkles,
   BookOpen,
   Archive,
-  FolderArchive,
   UserPlus,
   Palette,
-  Landmark,
   LayoutGrid,
   List,
-  Table,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  ExternalLink,
-  Calendar,
-  Layers,
-  Clock,
-  ShieldCheck,
-  FileSpreadsheet
+  ExternalLink
 } from 'lucide-react';
-import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isProjectArchived, isCpmOrMasterAdmin, isMasterAdminOnly, isRecentlyUpdated, formatRelativeTime, ETHIOPIAN_REGIONAL_STATES, EthiopianRegionalState, ThemeSettings } from '../types';
+import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed, isMasterAdminOnly, isRecentlyUpdated, formatRelativeTime, ETHIOPIAN_REGIONAL_STATES, ThemeSettings } from '../types';
 import { canUserApproveRequest, hasApprovalCredentials } from '../App';
 import eraLogo from '../assets/logo.png';
 import GroupReportGenerator from './GroupReportGenerator';
@@ -177,7 +166,7 @@ export default function ProjectsPage({
     return 'directorate';
   });
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-  const [logoError, setLogoError] = useState(false);
+  const [logoError, _setLogoError] = useState(false);
   const [showCollab, setShowCollab] = useState(false);
   const [inviteName, setInviteName] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
@@ -185,7 +174,6 @@ export default function ProjectsPage({
     type: 'contractType' | 'classification' | 'client' | 'contractor' | 'none';
     value: string | null;
   }>({ type: 'none', value: null });
-  const [selectedPeer, setSelectedPeer] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'name' | 'id' | 'directorate' | 'bondWarnings' | 'progress' | 'budget' | 'length'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [filterPendingApprovalsOnly, setFilterPendingApprovalsOnly] = useState(false);
@@ -448,19 +436,6 @@ export default function ProjectsPage({
     (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))
   );
 
-  const isAdmin = Boolean(
-    isMasterAdmin || 
-    isDirAdmin || 
-    isPmoAdmin || 
-    currentUserObj?.role === 'admin' ||
-    currentUserObj?.role === 'master_admin' ||
-    currentUserObj?.role === 'cpm_admin' ||
-    currentUserObj?.role === 'directorate_admin' ||
-    currentUserObj?.role === 'pmo_admin' ||
-    currentUserObj?.username === 'proj_1781786415663' ||
-    (currentUserObj?.username && currentUserObj.username.toLowerCase().includes('ersido'))
-  );
-
   const roleStr = String(currentUserObj?.role || '').toLowerCase();
   const usernameStr = String(currentUserObj?.username || '').toLowerCase();
   const isConsultantOrContractor = Boolean(
@@ -560,29 +535,6 @@ export default function ProjectsPage({
   const archivedContractsCount = useMemo(() => {
     return accessibleProjects.filter(p => isProjectExcludedFromReports(p)).length;
   }, [accessibleProjects]);
-
-  const availableClassifications = useMemo(() => {
-    const set = new Set<string>();
-    projects.forEach(p => {
-      if (p.classification && p.classification.trim()) {
-        set.add(p.classification.trim());
-      }
-    });
-    if (set.size === 0) {
-      ['Expressway', 'DS-1', 'DS-2', 'DS-3', 'DS-4', 'DS-5'].forEach(c => set.add(c));
-    }
-    return Array.from(set).sort();
-  }, [projects]);
-
-  const availableContractors = useMemo(() => {
-    const set = new Set<string>();
-    projects.forEach(p => {
-      if (p.contractor && p.contractor.trim()) {
-        set.add(p.contractor.trim());
-      }
-    });
-    return Array.from(set).sort();
-  }, [projects]);
 
   const filteredProjects = useMemo(() => {
     return projects
@@ -949,64 +901,6 @@ export default function ProjectsPage({
       projectGroups.forEach(g => { next[g.key] = true; });
       setCollapsedGroups(next);
     }
-  };
-
-  const handleExportProjectsCSV = () => {
-    const headers = [
-      'Project ID',
-      'Project Name',
-      'Status',
-      'Ethiopian Regional State',
-      'Directorate',
-      'PMO',
-      'Contractor',
-      'Consultant',
-      'Classification',
-      'Contract Type',
-      'Length (km)',
-      'Original Budget (M ETB)',
-      'Revised Budget (M ETB)',
-      'Physical Progress (%)',
-      'Health Status',
-      'Health Reason',
-      'Last Modified At',
-      'Last Modified By'
-    ];
-
-    const rows = sortedProjects.map(p => {
-      const status = p.status || 'In Progress';
-      const statusInfo = getProjectStatus(p);
-      const revBudget = getRevisedBudgetMillions(p);
-      return [
-        `"${(p.id || '').replace(/"/g, '""')}"`,
-        `"${(p.name || '').replace(/"/g, '""')}"`,
-        `"${status}"`,
-        `"${(p.regionalState || 'Sidama').replace(/"/g, '""')}"`,
-        `"${(p.programDirectorate || 'Southern').replace(/"/g, '""')}"`,
-        `"${(p.pmo || 'PMO 1').replace(/"/g, '""')}"`,
-        `"${(p.contractor || '').replace(/"/g, '""')}"`,
-        `"${(p.consultant || '').replace(/"/g, '""')}"`,
-        `"${(p.classification || '').replace(/"/g, '""')}"`,
-        `"${(p.contractType || '').replace(/"/g, '""')}"`,
-        p.lengthKm ?? 0,
-        p.origAmount?.toFixed(2) ?? '0.00',
-        revBudget.toFixed(2),
-        p.physicalProgress?.toFixed(2) ?? '0.00',
-        `"${statusInfo.level}"`,
-        `"${statusInfo.reason.replace(/"/g, '""')}"`,
-        `"${p.lastModifiedAt ? new Date(p.lastModifiedAt).toISOString() : ''}"`,
-        `"${(p.lastModifiedBy || '').replace(/"/g, '""')}"`
-      ].join(',');
-    });
-
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `ERA_Projects_Portfolio_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   const getProgressBarColor = (progress: number): string => {
@@ -1580,9 +1474,6 @@ export default function ProjectsPage({
     const revBudget = getRevisedBudgetMillions(p);
     const hasPendingChangesForApprover = pendingApprovals.some(
       a => a.projectId === p.id && a.status === 'pending' && canUserApproveRequest(currentUserObj, a, projects)
-    );
-    const mySubmittedPendingDraft = pendingApprovals.find(
-      a => a.projectId === p.id && a.status === 'pending' && a.requestedBy === currentUserObj.username
     );
 
     const isSelected = selectedProjectIds.includes(p.id);

@@ -670,7 +670,6 @@ export default function ComprehensiveAnalysisView({
               {filteredAnalysis.map((item, idx) => {
                 const isContractor = item.responsibleParty === 'Contractor';
                 const isConsultant = item.responsibleParty === 'Supervision Consultant';
-                const isEmployer = item.responsibleParty === 'Employer (Client)';
 
                 const partyBadge = isContractor
                   ? 'bg-indigo-100 text-indigo-900 dark:bg-indigo-950/80 dark:text-indigo-200 border-indigo-200 dark:border-indigo-800'

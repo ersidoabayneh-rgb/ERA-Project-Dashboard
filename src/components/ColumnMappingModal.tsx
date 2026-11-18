@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   X,
-  ArrowRight,
   CheckCircle2,
   AlertTriangle,
   FileSpreadsheet,

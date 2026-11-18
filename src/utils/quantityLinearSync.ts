@@ -1,4 +1,4 @@
-import { Project, QtyItem, LinearData, LinearPlanData, LinearSegment, LinearLayerPlan } from '../types';
+import { Project, QtyItem, LinearData, LinearPlanData } from '../types';
 
 export type PavementLayerKey = 'subgrade' | 'capping' | 'subbase' | 'basecourse' | 'asphalt';
 

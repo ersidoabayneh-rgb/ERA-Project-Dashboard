@@ -1,4 +1,4 @@
-import { IpcItem, Project, formatAccounting, isProjectClosed } from '../types';
+import { IpcItem, Project, isProjectClosed } from '../types';
 
 export interface IpcMaturationDetails {
   submissionDate: string | null; // Contractor Submission Date

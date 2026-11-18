@@ -3,7 +3,6 @@ import type { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { createRequire } from 'module';
 import { createServer as createViteServer } from 'vite';
 import { requireAuth, checkRole } from './src/middleware/auth.ts';
 import { GoogleGenAI } from '@google/genai';
@@ -301,8 +300,12 @@ app.post('/api/backup/progress-plan-history', async (req: Request, res: Response
   };
 
   try {
-    // 1. Write to persistent filesystem storage
-    const filePath = path.join(BACKUP_DIR, `${projectId}.json`);
+    // 1. Write to persistent filesystem storage (sanitize projectId against path traversal)
+    const safeId = path.basename(String(projectId)).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filePath = path.resolve(BACKUP_DIR, `${safeId}.json`);
+    if (!filePath.startsWith(BACKUP_DIR + path.sep)) {
+      return res.status(400).json({ error: 'Invalid projectId.' });
+    }
     fs.writeFileSync(filePath, JSON.stringify(backupPayload, null, 2), 'utf-8');
 
     // 2. Also persist in Firestore database if available
@@ -337,8 +340,9 @@ app.get('/api/backup/progress-plan-history/:projectId', async (req: Request, res
   const { projectId } = req.params;
   
   // 1. Try local disk backup first
-  const filePath = path.join(BACKUP_DIR, `${projectId}.json`);
-  if (fs.existsSync(filePath)) {
+  const safeId = path.basename(String(projectId)).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const filePath = path.resolve(BACKUP_DIR, `${safeId}.json`);
+  if (filePath.startsWith(BACKUP_DIR + path.sep) && fs.existsSync(filePath)) {
     try {
       const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
       return res.json({ success: true, source: 'disk', ...data });

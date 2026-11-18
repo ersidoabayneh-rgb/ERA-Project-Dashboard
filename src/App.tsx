@@ -1,29 +1,19 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { formatDateStr, getRevisedCompletionDateStr, parseLocalDate } from './lib/dateUtils';
+import { formatDateStr, getRevisedCompletionDateStr } from './lib/dateUtils';
 import { motion, AnimatePresence, animate } from 'motion/react';
 import { 
-  HardHat, 
   FolderOpen, 
-  CheckSquare, 
   UserCheck, 
   UserPlus,
   Settings,
   Trash2,
-  LogOut, 
   User as UserIcon,
   Sun,
   Moon,
   ArrowLeft,
   Printer,
-  ChevronRight,
-  TrendingUp,
-  Coins,
-  Shield,
   ShieldCheck,
   ShieldAlert,
-  Activity,
-  Calendar,
-  Briefcase,
   FileText,
   ChevronDown,
   ChevronUp,
@@ -37,26 +27,21 @@ import {
   Eye,
   EyeOff,
   Zap,
-  BookOpen,
   Archive,
   Sparkles,
-  Send,
   Clock,
   Lock,
   Laptop,
   MapPin,
-  Globe,
   X,
-  Palette,
-  Landmark,
   Save,
   Edit3,
   Unlock
 } from 'lucide-react';
 
-import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, KpiAllocatedItem, SeriesItem, MonthlyProgress, LinearData, RowMetric, ProgressPlan, PaymentItem, AnnualItem, WorkProgramActivity, BondGuarantee, formatAccounting, ProjectDocument, ALL_EDITABLE_PAGES, EditablePageOption, ProjectLifecycleStatus, isProjectClosed, isProjectArchived, isCpmOrMasterAdmin, isMasterAdminOnly, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG, ETHIOPIAN_REGIONAL_STATES, EthiopianRegionalState } from './types';
+import { Project, User, ApprovalRequest, PrivateDraft, WorkflowAuditLogEntry, formatAccounting, ALL_EDITABLE_PAGES, ProjectLifecycleStatus, isProjectClosed, isMasterAdminOnly, isRecentlyUpdated, formatRelativeTime, ContractorScoringWeights, ConsultantScoringWeights, DEFAULT_CONTRACTOR_SCORING_WEIGHTS, DEFAULT_CONSULTANT_SCORING_WEIGHTS, SupervisionConsultantInfo, ThemeSettings, DEFAULT_THEME_SETTINGS, PdfReportConfig, DEFAULT_PDF_REPORT_CONFIG, ETHIOPIAN_REGIONAL_STATES } from './types';
 import { createProjectHistoryEntry } from './lib/projectAuditDiff';
-import { getProjectDlpInfo, calculateCappedElapsedTimePct } from './lib/dlpUtils';
+import { getProjectDlpInfo } from './lib/dlpUtils';
 import { syncProjectQuantitiesAndLinear } from './utils/quantityLinearSync';
 import DlpDefectModal from './components/DlpDefectModal';
 import DatabaseSavedPopupModal from './components/DatabaseSavedPopupModal';
@@ -398,7 +383,7 @@ import DeleteProjectModal from './components/DeleteProjectModal';
 import ApprovalWorkflowManager from './components/ApprovalWorkflowManager';
 import eraLogo from './assets/logo.png';
 
-import { defaultProjectTemplate, blankProjectTemplate, generateKpiAllocated } from './data/defaultProject';
+import { defaultProjectTemplate, blankProjectTemplate } from './data/defaultProject';
 import { 
   safeSyncProject, 
   safeDeleteProject, 
@@ -418,13 +403,10 @@ import {
   normalizeProject,
   safeFetchSyncLogs,
   getLocalSyncLogs,
-  clearSyncLogs,
-  recordSyncLog,
-  SyncLogEntry
+  clearSyncLogs
 } from './lib/apiSync';
-import { getAccessToken } from './lib/auth';
 import { safeSetItem } from './lib/storage';
-import { updateMonthlyWithProgress, getLastActualProgress, getLiveActualValue, resolveCurrentMonthKey, ensureLiveRowForActual } from './lib/monthlySync';
+import { updateMonthlyWithProgress, getLiveActualValue, resolveCurrentMonthKey, ensureLiveRowForActual } from './lib/monthlySync';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
@@ -529,7 +511,7 @@ export default function App() {
     }
     return (savedPage as any) || 'projects';
   });
-  const [logoError, setLogoError] = useState(false);
+  const [logoError, _setLogoError] = useState(false);
   const [currentUser, setCurrentUser] = useState<string | null>(() => {
     return localStorage.getItem('era_current_user') || null;
   });
@@ -606,7 +588,6 @@ export default function App() {
   
   // Database States
   const [projects, setProjects] = useState<Project[]>([]);
-  const [nowTimer, setNowTimer] = useState(Date.now());
 
   // Automated utility watcher: identifies projects with 'Completed and Closed', 'Terminated and Closed',
   // or 'Archived' status and automatically sets excludeFromReports: true in the project state.
@@ -620,13 +601,6 @@ export default function App() {
     setProjects(synced);
     safeSetItem('era_proj_v28', JSON.stringify(synced));
   }, [projects]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setNowTimer(Date.now());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(() => {
     return localStorage.getItem('era_current_project_id') || null;
   });
@@ -2585,7 +2559,6 @@ let isBatchSyncRunning = false;
     const isDB = project.contractType === 'DB';
     const tc = (project.series || []).reduce((sum, item) => sum + (item.contractAmt || 0), 0);
     const teVal = (project.series || []).reduce((sum, item) => sum + (item.execAmt || 0), 0);
-    const totalSeriesSum = tc;
     const ps = project.provisionalSum || 0;
 
     let er = 0;
@@ -2607,7 +2580,6 @@ let isBatchSyncRunning = false;
       let hasRemaining = project.payment.some(p => p.item.trim().toLowerCase() === 'remaining');
       let hasPriceAdj = project.payment.some(p => p.item.trim().toLowerCase().includes('price adjustment'));
       let hasAdvanceRepayment = project.payment.some(p => p.item.trim().toLowerCase().includes('advance repayment'));
-      let hasRetentionMoney = project.payment.some(p => p.item.trim().toLowerCase().includes('retention money'));
       let updatedPayment = [...project.payment];
 
       const origContractETB = (updatedOrigAmount || 1) * 1_000_000;
@@ -3941,9 +3913,6 @@ let isBatchSyncRunning = false;
     localStorage.removeItem('era_custom_txt_bg');
     localStorage.removeItem('era_custom_chart_tooltip_bg');
   };
-
-  const formattedMoney = (v: number) => 
-    formatAccounting(v, '');
 
   return (
     <div className={`min-h-screen text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300 relative ${themeSettings.wallpaper ? 'bg-slate-50/75 dark:bg-slate-900/80 backdrop-blur-xs' : 'bg-slate-50/50 dark:bg-slate-900/60'} pb-12`}>
@@ -6297,7 +6266,6 @@ let isBatchSyncRunning = false;
                 return;
               }
 
-              const isMasterAdmin = currentUserObj?.role === 'admin' || currentUserObj?.role === 'master_admin' || currentUserObj?.username === 'proj_1781786415663';
               const isDirAdmin = currentUserObj?.role === 'directorate_admin';
               const isPmoAdmin = currentUserObj?.role === 'pmo_admin';
 

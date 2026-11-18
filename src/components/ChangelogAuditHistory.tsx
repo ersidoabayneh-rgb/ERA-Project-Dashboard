@@ -10,16 +10,12 @@ import {
   Clock, 
   Layers, 
   ArrowRight, 
-  CheckCircle2, 
   FileText, 
-  SlidersHorizontal,
   ChevronsUpDown,
-  Maximize2,
-  Minimize2,
   Trash2,
   Download
 } from 'lucide-react';
-import { HistoryItem, HistoryChangeDetail, formatAccounting } from '../types';
+import { HistoryItem } from '../types';
 
 interface ChangelogAuditHistoryProps {
   history: HistoryItem[];

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Database, Plus, Trash2, ArrowUpRight, Calculator, Coins, Milestone, Shield, BarChart2, DollarSign, Save, RotateCcw, Check, AlertCircle, AlertTriangle, CheckCircle2, Send } from 'lucide-react';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Project, SeriesItem, IpcItem, PaymentItem, AnnualItem, formatAccounting } from '../types';
 import { MILLION } from '../data/defaultProject';
 import MonthlyPaymentIpcSummaryTable from './MonthlyPaymentIpcSummaryTable';

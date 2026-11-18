@@ -60,7 +60,6 @@ import {
   calculateComprehensiveEvaluationScore,
   getProjectConsultantEvaluation
 } from '../data/consultantEvaluationMatrix';
-import { Activity, Zap } from 'lucide-react';
 
 interface SubmittalLogViewProps {
   project: Project;

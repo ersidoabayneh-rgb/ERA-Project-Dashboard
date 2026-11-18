@@ -1,24 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ShieldAlert, 
-  CheckCircle, 
   Plus, 
   Trash2, 
   AlertTriangle, 
   Landmark, 
-  ShieldCheck, 
   FileText, 
-  ExternalLink,
   Download,
   Eye,
   Paperclip,
-  UploadCloud,
   FileCheck,
   X,
-  Printer,
-  MapPin,
-  Building
+  MapPin
 } from 'lucide-react';
 import { Project, BondGuarantee, formatAccounting, FinancialInstitute, GuarantyPolicyCategory, BondSecurityType, BondAttachment, User } from '../types';
 import { DEFAULT_FINANCIAL_INSTITUTES } from '../data/defaultFinancialInstitutes';
@@ -48,7 +42,6 @@ export default function BondsGuaranteeView({ project, currentUser, onUpdateBonds
 
   // Preview & Attachment Modal state
   const [previewPdfModalBond, setPreviewPdfModalBond] = useState<BondGuarantee | null>(null);
-  const [activeAttachmentBondIdx, setActiveAttachmentBondIdx] = useState<number | null>(null);
 
   // Load registered financial institutes & guarantee categories
   const [institutes, setInstitutes] = useState<FinancialInstitute[]>(() => {
@@ -376,7 +369,6 @@ export default function BondsGuaranteeView({ project, currentUser, onUpdateBonds
       {/* Bond Guarantee & Insurance Items List */}
       {bonds.map((b, idx) => {
         const flag = checkStatus(b);
-        const expDate = new Date(b.expireDate);
         const isExpiring = flag.text === 'Expiring Soon';
         const category = b.category || 'Unconditional Guarantee';
         const attachments = b.attachments || [];
