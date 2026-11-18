@@ -290,21 +290,23 @@ export function deduplicateSections(list: WorkRegisterSectionDef[]): WorkRegiste
 function loadActiveSectionsForProject(projectId: string): WorkRegisterSectionDef[] {
   try {
     const stored = localStorage.getItem(`era_active_sections_${projectId}`);
+    const migratedKey = `era_sections_v18_migrated_${projectId}`;
     if (stored) {
       const parsed = deduplicateSections(JSON.parse(stored));
-      const hasBox = parsed.some(s => s.id === '15' && s.name.includes('Box'));
-      const hasSlab = parsed.some(s => s.id === '16' && s.name.includes('Slab'));
-      const hasBridge = parsed.some(s => s.id === '17');
-      const hasDitch = parsed.some(s => s.id === '18');
-      if (!hasBox || !hasSlab || !hasBridge || !hasDitch || parsed.some(s => s.id === '14.1' || s.id === '14.2')) {
+      const isAlreadyMigrated = localStorage.getItem(migratedKey) === '1';
+      const hasLegacySubIds = parsed.some(s => s.id === '14.1' || s.id === '14.2');
+      if (hasLegacySubIds || (!isAlreadyMigrated && (!parsed.some(s => s.id === '15' && s.name.includes('Box')) || !parsed.some(s => s.id === '16' && s.name.includes('Slab')) || !parsed.some(s => s.id === '17') || !parsed.some(s => s.id === '18')))) {
         localStorage.setItem(`era_active_sections_${projectId}`, JSON.stringify(WORK_SECTIONS));
+        localStorage.setItem(migratedKey, '1');
         return WORK_SECTIONS;
       }
-      if (parsed.length > 0) {
-        localStorage.setItem(`era_active_sections_${projectId}`, JSON.stringify(parsed));
-        return parsed;
+      if (!isAlreadyMigrated) {
+        localStorage.setItem(migratedKey, '1');
       }
+      localStorage.setItem(`era_active_sections_${projectId}`, JSON.stringify(parsed));
+      return parsed;
     }
+    localStorage.setItem(migratedKey, '1');
   } catch {}
   return WORK_SECTIONS;
 }
@@ -935,13 +937,13 @@ export default function DailyActivitiesView({
     let curVal = 0;
 
     curActs.forEach(a => {
-      if (['1','2','6','7','8','9','10','11','12','16'].includes(sectionId)) {
+      if (['1','2','6','7','8','9','10','11','12','18'].includes(sectionId)) {
         curVal += Number(a.metricKm) || Number(a.metricM3) || 0;
       } else if (['3.1','3.2','4','5'].includes(sectionId)) {
         curVal += Number(a.metricM3) || Number(a.metricKm) || 0;
       } else if (sectionId === '13') {
         curVal += Number(a.pcsThisDay) || 0;
-      } else if (sectionId === '15') {
+      } else if (sectionId === '17') {
         curVal += Number(a.bridgeDailyProgress) || 0;
       } else {
         curVal += Number(a.metricKm) || 0;
@@ -949,13 +951,13 @@ export default function DailyActivitiesView({
     });
 
     prevActs.forEach(a => {
-      if (['1','2','6','7','8','9','10','11','12','16'].includes(sectionId)) {
+      if (['1','2','6','7','8','9','10','11','12','18'].includes(sectionId)) {
         prevVal += Number(a.metricKm) || Number(a.metricM3) || 0;
       } else if (['3.1','3.2','4','5'].includes(sectionId)) {
         prevVal += Number(a.metricM3) || Number(a.metricKm) || 0;
       } else if (sectionId === '13') {
         prevVal += Number(a.pcsThisDay) || 0;
-      } else if (sectionId === '15') {
+      } else if (sectionId === '17') {
         prevVal += Number(a.bridgeDailyProgress) || 0;
       } else {
         prevVal += Number(a.metricKm) || 0;
@@ -1723,7 +1725,7 @@ export default function DailyActivitiesView({
     const updated = activities.map(a => {
       if (a.id === id) {
         const newAct = { ...a, [field]: value, updatedAt: new Date().toISOString() };
-        if (field === 'metricM' && (['1', '2', '6', '7', '8', '9', '10', '11', '12', '16'].includes(a.activityType))) {
+        if (field === 'metricM' && (['1', '2', '6', '7', '8', '9', '10', '11', '12', '18'].includes(a.activityType))) {
            newAct.metricKm = (parseFloat(value) || 0) / 1000;
         }
         if (field === 'metricKm' && (['1', '2', '10', '11', '12'].includes(a.activityType))) {
@@ -1747,7 +1749,7 @@ export default function DailyActivitiesView({
     const qtyNum = parseFloat(quickQty) || 0;
     const defaultUnit = getDefaultUnit(targetSec.id);
     const isVol = ['3.1', '3.2', '4', '5'].includes(targetSec.id);
-    const isLengthKm = ['1', '2', '6', '7', '8', '9', '10', '11', '12'].includes(targetSec.id);
+    const isLengthKm = ['1', '2', '6', '7', '8', '9', '10', '11', '12', '18'].includes(targetSec.id);
 
     const newAct: DailyActivityRecord = {
       id: 'act_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
@@ -1890,7 +1892,7 @@ export default function DailyActivitiesView({
   };
 
   const handleExportCSV = () => {
-    const headers = ['Section ID', 'Activity Name', 'Description', 'Station / Location', 'Side', 'Unit', 'Daily Qty', 'Previous Total', 'Daily Executed', 'To Date Progress (%)', 'Status'];
+    const headers = ['Section ID', 'Activity Name', 'Description', 'Station / Location', 'Side', 'Unit', 'Daily Qty', 'Previous Total', 'Daily Executed', 'To Date Progress (%)', 'Remarks & Observations', 'Completion Status', 'QC Status'];
     const rows = currentActivities.map(a => {
       let toDate = 0;
       if (a.activityType === '14') {
@@ -1939,6 +1941,8 @@ export default function DailyActivitiesView({
         a.pipePreviousPct || 0,
         a.pipeDailyProgressPct || 0,
         toDate,
+        `"${(a.remarks || '').replace(/"/g, '""')}"`,
+        `"${a.isComplete ? 'Complete' : 'Pending'}"`,
         `"${a.qcStatus || 'Approved'}"`
       ].join(',');
     });
