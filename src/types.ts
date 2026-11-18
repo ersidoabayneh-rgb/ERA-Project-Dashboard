@@ -870,6 +870,7 @@ export interface DailyActivityRecord {
   priority?: 'High' | 'Medium' | 'Low'; // Priority level with color coding
   recordKind?: string;
   materialsList?: DailyMaterialItem[];
+  isComplete?: boolean; // Track row completion status
   
   // Activity Category & Work Item (Mapping to 1-16 sections)
   activityType: string; // e.g., '1. Clearing and Grubbing', '5. Embankment Construction'

@@ -278,6 +278,37 @@ export const WORK_SECTIONS: WorkRegisterSectionDef[] = [
   { id: '17', name: 'Bridge Construction', isSpecial: true, metrics: [] }
 ];
 
+export function deduplicateSections(list: WorkRegisterSectionDef[]): WorkRegisterSectionDef[] {
+  const seen = new Set<string>();
+  return list.filter(item => {
+    if (!item || !item.id || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
+function loadActiveSectionsForProject(projectId: string): WorkRegisterSectionDef[] {
+  try {
+    const stored = localStorage.getItem(`era_active_sections_${projectId}`);
+    if (stored) {
+      const parsed = deduplicateSections(JSON.parse(stored));
+      const hasBox = parsed.some(s => s.id === '15' && s.name.includes('Box'));
+      const hasSlab = parsed.some(s => s.id === '16' && s.name.includes('Slab'));
+      const hasBridge = parsed.some(s => s.id === '17');
+      const hasDitch = parsed.some(s => s.id === '18');
+      if (!hasBox || !hasSlab || !hasBridge || !hasDitch || parsed.some(s => s.id === '14.1' || s.id === '14.2')) {
+        localStorage.setItem(`era_active_sections_${projectId}`, JSON.stringify(WORK_SECTIONS));
+        return WORK_SECTIONS;
+      }
+      if (parsed.length > 0) {
+        localStorage.setItem(`era_active_sections_${projectId}`, JSON.stringify(parsed));
+        return parsed;
+      }
+    }
+  } catch {}
+  return WORK_SECTIONS;
+}
+
 export const STANDSTILL_REASONS = [
   'Inclement Weather / Heavy Rain',
   'Mechanical Fleet Breakdown',
@@ -520,24 +551,11 @@ export default function DailyActivitiesView({
   const [newTemplateDesc, setNewTemplateDesc] = useState('');
 
   // Dynamic Activity Sections List (Allows deleting from activities and re-adding)
-  const [sections, setSections] = useState<WorkRegisterSectionDef[]>(() => {
-    try {
-      const stored = localStorage.getItem(`era_active_sections_${project.id}`);
-      if (stored) {
-        const parsed: WorkRegisterSectionDef[] = JSON.parse(stored);
-        const hasBox = parsed.some(s => s.id === '15' && s.name.includes('Box'));
-        const hasSlab = parsed.some(s => s.id === '16' && s.name.includes('Slab'));
-        const hasBridge = parsed.some(s => s.id === '17');
-        const hasDitch = parsed.some(s => s.id === '18');
-        if (!hasBox || !hasSlab || !hasBridge || !hasDitch || parsed.some(s => s.id === '14.1' || s.id === '14.2')) {
-          localStorage.setItem(`era_active_sections_${project.id}`, JSON.stringify(WORK_SECTIONS));
-          return WORK_SECTIONS;
-        }
-        return parsed;
-      }
-    } catch {}
-    return WORK_SECTIONS;
-  });
+  const [sections, setSections] = useState<WorkRegisterSectionDef[]>(() => loadActiveSectionsForProject(project.id));
+
+  useEffect(() => {
+    setSections(loadActiveSectionsForProject(project.id));
+  }, [project.id]);
 
   // Structure Views Visibility (Hide / Show) for Pipe, Box Culvert, Slab Culvert, Bridge
   const [hiddenStructureViews, setHiddenStructureViews] = useState<{
@@ -1651,7 +1669,7 @@ export default function DailyActivitiesView({
 
   // ADD BACK AN ACTIVITY FROM THE EXISTING STANDARD ACTIVITIES
   const handleAddBackStandardSection = (sec: WorkRegisterSectionDef) => {
-    const updated = [...sections, sec].sort((a, b) => {
+    const updated = deduplicateSections([...sections, sec]).sort((a, b) => {
       const idxA = WORK_SECTIONS.findIndex(s => s.id === a.id);
       const idxB = WORK_SECTIONS.findIndex(s => s.id === b.id);
       return (idxA !== -1 ? idxA : 999) - (idxB !== -1 ? idxB : 999);
@@ -1668,6 +1686,30 @@ export default function DailyActivitiesView({
       localStorage.setItem(`era_active_sections_${project.id}`, JSON.stringify(WORK_SECTIONS));
     } catch {}
     setIsAddSectionOpen(false);
+  };
+
+  const handleMoveSectionUp = (index: number) => {
+    if (index <= 0) return;
+    const updated = [...sections];
+    const temp = updated[index];
+    updated[index] = updated[index - 1];
+    updated[index - 1] = temp;
+    setSections(updated);
+    try {
+      localStorage.setItem(`era_active_sections_${project.id}`, JSON.stringify(updated));
+    } catch {}
+  };
+
+  const handleMoveSectionDown = (index: number) => {
+    if (index >= sections.length - 1) return;
+    const updated = [...sections];
+    const temp = updated[index];
+    updated[index] = updated[index + 1];
+    updated[index + 1] = temp;
+    setSections(updated);
+    try {
+      localStorage.setItem(`era_active_sections_${project.id}`, JSON.stringify(updated));
+    } catch {}
   };
 
   const handleClearSectionEntries = (sectionId: string) => {
@@ -1741,14 +1783,27 @@ export default function DailyActivitiesView({
 
   const handleAddCustomSection = () => {
     if (!newSectionName.trim()) return;
-    const code = newSectionCode.trim() || `${sections.length + 1}`;
+    let code = newSectionCode.trim();
+    if (!code) {
+      let nextNum = sections.length + 1;
+      while (sections.some(s => s.id === String(nextNum))) {
+        nextNum += 1;
+      }
+      code = String(nextNum);
+    } else if (sections.some(s => s.id === code)) {
+      let suffix = 2;
+      while (sections.some(s => s.id === `${code}.${suffix}`)) {
+        suffix += 1;
+      }
+      code = `${code}.${suffix}`;
+    }
     const newSec: WorkRegisterSectionDef = {
       id: code,
       name: newSectionName.trim(),
       metrics: ['Description of Work', 'Station of Work', 'Side', 'Daily Progress', 'Daily Executed (m)', 'Net Daily Executed (km)'],
       isCustom: true
     };
-    setSections([...sections, newSec]);
+    setSections(deduplicateSections([...sections, newSec]));
     setNewSectionName('');
     setNewSectionCode('');
     setIsAddSectionOpen(false);
@@ -2823,8 +2878,8 @@ export default function DailyActivitiesView({
                     className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
                     aria-label="Select Work Section"
                   >
-                    {sections.filter(s => !s.isSpecial).map(s => (
-                      <option key={s.id} value={s.id}>
+                    {sections.filter(s => !s.isSpecial).map((s, sIdx) => (
+                      <option key={`quick-sec-${s.id}-${sIdx}`} value={s.id}>
                         {s.customLabel || s.id}. {s.name} ({getDefaultUnit(s.id)})
                       </option>
                     ))}
@@ -3016,11 +3071,13 @@ export default function DailyActivitiesView({
                     <th className="p-2.5 w-24 text-center border-r border-slate-200 text-slate-500">Previous Total</th>
                     <th className="p-2.5 w-24 text-center border-r border-slate-200 text-blue-700">Daily Executed</th>
                     <th className="p-2.5 w-28 text-center border-r border-slate-200 text-rose-600 font-bold">Cumulative (To Date)</th>
+                    <th className="p-2.5 w-36 border-r border-slate-200 text-slate-700 font-bold">Remarks &amp; Observations</th>
+                    <th className="p-2.5 w-24 text-center border-r border-slate-200 text-emerald-700 font-bold">Status</th>
                     {!isReadonly && <th className="p-2.5 w-20 text-center print:hidden">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {sections.length > 0 ? sections.map(sec => {
+                  {sections.length > 0 ? sections.map((sec, secIdx) => {
                     const secActivities = currentActivities.filter(a => {
                       if (sec.id === '14') {
                         return a.activityType === '14' || Boolean(a.pipeLocation && !a.boxCulvertLocation && !a.slabCulvertLocation && !a.bridgeLocation);
@@ -3077,8 +3134,8 @@ export default function DailyActivitiesView({
                       const totalKm = secActivities.reduce((acc, a) => acc + (Number(a.metricKm) || 0), 0);
 
                       return (
-                        <tr key="sec_14" className="border-b-2 border-slate-300">
-                          <td colSpan={isBulkEditMode ? 11 : 10} className="p-0">
+                        <tr key={`sec_14_${secIdx}`} className="border-b-2 border-slate-300">
+                          <td colSpan={isBulkEditMode ? (isReadonly ? 12 : 13) : (isReadonly ? 11 : 12)} className="p-0">
                             <div className="bg-white border-y-2 border-blue-600/30">
                               
                               {/* 14. RCP Construction Section Title Header */}
@@ -3326,7 +3383,7 @@ export default function DailyActivitiesView({
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
                                     {pipeActivities.length > 0 ? (
-                                      pipeActivities.map(act => {
+                                      pipeActivities.map((act, actIdx) => {
                                         const loc = act.pipeLocation || act.startStationKm || '200+000';
                                         const activeStage = act.pipeSelectedStage || 'Excavation';
                                         const exc = act.pipeExcavationPct ?? 100;
@@ -3338,7 +3395,7 @@ export default function DailyActivitiesView({
                                         const toDateVal = act.pipeToDatePct !== undefined ? act.pipeToDatePct : toDateCalculated;
 
                                         return (
-                                          <tr key={act.id} className="hover:bg-slate-50 transition border-b border-slate-200 text-xs text-slate-800">
+                                          <tr key={`pipe-${act.id}-${actIdx}`} className="hover:bg-slate-50 transition border-b border-slate-200 text-xs text-slate-800">
                                             {isBulkEditMode && (
                                               <td className="p-1.5 text-center border-r border-slate-200 print:hidden">
                                                 <input
@@ -3616,8 +3673,8 @@ export default function DailyActivitiesView({
                       const totalKm = secActivities.reduce((acc, a) => acc + (Number(a.metricKm) || 0), 0);
 
                       return (
-                        <tr key={`sec_box_${sec.id}`} className="border-b-2 border-slate-300">
-                          <td colSpan={isBulkEditMode ? 11 : 10} className="p-0">
+                        <tr key={`sec_box_${sec.id}_${secIdx}`} className="border-b-2 border-slate-300">
+                          <td colSpan={isBulkEditMode ? (isReadonly ? 12 : 13) : (isReadonly ? 11 : 12)} className="p-0">
                             <div className="bg-white border-y-2 border-emerald-600/30">
                               
                               {/* 15. Box Culvert Header */}
@@ -3866,7 +3923,7 @@ export default function DailyActivitiesView({
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
                                     {boxActivities.length > 0 ? (
-                                      boxActivities.map(act => {
+                                      boxActivities.map((act, actIdx) => {
                                         const loc = act.boxCulvertLocation || act.startStationKm || 'Km 195+600';
                                         const activeStage = act.boxCulvertSelectedStage || 'Excavation & Blinding';
                                         const exc = act.boxExcavationPct ?? 100;
@@ -3879,7 +3936,7 @@ export default function DailyActivitiesView({
                                         const toDateVal = act.pipeToDatePct !== undefined ? act.pipeToDatePct : toDateCalculated;
 
                                         return (
-                                          <tr key={act.id} className="hover:bg-emerald-50/30 transition border-b border-slate-200 text-xs text-slate-800">
+                                          <tr key={`box-${act.id}-${actIdx}`} className="hover:bg-emerald-50/30 transition border-b border-slate-200 text-xs text-slate-800">
                                             {isBulkEditMode && (
                                               <td className="p-1.5 text-center border-r border-slate-200 print:hidden">
                                                 <input
@@ -4116,8 +4173,8 @@ export default function DailyActivitiesView({
                       const totalKm = secActivities.reduce((acc, a) => acc + (Number(a.metricKm) || 0), 0);
 
                       return (
-                        <tr key={`sec_slab_${sec.id}`} className="border-b-2 border-slate-300">
-                          <td colSpan={isBulkEditMode ? 11 : 10} className="p-0">
+                        <tr key={`sec_slab_${sec.id}_${secIdx}`} className="border-b-2 border-slate-300">
+                          <td colSpan={isBulkEditMode ? (isReadonly ? 12 : 13) : (isReadonly ? 11 : 12)} className="p-0">
                             <div className="bg-white border-y-2 border-indigo-600/30">
                               
                               {/* 16. Slab Culvert Header */}
@@ -4366,7 +4423,7 @@ export default function DailyActivitiesView({
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
                                     {slabActivities.length > 0 ? (
-                                      slabActivities.map(act => {
+                                      slabActivities.map((act, actIdx) => {
                                         const loc = act.slabCulvertLocation || act.startStationKm || 'Km 197+200';
                                         const activeStage = act.slabCulvertSelectedStage || 'Excavation & Footing';
                                         const exc = act.slabExcavationPct ?? 100;
@@ -4379,7 +4436,7 @@ export default function DailyActivitiesView({
                                         const toDateVal = act.pipeToDatePct !== undefined ? act.pipeToDatePct : toDateCalculated;
 
                                         return (
-                                          <tr key={act.id} className="hover:bg-indigo-50/30 transition border-b border-slate-200 text-xs text-slate-800">
+                                          <tr key={`slab-${act.id}-${actIdx}`} className="hover:bg-indigo-50/30 transition border-b border-slate-200 text-xs text-slate-800">
                                             {isBulkEditMode && (
                                               <td className="p-1.5 text-center border-r border-slate-200 print:hidden">
                                                 <input
@@ -4616,8 +4673,8 @@ export default function DailyActivitiesView({
                       const totalKm = secActivities.reduce((acc, a) => acc + (Number(a.metricKm) || 0), 0);
 
                       return (
-                        <tr key={`sec_bridge_${sec.id}`} className="border-b-2 border-slate-300">
-                          <td colSpan={isBulkEditMode ? 11 : 10} className="p-0">
+                        <tr key={`sec_bridge_${sec.id}_${secIdx}`} className="border-b-2 border-slate-300">
+                          <td colSpan={isBulkEditMode ? (isReadonly ? 12 : 13) : (isReadonly ? 11 : 12)} className="p-0">
                             <div className="bg-white border-y-2 border-amber-600/30">
                               
                               {/* 17. Bridge Construction Header */}
@@ -4866,7 +4923,7 @@ export default function DailyActivitiesView({
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
                                     {bridgeActivities.length > 0 ? (
-                                      bridgeActivities.map(act => {
+                                      bridgeActivities.map((act, actIdx) => {
                                         const loc = act.bridgeLocation || act.startStationKm || 'Bridge Structure';
                                         const activeStage = act.bridgeSelectedStage || 'Foundation';
                                         const fnd = act.bridgeFoundationPct ?? 100;
@@ -4879,7 +4936,7 @@ export default function DailyActivitiesView({
                                         const toDateVal = act.bridgeToDate !== undefined ? act.bridgeToDate : toDateCalculated;
 
                                         return (
-                                          <tr key={act.id} className="hover:bg-amber-50/30 transition border-b border-slate-200 text-xs text-slate-800">
+                                          <tr key={`bridge-${act.id}-${actIdx}`} className="hover:bg-amber-50/30 transition border-b border-slate-200 text-xs text-slate-800">
                                             {isBulkEditMode && (
                                               <td className="p-1.5 text-center border-r border-slate-200 print:hidden">
                                                 <input
@@ -5099,7 +5156,7 @@ export default function DailyActivitiesView({
                     }
 
                     return (
-                      <React.Fragment key={sec.id}>
+                      <React.Fragment key={`sec_${sec.id}_${secIdx}`}>
                         {/* Section Header Row with DELETE & ADD ENTRY controls */}
                         <tr className="bg-slate-50/70 hover:bg-slate-100/50 transition font-medium group">
                           {isBulkEditMode && <td className="p-2 border-r border-slate-200 print:hidden"></td>}
@@ -5132,21 +5189,21 @@ export default function DailyActivitiesView({
 
                           {secActivities.length === 0 ? (
                             <>
-                              <td className="p-2 text-center text-slate-400 italic" colSpan={4}>
+                              <td className="p-2 text-center text-slate-400 italic" colSpan={6}>
                                 No work executed today
                               </td>
                               {!isReadonly && <td className="p-2 border-l border-slate-200 print:hidden"></td>}
                             </>
                           ) : (
-                            <td colSpan={9} className="p-0"></td>
+                            <td colSpan={isReadonly ? 10 : 11} className="p-0"></td>
                           )}
                         </tr>
 
                         {/* Section Entry Rows */}
-                        {secActivities.map(act => {
+                        {secActivities.map((act, actIdx) => {
                           const currentUnit = act.unit || defaultUnit;
                           return (
-                            <tr key={act.id} className={`hover:bg-slate-50 transition text-slate-800 ${selectedRowIds.includes(act.id) ? 'bg-amber-50/60' : ''}`}>
+                            <tr key={`act-${sec.id}-${act.id}-${actIdx}`} className={`hover:bg-slate-50 transition text-slate-800 ${selectedRowIds.includes(act.id) ? 'bg-amber-50/60' : ''}`}>
                               {isBulkEditMode && (
                                 <td className="p-2 text-center border-r border-slate-200 print:hidden">
                                   <input 
@@ -5228,6 +5285,39 @@ export default function DailyActivitiesView({
                               <td className="p-2 border-r border-slate-200 text-center font-bold text-rose-600">
                                 {(totals.previous + (Number(act.metricKm) || Number(act.metricM3) || 0)).toFixed(2)} {currentUnit}
                               </td>
+
+                              {/* REMARKS & OBSERVATIONS INPUT CELL */}
+                              <td className="p-1.5 border-r border-slate-200">
+                                <input 
+                                  value={act.remarks || ''} 
+                                  onChange={e => handleCellUpdate(act.id, 'remarks', e.target.value)}
+                                  placeholder="Specific remarks, notes or observations..."
+                                  className="w-full bg-transparent px-1.5 py-0.5 text-xs outline-none focus:bg-white rounded text-slate-700 dark:text-slate-200"
+                                />
+                              </td>
+
+                              {/* COMPLETE TOGGLE / CHECKBOX */}
+                              <td className="p-2 border-r border-slate-200 text-center align-middle">
+                                {(() => {
+                                  const isComplete = Boolean(act.isComplete);
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCellUpdate(act.id, 'isComplete', !isComplete)}
+                                      title={isComplete ? "Marked as Complete. Click to set Pending." : "Click to mark activity as Complete"}
+                                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer shadow-2xs ${
+                                        isComplete
+                                          ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200'
+                                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-300'
+                                      }`}
+                                    >
+                                      {isComplete ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <Square className="w-3.5 h-3.5" />}
+                                      <span>{isComplete ? 'Complete' : 'Pending'}</span>
+                                    </button>
+                                  );
+                                })()}
+                              </td>
+
                               {!isReadonly && (
                                 <td className="p-1.5 text-center print:hidden">
                                   <div className="flex items-center justify-center gap-1">
@@ -5624,134 +5714,7 @@ export default function DailyActivitiesView({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Equipment Fleet Deployment Table */}
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-                <div className="p-3 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <Truck className="w-4 h-4 text-blue-600" />
-                    <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase">3.1 Equipment / Machinery Fleet Deployment</h3>
-                  </div>
-                  {!isReadonly && (
-                    <div className="flex items-center gap-2 print:hidden">
-                      <button 
-                        onClick={() => {
-                          const list: EquipmentFleetItem[] = [...equipmentFleet, { id: 'eq_' + Date.now(), name: 'New Equipment Unit', typeCapacity: 'Standard Capacity', status: 'Operating', workingHours: 8.0, remarks: 'On active section' }];
-                          setEquipmentFleet(list);
-                          scheduleResourceSync({ equipmentFleet: list }, 'Added equipment fleet unit');
-                        }}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                      >
-                        + Add Fleet
-                      </button>
-                      {equipmentFleet.length > 0 && (
-                        <button 
-                          onClick={() => {
-                            if (!confirm('Clear all equipment from this list?')) return;
-                            setEquipmentFleet([]);
-                            scheduleResourceSync({ equipmentFleet: [] }, 'Cleared daily equipment fleet');
-                          }}
-                          className="text-xs text-rose-500 hover:text-rose-700"
-                          title="Clear all fleet items"
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-[11px]">
-                        <th className="p-2 border-r border-slate-200 dark:border-slate-700">Equipment Name</th>
-                        <th className="p-2 w-24 border-r border-slate-200 dark:border-slate-700">Status</th>
-                        <th className="p-2 w-16 text-center border-r border-slate-200 dark:border-slate-700">Hours</th>
-                        <th className="p-2 border-r border-slate-200 dark:border-slate-700">Location &amp; Remarks</th>
-                        {!isReadonly && <th className="p-2 w-8 text-center print:hidden"></th>}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {equipmentFleet.length > 0 ? equipmentFleet.map((eq, idx) => (
-                        <tr key={eq.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                          <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 font-medium">
-                            <input 
-                              value={eq.name} 
-                              onChange={e => {
-                                const list = equipmentFleet.map((item, i) => i === idx ? { ...item, name: e.target.value } : item);
-                                setEquipmentFleet(list);
-                                scheduleResourceSync({ equipmentFleet: list }, 'Updated equipment fleet name');
-                              }}
-                              className="w-full bg-transparent px-1 py-0.5 outline-none focus:bg-white dark:focus:bg-slate-900 rounded font-medium text-slate-800 dark:text-slate-100"
-                            />
-                          </td>
-                          <td className="p-1.5 border-r border-slate-200 dark:border-slate-700">
-                            <select 
-                              value={eq.status}
-                              onChange={e => {
-                                const list = equipmentFleet.map((item, i) => i === idx ? { ...item, status: e.target.value as EquipmentFleetItem['status'] } : item);
-                                setEquipmentFleet(list);
-                                scheduleResourceSync({ equipmentFleet: list }, 'Updated equipment fleet status');
-                              }}
-                              className="w-full bg-transparent text-[11px] font-bold outline-none cursor-pointer"
-                            >
-                              <option value="Operating">🟢 Operating</option>
-                              <option value="Standby">🟡 Standby</option>
-                              <option value="Breakdown">🔴 Breakdown</option>
-                              <option value="Maintenance">🔧 Maint.</option>
-                            </select>
-                          </td>
-                          <td className="p-1.5 text-center border-r border-slate-200 dark:border-slate-700">
-                            <input 
-                              type="number"
-                              value={eq.workingHours}
-                              onChange={e => {
-                                const list = equipmentFleet.map((item, i) => i === idx ? { ...item, workingHours: parseFloat(e.target.value) || 0 } : item);
-                                setEquipmentFleet(list);
-                                scheduleResourceSync({ equipmentFleet: list }, 'Updated equipment working hours');
-                              }}
-                              className="w-full text-center bg-transparent px-1 py-0.5 outline-none font-medium tabular-nums"
-                            />
-                          </td>
-                          <td className="p-1.5 border-r border-slate-200 dark:border-slate-700">
-                            <input 
-                              value={eq.remarks}
-                              onChange={e => {
-                                const list = equipmentFleet.map((item, i) => i === idx ? { ...item, remarks: e.target.value } : item);
-                                setEquipmentFleet(list);
-                                scheduleResourceSync({ equipmentFleet: list }, 'Updated equipment remarks');
-                              }}
-                              className="w-full bg-transparent px-1 py-0.5 outline-none text-slate-600 dark:text-slate-300"
-                              placeholder="Assignment..."
-                            />
-                          </td>
-                          {!isReadonly && (
-                            <td className="p-1 text-center print:hidden">
-                              <button 
-                                onClick={() => {
-                                  const list = equipmentFleet.filter((_, i) => i !== idx);
-                                  setEquipmentFleet(list);
-                                  scheduleResourceSync({ equipmentFleet: list }, 'Deleted equipment fleet item');
-                                }}
-                                className="text-slate-400 hover:text-rose-600 p-0.5 rounded"
-                                title="Delete row"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      )) : (
-                        <tr>
-                          <td colSpan={5} className="p-3 text-center text-slate-400 italic">
-                            No fleet equipment listed. Click "+ Add Fleet" above to add bulldozers, rollers, or trucks.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
 
               {/* Material Received / Used Tracker */}
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
@@ -6169,11 +6132,47 @@ export default function DailyActivitiesView({
 
             <div className="p-5 space-y-5 text-xs max-h-[70vh] overflow-y-auto">
               
-              {/* Section 1: Standard 16 Activities Catalog */}
+              {/* Section 1: Reorder Active Sections */}
               <div>
+                <span className="font-bold text-slate-800 uppercase text-[11px] block mb-2">
+                  1. Reorder Active Sections (Move Up / Down)
+                </span>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {sections.map((s, idx) => (
+                    <div key={`reorder-sec-${s.id}-${idx}`} className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-slate-50">
+                      <span className="font-bold text-slate-800 text-[11px] truncate max-w-[280px]">
+                        {s.id}. {s.name}
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleMoveSectionUp(idx)}
+                          disabled={idx === 0}
+                          className="p-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Move Up"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveSectionDown(idx)}
+                          disabled={idx === sections.length - 1}
+                          className="p-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Move Down"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Section 2: Standard ERA Activities Catalog */}
+              <div className="border-t border-slate-200 pt-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-bold text-slate-800 uppercase text-[11px] flex items-center gap-1">
-                    <span>1. Standard 16 ERA Activities</span>
+                    <span>2. Standard ERA Activities</span>
                     {removedStandardSections.length > 0 && (
                       <span className="text-blue-600 font-semibold lowercase text-[10px]">({removedStandardSections.length} available to add)</span>
                     )}
@@ -6183,15 +6182,15 @@ export default function DailyActivitiesView({
                       onClick={handleRestoreAllStandardSections}
                       className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"
                     >
-                      <RotateCcw className="w-3 h-3" /> Restore All 16
+                      <RotateCcw className="w-3 h-3" /> Restore All ({WORK_SECTIONS.length})
                     </button>
                   )}
                 </div>
 
                 {removedStandardSections.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {removedStandardSections.map(s => (
-                      <div key={s.id} className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50/50 transition">
+                    {removedStandardSections.map((s, sIdx) => (
+                      <div key={`removed-sec-${s.id}-${sIdx}`} className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50/50 transition">
                         <span className="font-medium text-slate-800 truncate text-[11px]">{s.id}. {s.name}</span>
                         <button 
                           onClick={() => handleAddBackStandardSection(s)}
@@ -6205,15 +6204,15 @@ export default function DailyActivitiesView({
                 ) : (
                   <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 text-emerald-800 text-[11px] flex items-center gap-2">
                     <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>All 16 standard ERA activities are currently active in your register. You can delete any from the table header.</span>
+                    <span>All {WORK_SECTIONS.length} standard ERA activities are currently active in your register. You can delete any from the table header.</span>
                   </div>
                 )}
               </div>
 
-              {/* Section 2: Create Custom Activity Section */}
+              {/* Section 3: Create Custom Activity Section */}
               <div className="border-t border-slate-200 pt-4">
                 <span className="font-bold text-slate-800 uppercase text-[11px] block mb-2">
-                  2. Create Custom Activity Section
+                  3. Create Custom Activity Section
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="sm:col-span-1">
@@ -6386,8 +6385,8 @@ export default function DailyActivitiesView({
                   1. Load Activity Template into {formatDisplayDate(selectedDate)}
                 </h4>
                 <div className="space-y-2.5">
-                  {templates.map(tpl => (
-                    <div key={tpl.id} className="p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50/40 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  {templates.map((tpl, tplIdx) => (
+                    <div key={`tpl-${tpl.id}-${tplIdx}`} className="p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50/40 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
                         <div className="font-bold text-slate-900 text-xs">{tpl.name}</div>
                         <div className="text-[11px] text-slate-500 mt-0.5">{tpl.description}</div>
