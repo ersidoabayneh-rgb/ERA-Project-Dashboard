@@ -65,6 +65,11 @@ import {
   syncProgressPlanHistoryToPersistentStorage, 
   restoreProgressPlanHistoryFromPersistentStorage 
 } from './lib/dailyBackupScheduler';
+import {
+  hasArchiveExclusionStatus,
+  syncProjectReportExclusionFlag,
+  syncProjectsReportExclusionFlags
+} from './lib/reportExclusionUtils';
 
 export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
@@ -602,6 +607,19 @@ export default function App() {
   // Database States
   const [projects, setProjects] = useState<Project[]>([]);
   const [nowTimer, setNowTimer] = useState(Date.now());
+
+  // Automated utility watcher: identifies projects with 'Completed and Closed', 'Terminated and Closed',
+  // or 'Archived' status and automatically sets excludeFromReports: true in the project state.
+  useEffect(() => {
+    const needsSync = projects.some(p => {
+      const shouldExclude = hasArchiveExclusionStatus(p.status);
+      return shouldExclude ? p.excludeFromReports !== true : p.excludeFromReports === undefined;
+    });
+    if (!needsSync) return;
+    const synced = syncProjectsReportExclusionFlags(projects);
+    setProjects(synced);
+    safeSetItem('era_proj_v28', JSON.stringify(synced));
+  }, [projects]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -3008,12 +3026,13 @@ let isBatchSyncRunning = false;
       return;
     }
 
-    const updated = [...projects, np];
+    const syncedNp = syncProjectReportExclusionFlag(np);
+    const updated = [...projects, syncedNp];
     setProjects(updated);
     safeSetItem('era_proj_v28', JSON.stringify(updated));
 
     // Sync to Cloud Databases in real-time
-    safeSyncProject(np).catch(err => {
+    safeSyncProject(syncedNp).catch(err => {
       console.warn('Project creation cloud sync fell back to local storage:', err);
     });
   };
@@ -3153,6 +3172,7 @@ let isBatchSyncRunning = false;
         return {
           ...p,
           status: newStatus,
+          excludeFromReports: isNowClosed,
           completionDate: compDate,
           dlpStartDate: p.dlpStartDate || compDate,
           dlpDays: typeof p.dlpDays === 'number' ? p.dlpDays : 365,
@@ -3674,14 +3694,15 @@ let isBatchSyncRunning = false;
     }
 
     // Persist into projects database (authorized non-editor roles)
-    const updatedProjects = projects.map(p => p.id === currentProject.id ? updatedProject : p);
+    const syncedUpdatedProject = syncProjectReportExclusionFlag(updatedProject);
+    const updatedProjects = projects.map(p => p.id === currentProject.id ? syncedUpdatedProject : p);
     setProjects(updatedProjects);
-    setCurrentProject(updatedProject);
-    setEditConsultant(updatedProject.consultant || updatedProject.supervisionConsultant?.firmName || '');
+    setCurrentProject(syncedUpdatedProject);
+    setEditConsultant(syncedUpdatedProject.consultant || syncedUpdatedProject.supervisionConsultant?.firmName || '');
     safeSetItem('era_proj_v28', JSON.stringify(updatedProjects));
 
     // Sync current update to Cloud Databases in real-time
-    safeSyncProject(updatedProject).catch(err => {
+    safeSyncProject(syncedUpdatedProject).catch(err => {
       console.warn('Project update cloud sync fell back to local storage:', err);
     });
   };

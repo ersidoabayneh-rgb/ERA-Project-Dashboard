@@ -3,6 +3,7 @@ import { db } from './firebase';
 import { doc, setDoc, deleteDoc, getDocs, getDoc, collection } from 'firebase/firestore';
 import { defaultProjectTemplate, defaultZeroRowMetrics } from '../data/defaultProject';
 import { safeDispatchCustomEvent } from './storage';
+import { syncProjectReportExclusionFlag } from './reportExclusionUtils';
 
 export enum OperationType {
   CREATE = 'create',
@@ -196,7 +197,7 @@ export function normalizeProject(p: any): Project {
   } else {
     linkedConsultantFirm = scFirm || cFirm || tmpl.supervisionConsultant?.firmName || tmpl.consultant || '';
   }
-  return {
+  return syncProjectReportExclusionFlag({
     ...p,
     consultant: linkedConsultantFirm,
     origDays: typeof p.origDays === 'string' ? parseFloat(p.origDays) || 0 : (p.origDays || 0),
@@ -239,7 +240,7 @@ export function normalizeProject(p: any): Project {
       ...tmpl.supervisionConsultant,
       firmName: linkedConsultantFirm
     } : undefined)
-  };
+  });
 }
 
 /**

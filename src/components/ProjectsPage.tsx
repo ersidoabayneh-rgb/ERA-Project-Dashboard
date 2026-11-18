@@ -49,6 +49,8 @@ import { Project, User, ApprovalRequest, ProjectLifecycleStatus, isProjectClosed
 import { canUserApproveRequest, hasApprovalCredentials } from '../App';
 import eraLogo from '../assets/logo.png';
 import GroupReportGenerator from './GroupReportGenerator';
+import ProjectLifecycleStatusDropdown from './ProjectLifecycleStatusDropdown';
+import { isProjectExcludedFromReports } from '../lib/reportExclusionUtils';
 import { downloadUserManual } from '../data/userManual';
 
 interface ProjectsPageProps {
@@ -552,11 +554,11 @@ export default function ProjectsPage({
   }, [projects, isMasterAdmin, currentUserObj]);
 
   const activeContractsCount = useMemo(() => {
-    return accessibleProjects.filter(p => !isProjectClosed(p.status)).length;
+    return accessibleProjects.filter(p => !isProjectExcludedFromReports(p)).length;
   }, [accessibleProjects]);
 
   const archivedContractsCount = useMemo(() => {
-    return accessibleProjects.filter(p => isProjectClosed(p.status)).length;
+    return accessibleProjects.filter(p => isProjectExcludedFromReports(p)).length;
   }, [accessibleProjects]);
 
   const availableClassifications = useMemo(() => {
@@ -609,14 +611,14 @@ export default function ProjectsPage({
       .filter(p => {
         if (selectedStatusFilter === 'All') {
           // Default active portfolio view: only active lifecycles (hide completed & closed, terminated & closed, archived)
-          return !isProjectClosed(p.status);
+          return !isProjectExcludedFromReports(p);
         }
         if (selectedStatusFilter === 'All_With_Archived') {
           return true;
         }
         if (selectedStatusFilter === 'Archived') {
           // Archive Repository: shows all completed & closed, terminated & closed, and archived contracts
-          return isProjectClosed(p.status);
+          return isProjectExcludedFromReports(p);
         }
         return (p.status || 'In Progress') === selectedStatusFilter;
       })
@@ -1384,38 +1386,12 @@ export default function ProjectsPage({
             </span>
 
             {canManageStatus(p) ? (
-              <div 
-                className="flex items-center gap-1" 
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <select
-                  value={p.status || 'In Progress'}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    const newStatus = e.target.value as ProjectLifecycleStatus;
-                    handleStatusChange(p, newStatus);
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className={`text-[9.5px] font-extrabold uppercase px-2 py-0.5 rounded-lg border outline-none cursor-pointer transition shadow-2xs ${getLifecycleStatusBadge(p.status).style}`}
-                  title={isProjectClosed(p.status) ? "Project is in Archive (Closed). Only Master Admin has privilege to reopen or change its lifecycle." : "Change project lifecycle status (Directorate Admin only)"}
-                >
-                  <optgroup label="Active Portfolio">
-                    <option value="In Progress">🟢 In Progress</option>
-                    <option value="Completed">✅ Completed</option>
-                    <option value="Suspended">⏸️ Suspended</option>
-                    <option value="Terminated">🛑 Terminated</option>
-                  </optgroup>
-                  <optgroup label="Archive Repository (Closed)">
-                    <option value="Completed and Closed">🔒 Completed & Closed (Archive)</option>
-                    <option value="Terminated and Closed">🔒 Terminated & Closed (Archive)</option>
-                    <option value="Archived">📦 Archived</option>
-                  </optgroup>
-                </select>
-              </div>
+              <ProjectLifecycleStatusDropdown
+                status={p.status}
+                onChangeStatus={(newStatus) => handleStatusChange(p, newStatus)}
+                currentUserObj={currentUserObj}
+                size="compact"
+              />
             ) : (
               <span 
                 className={`text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded-lg border flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}
@@ -1670,28 +1646,12 @@ export default function ProjectsPage({
         {/* Status */}
         <td className="py-2 px-3 align-middle" onClick={(e) => e.stopPropagation()}>
           {canManageStatus(p) ? (
-            <select
-              value={p.status || 'In Progress'}
-              onChange={(e) => {
-                e.stopPropagation();
-                const newStatus = e.target.value as ProjectLifecycleStatus;
-                handleStatusChange(p, newStatus);
-              }}
-              className={`text-[10px] font-extrabold uppercase px-2 py-1 rounded-lg border outline-none cursor-pointer transition shadow-2xs ${getLifecycleStatusBadge(p.status).style}`}
-              title={isProjectClosed(p.status) ? "Project is in Archive (Closed). Only Master Admin has privilege to reopen or change its lifecycle." : "Change project lifecycle status (Directorate Admin only)"}
-            >
-              <optgroup label="Active Portfolio">
-                <option value="In Progress">🟢 In Progress</option>
-                <option value="Completed">✅ Completed</option>
-                <option value="Suspended">⏸️ Suspended</option>
-                <option value="Terminated">🛑 Terminated</option>
-              </optgroup>
-              <optgroup label="Archive Repository (Closed)">
-                <option value="Completed and Closed">🔒 Completed & Closed (Archive)</option>
-                <option value="Terminated and Closed">🔒 Terminated & Closed (Archive)</option>
-                <option value="Archived">📦 Archived</option>
-              </optgroup>
-            </select>
+            <ProjectLifecycleStatusDropdown
+              status={p.status}
+              onChangeStatus={(newStatus) => handleStatusChange(p, newStatus)}
+              currentUserObj={currentUserObj}
+              size="compact"
+            />
           ) : (
             <span 
               className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-lg border inline-flex items-center gap-1 ${getLifecycleStatusBadge(p.status).style}`}

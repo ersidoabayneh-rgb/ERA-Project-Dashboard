@@ -681,6 +681,9 @@ export interface Project {
   consultant: string;
   contractor: string;
   status?: ProjectLifecycleStatus;
+  excludeFromReports?: boolean; // Automated flag: true when project lifecycle is 'Completed and Closed', 'Terminated and Closed', or 'Archived'
+  archivedAt?: string;
+  archivedBy?: string;
   signDate: string;
   startDate: string;
   origDays: number;

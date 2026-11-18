@@ -54,6 +54,7 @@ import { Project, KpiAllocatedItem, LinearData, formatAccounting, User, ProjectL
 import CircularGauge from './CircularGauge';
 import BillSummaryPriceAdjChart from './BillSummaryPriceAdjChart';
 import DlpDefectModal from './DlpDefectModal';
+import ProjectLifecycleStatusDropdown from './ProjectLifecycleStatusDropdown';
 import { buildKpiHierarchy, getIntegratedKpiAllocated, parseStation } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { getProjectDlpInfo, calculateCappedElapsedTimePct } from '../lib/dlpUtils';
@@ -1265,29 +1266,16 @@ export default function DashboardView({
               const canManage = isClosed ? isMaster : (isDirAuth || isMaster);
 
               return canManage ? (
-                <select
-                  value={project.status || 'In Progress'}
-                  onChange={(e) => {
-                    const newStatus = e.target.value as ProjectLifecycleStatus;
+                <ProjectLifecycleStatusDropdown
+                  status={project.status}
+                  onChangeStatus={(newStatus) => {
                     if (onUpdateProjectStatus) {
                       onUpdateProjectStatus(project.id, newStatus);
                     }
                   }}
-                  className="bg-transparent text-[12px] font-bold text-slate-800 dark:text-slate-100 outline-none cursor-pointer"
-                  title={isClosed ? "Project is in Archive (Closed). Only Master Admin has privilege to reopen or change its lifecycle." : "Change project lifecycle status (Directorate Admin only)"}
-                >
-                  <optgroup label="Active Portfolio">
-                    <option value="In Progress">🟢 In Progress</option>
-                    <option value="Completed">✅ Completed</option>
-                    <option value="Suspended">⏸️ Suspended</option>
-                    <option value="Terminated">🛑 Terminated</option>
-                  </optgroup>
-                  <optgroup label="Archive Repository (Closed)">
-                    <option value="Completed and Closed">🔒 Completed and Closed (Archive)</option>
-                    <option value="Terminated and Closed">🔒 Terminated and Closed (Archive)</option>
-                    <option value="Archived">📦 Archived</option>
-                  </optgroup>
-                </select>
+                  currentUserObj={currentUserObj}
+                  size="md"
+                />
               ) : (
                 <span 
                   className="text-[12px] font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5"

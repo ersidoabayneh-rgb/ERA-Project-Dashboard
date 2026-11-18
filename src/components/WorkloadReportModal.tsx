@@ -20,6 +20,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { Project, formatAccounting, User, ConsultantPersonnel } from '../types';
+import { filterProjectsForGroupReports } from '../lib/reportExclusionUtils';
 import { 
   compileWorkloadReportData, 
   printWorkloadReportDocument, 
@@ -52,12 +53,12 @@ export default function WorkloadReportModal({
   const [projectScope, setProjectScope] = useState<'all' | 'current'>('all');
   const [selectedStaffForDetail, setSelectedStaffForDetail] = useState<any | null>(null);
 
-  // Filter projects based on scope selection
+  // Filter projects based on scope selection (exclude archived projects in group scope)
   const selectedProjects = useMemo(() => {
     if (projectScope === 'current' && currentProject) {
       return [currentProject];
     }
-    return projects;
+    return filterProjectsForGroupReports(projects);
   }, [projectScope, currentProject, projects]);
 
   const reportData = useMemo(() => {

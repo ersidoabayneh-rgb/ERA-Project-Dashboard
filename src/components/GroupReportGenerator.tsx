@@ -78,6 +78,7 @@ import { calculateIpcMaturation } from '../lib/ipcCalculations';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { printWorkloadReportDocument } from '../lib/workloadReportPrinter';
 import { isRfiRecord, deduplicateSubmittals, isSubmittalApproved } from '../lib/submittalHelpers';
+import { filterProjectsForGroupReports, isProjectExcludedFromReports } from '../lib/reportExclusionUtils';
 import WorkloadReportModal from './WorkloadReportModal';
 import FirmsManagementView from './FirmsManagementView';
 import FinancialInstitutesAndGuarantiesModal from './FinancialInstitutesAndGuarantiesModal';
@@ -237,7 +238,7 @@ interface GroupReportGeneratorProps {
 }
 
 export default function GroupReportGenerator({
-  projects,
+  projects: allProjects,
   currentUserObj,
   programDirectorates,
   pmos,
@@ -247,6 +248,8 @@ export default function GroupReportGenerator({
   themeSettings,
   onUpdateThemeSettings
 }: GroupReportGeneratorProps) {
+  // Automatically exclude archived / 'Completed and Closed' / excludeFromReports projects from all Group Report calculations
+  const projects = useMemo(() => filterProjectsForGroupReports(allProjects), [allProjects]);
   const roleStr = String(currentUserObj?.role || '').toLowerCase();
   const usernameStr = String(currentUserObj?.username || '').toLowerCase();
   const isConsultantOrContractor = Boolean(
@@ -3162,6 +3165,7 @@ export default function GroupReportGenerator({
   const rawGroupProjects = useMemo(() => {
     const today = new Date();
     return projects.filter(p => {
+      if (isProjectExcludedFromReports(p)) return false;
       if (!isAccessible(p)) return false;
 
       let isMatch = false;
