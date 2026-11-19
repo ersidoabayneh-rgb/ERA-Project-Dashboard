@@ -959,7 +959,7 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
 
   // 4. EVM Calculations for SC4.2 (Schedule Variance) via unified engine
   const evm = calculateProjectEvm(project);
-  const { SV_pct } = evm;
+  const { PV, SV_pct } = evm;
 
   // 4b. Live Telemetry for Linear Asphalt, Submittals (RFI/WIR/Materials), Daily Activities, and Defects
   const linearAsphaltExecKm =
