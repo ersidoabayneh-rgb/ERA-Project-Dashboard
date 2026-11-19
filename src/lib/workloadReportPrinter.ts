@@ -1,4 +1,5 @@
 import { Project, ConsultantPersonnel } from '../types';
+import { getRevisedCompletionDate, toInputDateStr } from './dateUtils';
 
 export function calculateProjectCompletionDate(p: Project): string {
   if (p.supervisionConsultant?.revisedCompletionDate) {
@@ -8,23 +9,9 @@ export function calculateProjectCompletionDate(p: Project): string {
     return p.supervisionConsultant.originalCompletionDate;
   }
   if (p.startDate) {
-    const totalDays = (p.origDays || 0) + (p.eotDays || 0) + (p.interimEotDays || 0);
-    if (totalDays > 0) {
-      try {
-        const parts = p.startDate.split('-');
-        if (parts.length === 3) {
-          const y = parseInt(parts[0], 10);
-          const m = parseInt(parts[1], 10) - 1;
-          const d = parseInt(parts[2], 10);
-          const targetDate = new Date(y, m, d + totalDays);
-          return targetDate.toISOString().split('T')[0];
-        } else {
-          const targetDate = new Date(new Date(p.startDate).getTime() + totalDays * 86400000);
-          return targetDate.toISOString().split('T')[0];
-        }
-      } catch {
-        return '';
-      }
+    const compDate = getRevisedCompletionDate(p.startDate, p.origDays || 0, p.eotDays || 0, p.interimEotDays || 0);
+    if (compDate) {
+      return toInputDateStr(compDate);
     }
   }
   return '';

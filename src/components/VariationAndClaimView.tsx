@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { parseLocalDate, toInputDateStr } from '../lib/dateUtils';
+import { getOriginalCompletionDate, toInputDateStr } from '../lib/dateUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, 
@@ -304,13 +304,10 @@ export default function VariationAndClaimView({ project, onProjectUpdate, curren
   const origCompletionDate = useMemo(() => {
     if (storedSettings.origCompletionDate) return storedSettings.origCompletionDate;
     if (project.startDate && project.origDays) {
-      try {
-        const date = parseLocalDate(project.startDate);
-        if (date) {
-          date.setDate(date.getDate() + project.origDays);
-          return toInputDateStr(date);
-        }
-      } catch (e) {}
+      const date = getOriginalCompletionDate(project.startDate, project.origDays);
+      if (date) {
+        return toInputDateStr(date);
+      }
     }
     return isSawlaKako ? '2024-04-05' : '2025-12-31';
   }, [project, storedSettings.origCompletionDate, isSawlaKako]);

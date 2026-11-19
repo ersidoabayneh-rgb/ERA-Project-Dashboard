@@ -55,6 +55,7 @@ import ProjectLifecycleStatusDropdown from './ProjectLifecycleStatusDropdown';
 import { buildKpiHierarchy, getIntegratedKpiAllocated, parseStation } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
 import { getProjectDlpInfo, calculateCappedElapsedTimePct } from '../lib/dlpUtils';
+import { getRevisedCompletionDate } from '../lib/dateUtils';
 import { resolveCurrentMonthKey, getLastActualProgress, isSameMonth } from '../lib/monthlySync';
 
 export const sortProgressPlanHistoryDescending = (items: ProgressPlanHistoryItem[]): ProgressPlanHistoryItem[] => {
@@ -1060,9 +1061,7 @@ export default function DashboardView({
       {(() => {
         const dlpInfo = getProjectDlpInfo(project, currentTick);
         const evmMetrics = calculateProjectEvm(project);
-        const startDateObj = new Date(project.startDate);
-        const totalDurationDays = project.origDays + (project.eotDays || 0) + (project.interimEotDays || 0);
-        const estimatedCompletionDate = new Date(startDateObj.getTime() + totalDurationDays * 86400000);
+        const estimatedCompletionDate = getRevisedCompletionDate(project.startDate, project.origDays, project.eotDays || 0, project.interimEotDays || 0) || new Date();
         const daysToCompletion = Math.ceil((estimatedCompletionDate.getTime() - currentTick.getTime()) / (1000 * 60 * 60 * 24));
         
         const isCompletedLifecycle = project.status === 'Completed' || project.status === 'Completed and Closed' || isClosed;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { formatDateStr, getRevisedCompletionDateStr } from './lib/dateUtils';
+import { formatDateStr, getOriginalCompletionDateStr, getRevisedCompletionDateStr } from './lib/dateUtils';
 import { motion, AnimatePresence, animate } from 'motion/react';
 import { 
   FolderOpen, 
@@ -4646,7 +4646,7 @@ let isBatchSyncRunning = false;
                   {getRevisedCompletionDateStr(currentProject.startDate, currentProject.origDays, currentProject.eotDays, currentProject.interimEotDays)}
                 </span>
                 <span className="text-[8px] text-slate-400 block mt-0.5 font-normal leading-tight">
-                  Commencement + {currentProject.origDays || 0}d Orig + {currentProject.eotDays || 0}d Approved EOT + {currentProject.interimEotDays || 0}d Interim EOT
+                  Orig Comp ({getOriginalCompletionDateStr(currentProject.startDate, currentProject.origDays)}) + {currentProject.eotDays || 0}d Approved EOT + {currentProject.interimEotDays || 0}d Interim EOT
                 </span>
               </div>
               <div className="py-1 px-1 flex flex-col justify-center">
@@ -4933,12 +4933,22 @@ let isBatchSyncRunning = false;
                           </div>
 
                           <div className="space-y-1 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2.5 mt-2.5">
+                            <span className="text-[9px] text-slate-400 block font-sans font-bold">Original Completion Date</span>
+                            <span className="text-slate-800 dark:text-zinc-200 block font-mono font-bold text-2xs">
+                              {getOriginalCompletionDateStr(currentProject.startDate, currentProject.origDays)}
+                            </span>
+                            <span className="text-[8px] text-slate-400 block font-sans font-normal mt-0.5">
+                              Commencement + {currentProject.origDays || 0}d Orig - 1d
+                            </span>
+                          </div>
+
+                          <div className="space-y-1 border-t border-dashed border-slate-200 dark:border-slate-800 pt-2.5 mt-2.5">
                             <span className="text-[9px] text-slate-400 block font-sans font-bold">Revised Completion Date</span>
                             <span className="text-rose-500 block font-mono font-black text-2xs">
                               {getRevisedCompletionDateStr(currentProject.startDate, currentProject.origDays, currentProject.eotDays, currentProject.interimEotDays)}
                             </span>
                             <span className="text-[8px] text-slate-400 block font-sans font-bold mt-0.5">
-                              Commencement + {currentProject.origDays || 0}d Orig + {currentProject.eotDays || 0}d Approved EOT + {currentProject.interimEotDays || 0}d Interim EOT
+                              Orig Completion + {currentProject.eotDays || 0}d Approved EOT + {currentProject.interimEotDays || 0}d Interim EOT
                             </span>
                           </div>
 

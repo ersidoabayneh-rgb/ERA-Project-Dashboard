@@ -5,7 +5,7 @@
  */
 
 import { Project, isProjectClosed } from '../types';
-import { parseLocalDate, addDaysToDate, formatShortDateStr, formatDateStr } from './dateUtils';
+import { parseLocalDate, addDaysToDate, getRevisedCompletionDate, formatShortDateStr, formatDateStr } from './dateUtils';
 
 export interface DlpInfo {
   isCompleted: boolean;
@@ -61,8 +61,7 @@ export function getProjectDlpInfo(
   } else if (isCompleted) {
     startD = new Date();
   } else if (project?.startDate && project.origDays) {
-    const totalDays = (project.origDays || 0) + (project.eotDays || 0) + (project.interimEotDays || 0);
-    startD = addDaysToDate(project.startDate, totalDays);
+    startD = getRevisedCompletionDate(project.startDate, project.origDays || 0, project.eotDays || 0, project.interimEotDays || 0) || new Date();
   } else {
     startD = new Date();
   }
@@ -197,7 +196,7 @@ export function calculateCappedElapsedTimePct(
   const totalDays = (project.origDays || 0) + (project.eotDays || 0) + (project.interimEotDays || 0);
   if (totalDays <= 0) return 100.0;
 
-  const rc = addDaysToDate(s, totalDays);
+  const rc = getRevisedCompletionDate(s, project.origDays || 0, project.eotDays || 0, project.interimEotDays || 0) || s;
   const now = nowInput || new Date();
 
   if (now.getTime() >= rc.getTime()) {

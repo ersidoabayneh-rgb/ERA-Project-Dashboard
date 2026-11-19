@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { parseLocalDate, addDaysToDate } from '../lib/dateUtils';
+import { parseLocalDate, getRevisedCompletionDate } from '../lib/dateUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   History, Save, Sparkles, Trash2, Printer, CheckCircle, AlertTriangle, ShieldCheck, 
@@ -97,9 +97,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
     : (p.monthly && p.monthly.length > 1 && typeof p.monthly[p.monthly.length - 1].actual === 'number' && typeof p.monthly[p.monthly.length - 2].actual === 'number'
       ? Math.max(0, (p.monthly[p.monthly.length - 1].actual as number) - (p.monthly[p.monthly.length - 2].actual as number))
       : 0);
-  const elDays = p.origDays + (p.eotDays || 0) + (p.interimEotDays || 0);
   const ocDate = parseLocalDate(p.startDate) || new Date();
-  const rcDate = addDaysToDate(ocDate, elDays);
+  const rcDate = getRevisedCompletionDate(ocDate, p.origDays, p.eotDays || 0, p.interimEotDays || 0) || ocDate;
   
   // Use unified EVM calculation engine
   const evm = calculateProjectEvm(p);
@@ -633,9 +632,8 @@ export default function HistoryView({ project, onTakeSnapshot, onClearHistory, o
   const elapsed = (() => {
     if (isProjectClosed(p.status)) return 100;
     if (p.status === 'Suspended' || p.status === 'Terminated') return physicalProgress || 100;
-    const s = new Date(p.startDate);
-    const totalDays = p.origDays + (p.eotDays || 0) + (p.interimEotDays || 0);
-    const rc = new Date(s.getTime() + totalDays * 86400000);
+    const s = parseLocalDate(p.startDate) || new Date(p.startDate);
+    const rc = getRevisedCompletionDate(s, p.origDays, p.eotDays || 0, p.interimEotDays || 0) || s;
     const now = new Date();
     if (rc.getTime() - s.getTime() <= 0) return 0;
     return Math.min(100, Math.max(0, ((now.getTime() - s.getTime()) / (rc.getTime() - s.getTime())) * 100));

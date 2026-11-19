@@ -4375,9 +4375,10 @@ export default function GroupReportGenerator({
       const signDateText = formatDateForPdf(p.signDate);
       const startDateText = formatDateForPdf(p.startDate);
 
-      const totalDays = (p.origDays || 0) + (p.eotDays || 0) + (p.interimEotDays || 0);
-      const origCompDateText = p.startDate ? addDaysToDateForPdf(p.startDate, p.origDays || 0) : 'N/A';
-      const revCompDateText = p.startDate ? addDaysToDateForPdf(p.startDate, totalDays) : 'N/A';
+      const origOffsetDays = (p.origDays || 0) > 0 ? (p.origDays || 0) - 1 : 0;
+      const revOffsetDays = origOffsetDays + (p.eotDays || 0) + (p.interimEotDays || 0);
+      const origCompDateText = p.startDate ? addDaysToDateForPdf(p.startDate, origOffsetDays) : 'N/A';
+      const revCompDateText = p.startDate ? addDaysToDateForPdf(p.startDate, revOffsetDays) : 'N/A';
 
       const signLines = doc.splitTextToSize(signDateText, colWidths.signDate - 6);
       const startLines = doc.splitTextToSize(startDateText, colWidths.startDate - 6);
@@ -4645,14 +4646,15 @@ export default function GroupReportGenerator({
         }
         return false;
       }).length;
-      const totalDays = (p.origDays || 0) + (p.eotDays || 0) + (p.interimEotDays || 0);
+      const origOffsetDays = (p.origDays || 0) > 0 ? (p.origDays || 0) - 1 : 0;
+      const revOffsetDays = origOffsetDays + (p.eotDays || 0) + (p.interimEotDays || 0);
 
       // Date calculations
       let origCompletionDate = '';
       let revisedCompletionDate = '';
       if (p.startDate) {
-        origCompletionDate = addDaysToStartDate(p.startDate, p.origDays || 0);
-        revisedCompletionDate = addDaysToStartDate(p.startDate, totalDays);
+        origCompletionDate = addDaysToStartDate(p.startDate, origOffsetDays);
+        revisedCompletionDate = addDaysToStartDate(p.startDate, revOffsetDays);
       }
 
       const origVal = p.origAmount ? Math.round(p.origAmount * 1_000_000) : 0;
@@ -5910,13 +5912,15 @@ export default function GroupReportGenerator({
     const rows = processedProjects.map(p => {
       const audit = getAuditMetrics(p);
       const totalDays = (p.origDays || 0) + (p.eotDays || 0) + (p.interimEotDays || 0);
+      const origOffsetDays = (p.origDays || 0) > 0 ? (p.origDays || 0) - 1 : 0;
+      const revOffsetDays = origOffsetDays + (p.eotDays || 0) + (p.interimEotDays || 0);
 
       // Date calculations
       let origCompletionDate = '';
       let revisedCompletionDate = '';
       if (p.startDate) {
-        origCompletionDate = addDaysToStartDate(p.startDate, p.origDays || 0);
-        revisedCompletionDate = addDaysToStartDate(p.startDate, totalDays);
+        origCompletionDate = addDaysToStartDate(p.startDate, origOffsetDays);
+        revisedCompletionDate = addDaysToStartDate(p.startDate, revOffsetDays);
       }
 
       // Time Elapsed calculation

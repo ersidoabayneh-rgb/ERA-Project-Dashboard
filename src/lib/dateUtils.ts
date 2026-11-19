@@ -60,6 +60,37 @@ export function addDaysToDate(dateInput: string | Date | null | undefined, days:
   return d;
 }
 
+export function getOriginalCompletionDate(
+  startDateInput: string | Date | null | undefined,
+  origDays: number
+): Date | null {
+  const startDate = parseLocalDate(startDateInput);
+  if (!startDate) return null;
+  const effectiveOrigDays = (origDays || 0) > 0 ? (origDays || 0) - 1 : 0;
+  return addDaysToDate(startDate, effectiveOrigDays);
+}
+
+export function getOriginalCompletionDateStr(
+  startDateStr: string | null | undefined,
+  origDays: number
+): string {
+  if (!startDateStr) return 'N/A';
+  const compDate = getOriginalCompletionDate(startDateStr, origDays);
+  if (!compDate) return 'N/A';
+  return compDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+export function getRevisedCompletionDate(
+  startDateInput: string | Date | null | undefined,
+  origDays: number,
+  eotDays: number = 0,
+  interimEotDays: number = 0
+): Date | null {
+  const origCompDate = getOriginalCompletionDate(startDateInput, origDays);
+  if (!origCompDate) return null;
+  return addDaysToDate(origCompDate, (eotDays || 0) + (interimEotDays || 0));
+}
+
 export function getRevisedCompletionDateStr(
   startDateStr: string | null | undefined,
   origDays: number,
@@ -67,8 +98,8 @@ export function getRevisedCompletionDateStr(
   interimEotDays: number = 0
 ): string {
   if (!startDateStr) return 'N/A';
-  const totalDays = (origDays || 0) + (eotDays || 0) + (interimEotDays || 0);
-  const compDate = addDaysToDate(startDateStr, totalDays);
+  const compDate = getRevisedCompletionDate(startDateStr, origDays, eotDays, interimEotDays);
+  if (!compDate) return 'N/A';
   return compDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
