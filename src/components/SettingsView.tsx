@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
+import { safeSetSmallItem } from '../lib/storage';
 import { 
   Settings, 
   Sun, 
@@ -169,7 +170,7 @@ export default function SettingsView({
   const handleTogglePdfModule = (key: keyof PdfReportConfig) => {
     const updated = { ...pdfConfig, [key]: !pdfConfig[key] };
     setPdfConfig(updated);
-    localStorage.setItem('era_pdf_report_config', JSON.stringify(updated));
+    safeSetSmallItem('era_pdf_report_config', JSON.stringify(updated));
     if (onUpdatePdfReportConfig) {
       onUpdatePdfReportConfig(updated);
     }
@@ -222,7 +223,7 @@ export default function SettingsView({
       };
     }
     setPdfConfig(updated);
-    localStorage.setItem('era_pdf_report_config', JSON.stringify(updated));
+    safeSetSmallItem('era_pdf_report_config', JSON.stringify(updated));
     if (onUpdatePdfReportConfig) {
       onUpdatePdfReportConfig(updated);
     }
@@ -251,8 +252,8 @@ export default function SettingsView({
         delete (cleanedContractor.descriptions as any).workInspection;
       }
 
-      localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(cleanedContractor));
-      localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(tempConsultantWeights));
+      safeSetSmallItem('era_contractor_scoring_weights', JSON.stringify(cleanedContractor));
+      safeSetSmallItem('era_consultant_scoring_weights', JSON.stringify(tempConsultantWeights));
 
       await safeSyncScoringWeights(cleanedContractor, tempConsultantWeights, currentUser?.username);
 

@@ -4,8 +4,6 @@ import {
   initializeFirestore,
   doc, 
   getDocFromServer,
-  persistentLocalCache,
-  persistentSingleTabManager,
   memoryLocalCache,
   setLogLevel
 } from 'firebase/firestore';
@@ -19,7 +17,7 @@ try {
 } catch {}
 
 // Reclaim any orphaned `firestore_*` localStorage keys left by older multi-tab sessions
-// so localStorage never triggers WebStorageSharedClientState QuotaExceededError (b815).
+// so localStorage never overflows with stale WebStorageSharedClientState entries.
 reclaimFirestoreWebStorageKeys();
 
 const isValidConfig = Boolean(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId);
@@ -39,26 +37,18 @@ const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreData
   : undefined;
 
 function createFirestoreInstance() {
+  // Use memoryLocalCache() so Firestore SDK never writes pending mutations to
+  // window.localStorage (which causes QuotaExceededError / INTERNAL ASSERTION ID: b815).
+  // Durable offline persistence is handled cleanly via IndexedDB + localStorage + REST sync.
   try {
-    // Use persistentSingleTabManager (IndexedDB only) instead of persistentMultipleTabManager
-    // which stores queued mutations in window.localStorage and overflows the 5MB quota.
     const settings = {
-      localCache: persistentLocalCache({
-        tabManager: persistentSingleTabManager({ forceOwnership: true })
-      })
+      localCache: memoryLocalCache()
     };
     return dbId 
       ? initializeFirestore(app, settings, dbId) 
       : initializeFirestore(app, settings);
   } catch {
-    try {
-      const memSettings = { localCache: memoryLocalCache() };
-      return dbId
-        ? initializeFirestore(app, memSettings, dbId)
-        : initializeFirestore(app, memSettings);
-    } catch {
-      return dbId ? getFirestore(app, dbId) : getFirestore(app);
-    }
+    return dbId ? getFirestore(app, dbId) : getFirestore(app);
   }
 }
 

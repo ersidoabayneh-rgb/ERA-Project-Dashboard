@@ -405,7 +405,7 @@ import {
   getLocalSyncLogs,
   clearSyncLogs
 } from './lib/apiSync';
-import { safeSetItem } from './lib/storage';
+import { safeSetItem, safeSetSmallItem, idbGetItem } from './lib/storage';
 import { updateMonthlyWithProgress, getLiveActualValue, resolveCurrentMonthKey, ensureLiveRowForActual } from './lib/monthlySync';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { db } from './lib/firebase';
@@ -556,19 +556,15 @@ export default function App() {
 
   const handleUpdateTheme = (newSettings: ThemeSettings) => {
     setThemeSettings(newSettings);
-    try {
-      localStorage.setItem('era_theme_settings', JSON.stringify(newSettings));
-    } catch (e) {
-      console.error('Error saving era_theme_settings:', e);
-    }
+    safeSetSmallItem('era_theme_settings', JSON.stringify(newSettings));
     if (newSettings.preset === 'deep-dark' || newSettings.preset === 'midnight-blue' || newSettings.preset === 'cyber-blueprint') {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
-      localStorage.setItem('era_dark_mode', 'true');
+      safeSetSmallItem('era_dark_mode', 'true');
     } else if (newSettings.preset === 'light-slate' || newSettings.preset === 'sepia-warmth') {
       setDarkMode(false);
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('era_dark_mode', 'false');
+      safeSetSmallItem('era_dark_mode', 'false');
     }
   };
 
@@ -647,18 +643,18 @@ export default function App() {
 
   // Sync page view, active tab, and project ID state to local storage to persist on refresh
   useEffect(() => {
-    localStorage.setItem('era_current_page', currentPage);
+    safeSetSmallItem('era_current_page', currentPage);
   }, [currentPage]);
 
   useEffect(() => {
-    localStorage.setItem('era_active_tab', activeTab);
+    safeSetSmallItem('era_active_tab', activeTab);
   }, [activeTab]);
 
   useEffect(() => {
     if (currentProjectId) {
-      localStorage.setItem('era_current_project_id', currentProjectId);
+      safeSetSmallItem('era_current_project_id', currentProjectId);
     } else {
-      localStorage.removeItem('era_current_project_id');
+      try { localStorage.removeItem('era_current_project_id'); } catch {}
     }
   }, [currentProjectId]);
 
@@ -1452,8 +1448,8 @@ export default function App() {
           const updatedUserObj = list[targetIdx];
           setCurrentUserObj(updatedUserObj);
           setCurrentUser(newUsername);
-          localStorage.setItem('era_current_user', newUsername);
-          localStorage.setItem('era_current_user_obj', JSON.stringify(updatedUserObj));
+          safeSetSmallItem('era_current_user', newUsername);
+          safeSetSmallItem('era_current_user_obj', JSON.stringify(updatedUserObj));
           if (draftStatus === 'Inactive') {
             alert('You have set your own credential status to Inactive. You will be logged out.');
             setCurrentUser(null);
@@ -1525,8 +1521,8 @@ export default function App() {
       if (updatedSelfObj) {
         setCurrentUserObj(updatedSelfObj);
         setCurrentUser(updatedSelfObj.username);
-        localStorage.setItem('era_current_user', updatedSelfObj.username);
-        localStorage.setItem('era_current_user_obj', JSON.stringify(updatedSelfObj));
+        safeSetSmallItem('era_current_user', updatedSelfObj.username);
+        safeSetSmallItem('era_current_user_obj', JSON.stringify(updatedSelfObj));
       }
 
       if (loggedOutSelf) {
@@ -1659,8 +1655,8 @@ export default function App() {
       // Update current active logged-in session state
       setCurrentUserObj(updatedUser);
       setCurrentUser(updatedUser.username);
-      localStorage.setItem('era_current_user', updatedUser.username);
-      localStorage.setItem('era_current_user_obj', JSON.stringify(updatedUser));
+      safeSetSmallItem('era_current_user', updatedUser.username);
+      safeSetSmallItem('era_current_user_obj', JSON.stringify(updatedUser));
 
       return { 
         success: true, 
@@ -1738,7 +1734,7 @@ export default function App() {
 
   const handleToggleSyncAutoSuspend = (checked: boolean) => {
     setIsSyncAutoSuspendDisabled(checked);
-    localStorage.setItem('era_sync_disable_autosuspend', checked ? 'true' : 'false');
+    safeSetSmallItem('era_sync_disable_autosuspend', checked ? 'true' : 'false');
     reactivateSync().then(() => {
       setSyncSuspended(false);
     }).catch(() => {});
@@ -2085,6 +2081,7 @@ let isBatchSyncRunning = false;
     let unsubscribeDeletedProjectsListener: (() => void) | null = null;
     let unsubscribeApprovalsListener: (() => void) | null = null;
     let unsubscribeConfigListener: (() => void) | null = null;
+    let unsubscribeScoringWeightsListener: (() => void) | null = null;
 
     // Helper to immediately purge any deleted projects from memory, local storage, queues, and active view across all clients
     const applyGlobalProjectDeletions = (deletedIds: string[]) => {
@@ -2096,7 +2093,7 @@ let isBatchSyncRunning = false;
         const existingStr = localStorage.getItem('era_deleted_project_ids') || '[]';
         const existingIds: string[] = JSON.parse(existingStr);
         const union = Array.from(new Set([...existingIds, ...deletedIds]));
-        localStorage.setItem('era_deleted_project_ids', JSON.stringify(union));
+        safeSetSmallItem('era_deleted_project_ids', JSON.stringify(union));
       } catch {}
 
       // 2. Filter from offline sync queue
@@ -2104,7 +2101,7 @@ let isBatchSyncRunning = false;
         const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
         const queue: Project[] = JSON.parse(queueStr);
         const filteredQueue = queue.filter(p => !delSet.has(p.id));
-        localStorage.setItem('era_offline_sync_queue', JSON.stringify(filteredQueue));
+        safeSetItem('era_offline_sync_queue', JSON.stringify(filteredQueue));
         setOfflineQueueLength(filteredQueue.length);
       } catch {}
 
@@ -2255,7 +2252,7 @@ let isBatchSyncRunning = false;
       });
 
       // 6. Listen for scoring weights configuration database
-      onSnapshot(doc(db, 'config', 'scoring_weights'), (docSnap) => {
+      unsubscribeScoringWeightsListener = onSnapshot(doc(db, 'config', 'scoring_weights'), (docSnap) => {
         if (docSnap && docSnap.exists()) {
           const data = docSnap.data();
           if (data && data.contractorWeights) {
@@ -2274,11 +2271,11 @@ let isBatchSyncRunning = false;
               delete sanitized.descriptions.workInspection;
             }
             setContractorWeights(sanitized);
-            localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(sanitized));
+            safeSetSmallItem('era_contractor_scoring_weights', JSON.stringify(sanitized));
           }
           if (data && data.consultantWeights) {
             setConsultantWeights(data.consultantWeights);
-            localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(data.consultantWeights));
+            safeSetSmallItem('era_consultant_scoring_weights', JSON.stringify(data.consultantWeights));
           }
         }
       }, err => {
@@ -2485,6 +2482,9 @@ let isBatchSyncRunning = false;
       }
       if (unsubscribeConfigListener) {
         try { unsubscribeConfigListener(); } catch (e) {}
+      }
+      if (unsubscribeScoringWeightsListener) {
+        try { unsubscribeScoringWeightsListener(); } catch (e) {}
       }
       clearTimeout(wsReconnectTimeout);
       clearTimeout(sseReconnectTimeout);
@@ -2712,6 +2712,26 @@ let isBatchSyncRunning = false;
 
     // Dynamic asynchronous initialization from Cloud Databases (parallelized for zero delay)
     const initCloudDatabase = async () => {
+      // Recover from IndexedDB if localStorage was trimmed/offloaded on an earlier tight-quota save
+      try {
+        const [idbProjsRaw, idbApprRaw] = await Promise.all([
+          !localStorage.getItem('era_proj_v28') ? idbGetItem('era_proj_v28') : Promise.resolve(null),
+          !localStorage.getItem('era_appr_v28') ? idbGetItem('era_appr_v28') : Promise.resolve(null),
+        ]);
+        if (idbProjsRaw) {
+          const idbParsed = JSON.parse(idbProjsRaw);
+          if (Array.isArray(idbParsed) && idbParsed.length > 0) {
+            setProjects(idbParsed.map((p: any) => syncProjectPayment(normalizeProject(p))));
+          }
+        }
+        if (idbApprRaw) {
+          const idbAppr = JSON.parse(idbApprRaw);
+          if (Array.isArray(idbAppr) && idbAppr.length > 0) {
+            setPendingApprovals(idbAppr);
+          }
+        }
+      } catch {}
+
       try {
         const [deletedIds, cloudData, cloudUsers, cloudApprovals, cloudConfig] = await Promise.all([
           safeFetchDeletedProjectIds(),
@@ -2853,8 +2873,8 @@ let isBatchSyncRunning = false;
     const userWithDevice = ensureUserSignInRecords(userObj);
     setCurrentUser(un);
     setCurrentUserObj(userWithDevice);
-    localStorage.setItem('era_current_user', un);
-    localStorage.setItem('era_current_user_obj', JSON.stringify(userWithDevice));
+    safeSetSmallItem('era_current_user', un);
+    safeSetSmallItem('era_current_user_obj', JSON.stringify(userWithDevice));
     safeSaveSingleUser(userWithDevice).catch(() => {});
     setCurrentPage('projects');
   };
@@ -3037,13 +3057,13 @@ let isBatchSyncRunning = false;
       const deletedIds: string[] = JSON.parse(delStr);
       if (!deletedIds.includes(id)) {
         deletedIds.push(id);
-        localStorage.setItem('era_deleted_project_ids', JSON.stringify(deletedIds));
+        safeSetSmallItem('era_deleted_project_ids', JSON.stringify(deletedIds));
       }
 
       const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
       const queue: Project[] = JSON.parse(queueStr);
       const filteredQueue = queue.filter(p => p.id !== id);
-      localStorage.setItem('era_offline_sync_queue', JSON.stringify(filteredQueue));
+      safeSetItem('era_offline_sync_queue', JSON.stringify(filteredQueue));
     } catch (err) {
       console.warn('Failed to filter offline sync queue on delete:', err);
     }
@@ -6157,7 +6177,7 @@ let isBatchSyncRunning = false;
                   themeSettings={themeSettings}
                   onUpdateThemeSettings={(updated) => {
                     setThemeSettings(updated);
-                    localStorage.setItem('era_theme_settings', JSON.stringify(updated));
+                    safeSetSmallItem('era_theme_settings', JSON.stringify(updated));
                   }}
                 />
               )}

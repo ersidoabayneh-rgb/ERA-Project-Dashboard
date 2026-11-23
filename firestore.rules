@@ -20,52 +20,58 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Health check
+    // Health check (connection probe only; no client writes permitted)
     match /test/{testId} {
-      allow read: if true;
-      allow write: if true;
+      allow read: if isSignedIn() && isValidId(testId);
+      allow write: if false;
     }
 
-    // Projects - Read for all, Write for Admins only
+    // Projects - Read for signed-in users, Write for Admins only
     match /projects/{projectId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && (isAdmin());
+      allow write: if isSignedIn() && isValidId(projectId) && isAdmin();
     }
 
-    // Deleted Projects - Read only for Admins
+    // Deleted Projects - Admin access
     match /deleted_projects/{deletedProjectId} {
       allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow write: if isValidId(deletedProjectId) && isAdmin();
     }
 
-    // Users - Read for owner/admin, Write for owner/admin
+    // Users - Read/Write for owner or admin
     match /users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
     }
 
     // Approvals - Restricted access
     match /approvals/{approvalId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && (isAdmin());
+      allow write: if isSignedIn() && isValidId(approvalId) && isAdmin();
     }
 
-    // Private Drafts - Owner access
+    // Private Drafts - Authenticated access with ID guard
     match /private_drafts/{draftId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(draftId);
+    }
+
+    // Progress Plan History Backups - Signed-in read, Admin write
+    match /progress_plan_history_backups/{projectId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(projectId) && isAdmin();
     }
 
     // Workflow Audit Logs - Admin access
     match /workflow_audit_logs/{logId} {
       allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow write: if isValidId(logId) && isAdmin();
     }
 
     // Config - Admin write access
     match /config/{configId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isValidId(configId) && isAdmin();
     }
   }
 }

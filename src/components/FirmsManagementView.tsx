@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { safeSetItem } from '../lib/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Building2, 
@@ -117,11 +118,7 @@ export default function FirmsManagementView({
     if (newFirms.length > 0) {
       setFirms(prev => {
         const combined = [...prev, ...newFirms];
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(combined));
-        } catch (err) {
-          console.warn('Storage save warning', err);
-        }
+        safeSetItem(STORAGE_KEY, JSON.stringify(combined));
         return combined;
       });
     }
@@ -130,11 +127,7 @@ export default function FirmsManagementView({
   // Persist firms on change
   const saveFirms = (updated: RegisteredFirm[]) => {
     setFirms(updated);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    } catch (e) {
-      console.error('Failed to save firms to storage', e);
-    }
+    safeSetItem(STORAGE_KEY, JSON.stringify(updated));
   };
 
   // Filter & Search state
@@ -457,7 +450,7 @@ export default function FirmsManagementView({
         const savedProjectsStr = localStorage.getItem('era_proj_v28') || '[]';
         const parsed: Project[] = JSON.parse(savedProjectsStr);
         const updatedList = parsed.map(p => p.id === updatedProject.id ? updatedProject : p);
-        localStorage.setItem('era_proj_v28', JSON.stringify(updatedList));
+        safeSetItem('era_proj_v28', JSON.stringify(updatedList));
       } catch (err) {
         console.warn('Local update error', err);
       }

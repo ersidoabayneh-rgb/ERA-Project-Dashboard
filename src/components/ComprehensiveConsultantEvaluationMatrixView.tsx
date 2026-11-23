@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { safeSetItem } from '../lib/storage';
 import {
   Award,
   CheckCircle2,
@@ -1095,7 +1096,7 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
           }
           return f;
         });
-        localStorage.setItem('era_registered_firms_v1', JSON.stringify(updatedFirms));
+        safeSetItem('era_registered_firms_v1', JSON.stringify(updatedFirms));
       }
     } catch (e) {
       console.warn('Failed to sync evaluation grade to registered firms', e);

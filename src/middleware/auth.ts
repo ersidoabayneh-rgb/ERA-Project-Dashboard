@@ -1,11 +1,29 @@
 import type { Request, Response, NextFunction } from 'express';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let configuredDbId: string | undefined;
+try {
+  const cfgPath = path.resolve(__dirname, '../../firebase-applet-config.json');
+  if (fs.existsSync(cfgPath)) {
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+    if (cfg?.firestoreDatabaseId && cfg.firestoreDatabaseId !== '(default)') {
+      configuredDbId = cfg.firestoreDatabaseId;
+    }
+  }
+} catch {}
+
 if (!getApps().length) {
   initializeApp();
 }
+const adminDb = configuredDbId ? getFirestore(configuredDbId) : getFirestore();
 
 export interface DecodedIdToken {
   uid: string;
@@ -47,7 +65,7 @@ export const checkRole = (allowedRoles: string[]) => async (
     return res.status(401).json({ error: 'Unauthorized' });
   }
   try {
-    const userDoc = await getFirestore().collection('users').doc(uid).get();
+    const userDoc = await adminDb.collection('users').doc(uid).get();
     const userRole = userDoc.data()?.role;
     if (allowedRoles.includes(userRole)) {
       req.user = { ...req.user, role: userRole };

@@ -10,13 +10,24 @@ import { GoogleGenAI } from '@google/genai';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let configuredDbId: string | undefined;
+try {
+  const cfgPath = path.resolve(__dirname, 'firebase-applet-config.json');
+  if (fs.existsSync(cfgPath)) {
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+    if (cfg?.firestoreDatabaseId && cfg.firestoreDatabaseId !== '(default)') {
+      configuredDbId = cfg.firestoreDatabaseId;
+    }
+  }
+} catch {}
+
 if (!getApps().length) {
   initializeApp();
 }
-const db = getFirestore();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const db = configuredDbId ? getFirestore(configuredDbId) : getFirestore();
 
 const BACKUP_DIR = path.resolve(__dirname, '.data', 'progress_plan_backups');
 if (!fs.existsSync(BACKUP_DIR)) {

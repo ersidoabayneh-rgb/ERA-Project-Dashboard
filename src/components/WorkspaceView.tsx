@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initAuth } from '../lib/auth';
 import { safeSyncProject } from '../lib/apiSync';
-import { safeDispatchCustomEvent } from '../lib/storage';
+import { safeDispatchCustomEvent, safeSetItem } from '../lib/storage';
 import { 
   CheckCircle2, 
   Database, 
@@ -115,7 +115,7 @@ export default function WorkspaceView({ projects = [], onRestoreProjects }: Work
         }
       }
 
-      localStorage.setItem('era_offline_sync_queue', JSON.stringify(remaining));
+      safeSetItem('era_offline_sync_queue', JSON.stringify(remaining));
       setOfflineQueue(remaining);
       
       // Dispatch storage event so other components know the queue changed

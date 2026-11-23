@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { safeSyncScoringWeights } from '../lib/apiSync';
+import { safeSyncScoringWeights, handleFsError } from '../lib/apiSync';
+import { safeSetSmallItem } from '../lib/storage';
 import { 
   FileText, 
   Download, 
@@ -1430,13 +1431,15 @@ export default function GroupReportGenerator({
           const data = docSnap.data();
           if (data && data.contractorWeights) {
             setContractorWeights(data.contractorWeights);
-            localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(data.contractorWeights));
+            safeSetSmallItem('era_contractor_scoring_weights', JSON.stringify(data.contractorWeights));
           }
           if (data && data.consultantWeights) {
             setConsultantWeights(data.consultantWeights);
-            localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(data.consultantWeights));
+            safeSetSmallItem('era_consultant_scoring_weights', JSON.stringify(data.consultantWeights));
           }
         }
+      }, (err) => {
+        handleFsError(err);
       });
       return () => unsub();
     } catch (e) {
@@ -14928,8 +14931,8 @@ export default function GroupReportGenerator({
                       disabled={!isValid}
                       onClick={async () => {
                         if (!isValid) return;
-                        localStorage.setItem('era_contractor_scoring_weights', JSON.stringify(tempContractorWeights));
-                        localStorage.setItem('era_consultant_scoring_weights', JSON.stringify(tempConsultantWeights));
+                        safeSetSmallItem('era_contractor_scoring_weights', JSON.stringify(tempContractorWeights));
+                        safeSetSmallItem('era_consultant_scoring_weights', JSON.stringify(tempConsultantWeights));
                         setContractorWeights(tempContractorWeights);
                         setConsultantWeights(tempConsultantWeights);
                         await safeSyncScoringWeights(tempContractorWeights, tempConsultantWeights, currentUserObj?.username);
