@@ -30,8 +30,14 @@ import {
   Building2,
   Boxes,
   Calculator,
-  ArrowRight
+  ArrowRight,
+  Link2
 } from 'lucide-react';
+import {
+  linkAndRecalculateMonthlyResourceRecords as linkAndRecalculateMonthlyRecords,
+  isLogisticsProductionItem,
+  getMonthlyDailyProductionTotalsMap
+} from '../lib/dailyActivitiesSync';
 
 interface AccountingInputProps {
   value: number;
@@ -251,80 +257,7 @@ const SUPPLY_CATEGORIES = [
   'General Logistics & Supplies'
 ];
 
-/**
- * Recalculate all monthly material production and supply records chronologically.
- * CORE USER DIRECTIVE:
- * "The total todate production and supply should be the sum of the previous month total plus this month production and supply"
- * 
- * This function iterates chronologically from the earliest month to the latest month,
- * linking each material item with its corresponding item from the previous month,
- * and computing:
- *   totalToDate = previousMonthTotal + thisMonth
- *   used = totalToDate - availableStock
- *   remainingBalance = scope - totalToDate
- */
-function linkAndRecalculateMonthlyRecords(records: MonthlyResourceRecord[]): MonthlyResourceRecord[] {
-  if (!records || records.length === 0) return [];
-
-  // Sort ascending by month string (e.g. 2026-08, 2026-09, 2026-10)
-  const sortedAsc = [...records].sort((a, b) => a.month.localeCompare(b.month));
-
-  for (let i = 0; i < sortedAsc.length; i++) {
-    const rec = sortedAsc[i];
-    const prevRec = i > 0 ? sortedAsc[i - 1] : null;
-
-    rec.materialProduction = (rec.materialProduction || []).map(item => {
-      let prevTotal = 0;
-
-      if (prevRec) {
-        // Match in previous month by ID first, then by normalized description
-        const prevMatch = (prevRec.materialProduction || []).find(
-          p => p.id === item.id || p.desc.trim().toLowerCase() === item.desc.trim().toLowerCase()
-        );
-
-        if (prevMatch) {
-          prevTotal = prevMatch.totalToDate || 0;
-        } else if (typeof item.previousMonthTotal === 'number') {
-          prevTotal = item.previousMonthTotal;
-        } else {
-          prevTotal = Math.max(0, (item.totalToDate || 0) - (item.thisMonth || 0));
-        }
-      } else {
-        // Earliest recorded baseline month
-        if (typeof item.previousMonthTotal === 'number') {
-          prevTotal = item.previousMonthTotal;
-        } else {
-          prevTotal = Math.max(0, (item.totalToDate || 0) - (item.thisMonth || 0));
-        }
-      }
-
-      const thisMonth = item.thisMonth || 0;
-      // Formula: Total Todate = Previous Month Total + This Month Production / Supply
-      const totalToDate = prevTotal + thisMonth;
-
-      // Used = Total Todate - Available Stock
-      const stock = item.availableStock || 0;
-      const used = Math.max(0, totalToDate - stock);
-
-      // Remaining Balance = Scope - Total Todate
-      const scopeStr = item.scope || '';
-      const scopeClean = scopeStr.replace(/,/g, '').match(/[\d\.]+/);
-      const scopeNum = scopeClean ? parseFloat(scopeClean[0]) : 0;
-      const remainingBalance = Math.max(0, scopeNum - totalToDate);
-
-      return {
-        ...item,
-        previousMonthTotal: prevTotal,
-        totalToDate,
-        used,
-        remainingBalance
-      };
-    });
-  }
-
-  // Return sorted descending (latest month first)
-  return sortedAsc.sort((a, b) => b.month.localeCompare(a.month));
-}
+// Monthly records chronological recalculation is centralized in ../lib/dailyActivitiesSync
 
 interface ResourceMobilizationViewProps {
   project: Project;
@@ -467,18 +400,15 @@ export default function ResourceMobilizationView({
     return isPersonnel;
   });
 
-  // Partition Production vs Supply
-  const productionItems = currentMatList.filter(item => {
-    if (item.category === 'Production') return true;
-    const text = (item.desc + ' ' + item.scope).toLowerCase();
-    return text.includes('produce') || text.includes('production') || text.includes('crush') || text.includes('aggregate') || text.includes('quarry') || text.includes('batching');
-  });
+  // Partition Production vs Supply (includes Batching, Crushing & Precast plants)
+  const productionItems = currentMatList.filter(item => isLogisticsProductionItem(item));
 
-  const supplyItems = currentMatList.filter(item => {
-    if (item.category === 'Production') return false;
-    const text = (item.desc + ' ' + item.scope).toLowerCase();
-    return !(text.includes('produce') || text.includes('production') || text.includes('crush') || text.includes('aggregate') || text.includes('quarry') || text.includes('batching'));
-  });
+  const supplyItems = currentMatList.filter(item => !isLogisticsProductionItem(item));
+
+  const dailyProductionSyncMap = useMemo(
+    () => getMonthlyDailyProductionTotalsMap(project, activeRecord.month),
+    [project, activeRecord.month]
+  );
 
   // ----------------------------------------------------------------
   // Material Supply Category Summary & Visual Progress Calculations
@@ -1631,12 +1561,18 @@ export default function ResourceMobilizationView({
           <div className="bg-white dark:bg-slate-855 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-emerald-600" />
-                  Own Plant Production Tracking (Crushers, Asphalt Batching & Concrete) — {activeRecord.monthName}
-                </h3>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-emerald-600" />
+                    Own Plant Production Tracking (Crushers, Asphalt Batching & Concrete) — {activeRecord.monthName}
+                  </h3>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60">
+                    <Link2 className="w-3 h-3" />
+                    Linked with Daily Activities Plant Table
+                  </span>
+                </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Total Todate is autocalculated as: <span className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono">Previous Month Total + Produced This Month</span>.
+                  Total Todate is autocalculated as: <span className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono">Previous Month Total + Produced This Month</span>. Daily logs in Site & Industrial Production Table sync automatically here.
                 </p>
               </div>
 
@@ -1768,6 +1704,14 @@ export default function ResourceMobilizationView({
                               decimals={0}
                               className="text-emerald-950 dark:text-emerald-200 font-black"
                             />
+                            {dailyProductionSyncMap.get(item.id) && (
+                              <span
+                                className="block text-right text-[9px] font-mono text-purple-600 dark:text-purple-400 pr-1 mt-0.5"
+                                title="Logged across Daily Activities Site & Industrial Production Table this month"
+                              >
+                                Daily logs: {dailyProductionSyncMap.get(item.id)!.dailySum.toLocaleString()} ({dailyProductionSyncMap.get(item.id)!.dayCount}d)
+                              </span>
+                            )}
                           </td>
 
                           {/* Total To Date Autocalculated */}

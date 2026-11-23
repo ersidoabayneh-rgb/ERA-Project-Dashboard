@@ -789,6 +789,7 @@ export interface DailyActivityEquipmentItem {
 
 export interface DailyProductionItem {
   id: string;
+  equipmentType?: string;
   facilityName: string;
   itemProduced: string;
   unit: string;
@@ -798,6 +799,8 @@ export interface DailyProductionItem {
   operatingHours?: number;
   efficiencyPct?: number;
   remarks?: string;
+  linkedLogisticsId?: string;
+  linkedLogisticsCategory?: string;
 }
 
 export interface DailyStandstillRecord {

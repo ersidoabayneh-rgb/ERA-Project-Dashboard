@@ -5,16 +5,22 @@ import {
   doc, 
   getDocFromServer,
   persistentLocalCache,
-  persistentMultipleTabManager,
+  persistentSingleTabManager,
+  memoryLocalCache,
   setLogLevel
 } from 'firebase/firestore';
 import { getDatabase } from 'firebase/database';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { reclaimFirestoreWebStorageKeys } from './storage';
 
 // Suppress internal Firestore connection debug/warning noise in sandboxed/iframe preview environments
 try {
   setLogLevel('silent');
 } catch {}
+
+// Reclaim any orphaned `firestore_*` localStorage keys left by older multi-tab sessions
+// so localStorage never triggers WebStorageSharedClientState QuotaExceededError (b815).
+reclaimFirestoreWebStorageKeys();
 
 const isValidConfig = Boolean(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId);
 
@@ -34,16 +40,25 @@ const dbId = (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreData
 
 function createFirestoreInstance() {
   try {
+    // Use persistentSingleTabManager (IndexedDB only) instead of persistentMultipleTabManager
+    // which stores queued mutations in window.localStorage and overflows the 5MB quota.
     const settings = {
       localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager()
+        tabManager: persistentSingleTabManager({ forceOwnership: true })
       })
     };
     return dbId 
       ? initializeFirestore(app, settings, dbId) 
       : initializeFirestore(app, settings);
   } catch {
-    return dbId ? getFirestore(app, dbId) : getFirestore(app);
+    try {
+      const memSettings = { localCache: memoryLocalCache() };
+      return dbId
+        ? initializeFirestore(app, memSettings, dbId)
+        : initializeFirestore(app, memSettings);
+    } catch {
+      return dbId ? getFirestore(app, dbId) : getFirestore(app);
+    }
   }
 }
 
@@ -54,49 +69,57 @@ export const rtdb = (isValidConfig && (firebaseConfig as any).databaseURL)
   ? getDatabase(app)
   : null;
 
-// Catch and handle transient browser IndexedDB tab-closing / visibility state / offline / connection rejections
+function isTransientFirebaseRuntimeNoise(msg: string): boolean {
+  return (
+    msg.includes('Database is closing') ||
+    msg.includes('Database is hidden') ||
+    msg.includes('database is closing') ||
+    msg.includes('database is hidden') ||
+    msg.includes('IndexedDB') ||
+    msg.includes('installations') ||
+    msg.includes('API key') ||
+    msg.includes('INVALID_ARGUMENT') ||
+    msg.includes('permission-denied') ||
+    msg.includes('PERMISSION_DENIED') ||
+    msg.includes('Cloud Firestore API has not been used') ||
+    msg.includes('firestore.googleapis.com') ||
+    msg.includes('unavailable') ||
+    msg.includes('Could not reach Cloud Firestore backend') ||
+    msg.includes('Backend didn\'t respond') ||
+    msg.includes('client is offline') ||
+    msg.includes('7 PERMISSION_DENIED') ||
+    msg.includes('errorInfoMetadata') ||
+    msg.includes('google.rpc') ||
+    msg.includes('Exception occurred in retry method') ||
+    msg.includes('QuotaExceededError') ||
+    msg.includes('exceeded the quota') ||
+    msg.includes('WebStorageSharedClientState') ||
+    msg.includes('INTERNAL ASSERTION FAILED') ||
+    msg.includes('ID: b815')
+  );
+}
+
+// Catch and handle transient browser IndexedDB / WebStorage / offline / connection rejections
 if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason;
     const msg = reason?.message || String(reason || '');
-    if (
-      msg.includes('Database is closing') ||
-      msg.includes('Database is hidden') ||
-      msg.includes('database is closing') ||
-      msg.includes('database is hidden') ||
-      msg.includes('IndexedDB') ||
-      msg.includes('installations') ||
-      msg.includes('API key') ||
-      msg.includes('INVALID_ARGUMENT') ||
-      msg.includes('permission-denied') ||
-      msg.includes('PERMISSION_DENIED') ||
-      msg.includes('Cloud Firestore API has not been used') ||
-      msg.includes('firestore.googleapis.com') ||
-      msg.includes('unavailable') ||
-      msg.includes('Could not reach Cloud Firestore backend') ||
-      msg.includes('Backend didn\'t respond') ||
-      msg.includes('client is offline') ||
-      msg.includes('7 PERMISSION_DENIED') ||
-      msg.includes('errorInfoMetadata') ||
-      msg.includes('google.rpc') ||
-      msg.includes('Exception occurred in retry method')
-    ) {
+    if (isTransientFirebaseRuntimeNoise(msg)) {
       event.preventDefault();
+      if (msg.includes('QuotaExceededError') || msg.includes('b815')) {
+        reclaimFirestoreWebStorageKeys();
+      }
       console.warn('Handled background Firebase notice gracefully:', msg);
     }
   });
 
   window.addEventListener('error', (event) => {
     const msg = event.message || String(event.error || '');
-    if (
-      msg.includes('PERMISSION_DENIED') ||
-      msg.includes('permission-denied') ||
-      msg.includes('Cloud Firestore API has not been used') ||
-      msg.includes('firestore.googleapis.com') ||
-      msg.includes('7 PERMISSION_DENIED') ||
-      msg.includes('google.rpc')
-    ) {
+    if (isTransientFirebaseRuntimeNoise(msg)) {
       event.preventDefault();
+      if (msg.includes('QuotaExceededError') || msg.includes('b815')) {
+        reclaimFirestoreWebStorageKeys();
+      }
       console.warn('Handled background Firebase window error gracefully:', msg);
     }
   });
@@ -107,14 +130,18 @@ export const analytics = null;
 export async function testFirestoreConnection() {
   if (!isValidConfig) return;
   try {
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Connection check timeout')), 3500)
+    const timeoutPromise = new Promise<'timeout'>((resolve) =>
+      setTimeout(() => resolve('timeout'), 4500)
     );
-    await Promise.race([
-      getDocFromServer(doc(db, 'test', 'connection')),
+    const result = await Promise.race([
+      getDocFromServer(doc(db, 'test', 'connection')).then(() => 'ok' as const),
       timeoutPromise
     ]);
-    console.log("Firestore connection test passed.");
+    if (result === 'ok') {
+      console.log("Firestore connection test passed.");
+    } else {
+      console.log("Firestore connection check deferred; running with local cache.");
+    }
   } catch (error: any) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.warn("Firestore running in offline mode. Local persistence active.");
@@ -128,7 +155,7 @@ export async function testFirestoreConnection() {
 if (typeof window !== 'undefined') {
   setTimeout(() => {
     testFirestoreConnection();
-  }, 1000);
+  }, 1500);
 }
 
 

@@ -6,7 +6,9 @@ import {
   DailyEquipmentFleetItem,
   DailyMaterialItem,
   DailyProductionItem,
-  DailyTomorrowPlanItem
+  DailyTomorrowPlanItem,
+  MaterialProductionItem,
+  MonthlyResourceRecord
 } from '../types';
 import { MONTH_NAMES, parseMonthKey } from './monthlySync';
 import { safeDispatchCustomEvent } from './storage';
@@ -23,10 +25,10 @@ export const createDefaultLaborSummary = (): DailyActivityLaborItem[] =>
   DEFAULT_LABOR_CATEGORIES.map((category) => ({ category, count: 0 }));
 
 export const createDefaultProductionList = (): DailyProductionItem[] => [
-  { id: 'p1', facilityName: 'Asphalt Plant @ Ch. 203+400', itemProduced: 'Asphalt Concrete AC 60/70', unit: 'Tons', targetOutput: 450, actualOutput: 380, previousCumulative: 14200, operatingHours: 7.5, remarks: 'Continuous run' },
-  { id: 'p2', facilityName: 'Concrete Batching Plant #1', itemProduced: 'C-30 Concrete', unit: 'm³', targetOutput: 120, actualOutput: 95, previousCumulative: 3100, operatingHours: 6.0, remarks: 'Structure pour' },
-  { id: 'p3', facilityName: 'Primary Stone Crusher', itemProduced: 'Crushed Base Aggregate', unit: 'm³', targetOutput: 800, actualOutput: 720, previousCumulative: 42500, operatingHours: 8.0, remarks: 'Quarry B' },
-  { id: 'p4', facilityName: 'Precast RCP Yard', itemProduced: 'RCP Ø1000mm Pipes', unit: 'Pcs', targetOutput: 40, actualOutput: 35, previousCumulative: 890, operatingHours: 8.0, remarks: 'Curing chamber' }
+  { id: 'p1', equipmentType: 'Asphalt Batching Plant', facilityName: 'Asphalt Plant @ Ch. 203+400', itemProduced: 'Asphalt Concrete AC 60/70', unit: 'Tons', targetOutput: 450, actualOutput: 380, previousCumulative: 14200, operatingHours: 7.5, remarks: 'Continuous run' },
+  { id: 'p2', equipmentType: 'Concrete Batching Plant', facilityName: 'Concrete Batching Plant #1', itemProduced: 'C-30 Concrete', unit: 'm³', targetOutput: 120, actualOutput: 95, previousCumulative: 3100, operatingHours: 6.0, remarks: 'Structure pour' },
+  { id: 'p3', equipmentType: 'Crushing & Screening Plant', facilityName: 'Primary Stone Crusher', itemProduced: 'Crushed Base Aggregate', unit: 'm³', targetOutput: 800, actualOutput: 720, previousCumulative: 42500, operatingHours: 8.0, remarks: 'Quarry B' },
+  { id: 'p4', equipmentType: 'Precast Concrete Yard', facilityName: 'Precast RCP Yard', itemProduced: 'RCP Ø1000mm Pipes', unit: 'Pcs', targetOutput: 40, actualOutput: 35, previousCumulative: 890, operatingHours: 8.0, remarks: 'Curing chamber' }
 ];
 
 export const createDefaultEquipmentFleet = (): DailyEquipmentFleetItem[] => [
@@ -604,3 +606,562 @@ export function broadcastDailyActivitiesSync(projectId: string, date: string, up
     } catch {}
   }
 }
+
+/**
+ * Shared chronological monthly calculator for Logistics & Resources (`monthlyResourceRecords`):
+ * totalToDate = previousMonthTotal + thisMonth
+ * used = max(0, totalToDate - availableStock)
+ * remainingBalance = max(0, scopeNum - totalToDate)
+ */
+export function linkAndRecalculateMonthlyResourceRecords(
+  records: MonthlyResourceRecord[]
+): MonthlyResourceRecord[] {
+  if (!records || records.length === 0) return [];
+
+  const sortedAsc = [...records].map(rec => ({
+    ...rec,
+    resourceMobilization: [...(rec.resourceMobilization || [])],
+    materialProduction: [...(rec.materialProduction || [])]
+  })).sort((a, b) => a.month.localeCompare(b.month));
+
+  for (let i = 0; i < sortedAsc.length; i++) {
+    const rec = sortedAsc[i];
+    const prevRec = i > 0 ? sortedAsc[i - 1] : null;
+
+    rec.materialProduction = (rec.materialProduction || []).map(item => {
+      let prevTotal = 0;
+
+      if (prevRec) {
+        const prevMatch = (prevRec.materialProduction || []).find(
+          p => p.id === item.id || p.desc.trim().toLowerCase() === item.desc.trim().toLowerCase()
+        );
+        if (prevMatch) {
+          prevTotal = prevMatch.totalToDate || 0;
+        } else if (typeof item.previousMonthTotal === 'number') {
+          prevTotal = item.previousMonthTotal;
+        } else {
+          prevTotal = Math.max(0, (item.totalToDate || 0) - (item.thisMonth || 0));
+        }
+      } else {
+        if (typeof item.previousMonthTotal === 'number') {
+          prevTotal = item.previousMonthTotal;
+        } else {
+          prevTotal = Math.max(0, (item.totalToDate || 0) - (item.thisMonth || 0));
+        }
+      }
+
+      const thisMonth = Number(item.thisMonth) || 0;
+      const totalToDate = Number((prevTotal + thisMonth).toFixed(2));
+      const stock = Number(item.availableStock) || 0;
+      const used = Math.max(0, Number((totalToDate - stock).toFixed(2)));
+
+      const scopeStr = item.scope || '';
+      const scopeClean = scopeStr.replace(/,/g, '').match(/[\d.]+/);
+      const scopeNum = scopeClean ? parseFloat(scopeClean[0]) : 0;
+      const remainingBalance = Math.max(0, Number((scopeNum - totalToDate).toFixed(2)));
+
+      return {
+        ...item,
+        previousMonthTotal: prevTotal,
+        thisMonth,
+        totalToDate,
+        used,
+        remainingBalance
+      };
+    });
+  }
+
+  return sortedAsc.sort((a, b) => b.month.localeCompare(a.month));
+}
+
+export function isLogisticsProductionItem(item: MaterialProductionItem): boolean {
+  if (item.category === 'Production') return true;
+  const text = `${item.desc || ''} ${item.scope || ''}`.toLowerCase();
+  return (
+    text.includes('produce') ||
+    text.includes('production') ||
+    text.includes('crush') ||
+    text.includes('aggregate') ||
+    text.includes('quarry') ||
+    text.includes('batching') ||
+    text.includes('precast')
+  );
+}
+
+export function extractUnitFromLogisticsItem(item: MaterialProductionItem): string {
+  if (item.unit && item.unit.trim()) return item.unit.trim();
+  const scope = (item.scope || '').toLowerCase();
+  if (scope.includes('m3') || scope.includes('m³')) return 'm³';
+  if (scope.includes('m2') || scope.includes('m²')) return 'm²';
+  if (scope.includes('ton')) return 'Tons';
+  if (scope.includes('pcs') || scope.includes('pc') || scope.includes('pipe')) return 'pcs';
+  if (scope.includes('km')) return 'km';
+  if (scope.includes('meter')) return 'm';
+  if (scope.includes('no.')) return 'No.';
+  return 'm³';
+}
+
+export function inferFacilityNameFromLogisticsItem(item: MaterialProductionItem): string {
+  const desc = (item.desc || '').toLowerCase();
+  if (desc.includes('asphalt')) return 'Asphalt Batching Plant';
+  if (desc.includes('concrete') || desc.includes('batching')) return 'Concrete Batching Plant';
+  if (desc.includes('precast') || desc.includes('culvert') || desc.includes('pipe')) return 'Precast Concrete Yard';
+  if (desc.includes('sub-base') || desc.includes('subbase')) return 'Primary Crusher & Sub-Base Quarry';
+  if (desc.includes('base') || desc.includes('aggregate') || desc.includes('crush') || desc.includes('quarry')) return 'Primary Stone Crusher / Quarry';
+  return item.desc || 'Site Production Facility';
+}
+
+export function inferEquipmentTypeFromProductionRow(item: {
+  equipmentType?: string;
+  facilityName?: string;
+  itemProduced?: string;
+}): string {
+  if (item.equipmentType && item.equipmentType.trim()) {
+    return item.equipmentType.trim();
+  }
+  const combined = `${item.facilityName || ''} ${item.itemProduced || ''}`.toLowerCase();
+  if (combined.includes('asphalt')) return 'Asphalt Batching Plant';
+  if (combined.includes('concrete') || combined.includes('batching')) return 'Concrete Batching Plant';
+  if (combined.includes('precast') || combined.includes('culvert') || combined.includes('pipe') || combined.includes('rcp')) {
+    return 'Precast Concrete Yard';
+  }
+  if (
+    combined.includes('crush') ||
+    combined.includes('quarry') ||
+    combined.includes('aggregate') ||
+    combined.includes('sub-base') ||
+    combined.includes('subbase') ||
+    combined.includes('screen')
+  ) {
+    return 'Crushing & Screening Plant';
+  }
+  return item.facilityName?.trim() || 'Production Plant';
+}
+
+export interface LogisticsProductionContext {
+  allRecords: MonthlyResourceRecord[];
+  targetRecord: MonthlyResourceRecord | null;
+  monthKey: string;
+  isExactMonthMatch: boolean;
+  allItems: MaterialProductionItem[];
+  productionItems: MaterialProductionItem[];
+  supplyItems: MaterialProductionItem[];
+}
+
+export function resolveLogisticsProductionContext(
+  project: Project | undefined | null,
+  dateStr: string
+): LogisticsProductionContext {
+  const monthKey = (dateStr && dateStr.length >= 7) ? dateStr.slice(0, 7) : new Date().toISOString().slice(0, 7);
+
+  let rawRecords: MonthlyResourceRecord[] = [];
+  if (project?.monthlyResourceRecords && project.monthlyResourceRecords.length > 0) {
+    rawRecords = project.monthlyResourceRecords;
+  } else if (project?.materialProduction && project.materialProduction.length > 0) {
+    const [y, m] = monthKey.split('-').map(Number);
+    const monthName = (!isNaN(y) && !isNaN(m))
+      ? new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })
+      : monthKey;
+    rawRecords = [{
+      id: 'mrec_' + monthKey.replace('-', '_'),
+      month: monthKey,
+      monthName,
+      recordedDate: dateStr || new Date().toISOString().split('T')[0],
+      recordedBy: project.lastModifiedBy || 'Authorized Officer',
+      status: 'Approved',
+      resourceMobilization: project.resourceMobilization || [],
+      materialProduction: project.materialProduction
+    }];
+  }
+
+  const allRecords = linkAndRecalculateMonthlyResourceRecords(rawRecords);
+  const exactMatch = allRecords.find(r => r.month === monthKey) || null;
+  const targetRecord = exactMatch || allRecords[0] || null;
+
+  const allItems = targetRecord?.materialProduction || [];
+  const productionItems = allItems.filter(isLogisticsProductionItem);
+  const supplyItems = allItems.filter(item => !isLogisticsProductionItem(item));
+
+  return {
+    allRecords,
+    targetRecord,
+    monthKey,
+    isExactMonthMatch: Boolean(exactMatch),
+    allItems,
+    productionItems,
+    supplyItems
+  };
+}
+
+export function findMatchingLogisticsItem(
+  prod: DailyProductionItem,
+  allLogisticsItems: MaterialProductionItem[]
+): MaterialProductionItem | undefined {
+  if (!allLogisticsItems || allLogisticsItems.length === 0) return undefined;
+
+  if (prod.linkedLogisticsId === '__unlinked__') {
+    return undefined;
+  }
+
+  if (prod.linkedLogisticsId) {
+    const byLinkedId = allLogisticsItems.find(m => m.id === prod.linkedLogisticsId);
+    if (byLinkedId) return byLinkedId;
+  }
+
+  if (prod.id && prod.id.startsWith('p_')) {
+    const rawId = prod.id.slice(2);
+    const byPrefixedId = allLogisticsItems.find(m => m.id === rawId);
+    if (byPrefixedId) return byPrefixedId;
+  }
+
+  const prodDesc = (prod.itemProduced || '').trim().toLowerCase();
+  const facDesc = (prod.facilityName || '').trim().toLowerCase();
+
+  if (prodDesc) {
+    const exactDesc = allLogisticsItems.find(m => m.desc.trim().toLowerCase() === prodDesc);
+    if (exactDesc) return exactDesc;
+  }
+
+  const combined = `${prodDesc} ${facDesc}`;
+  if (combined.includes('asphalt') && combined.includes('concrete')) {
+    const match = allLogisticsItems.find(m => {
+      const d = m.desc.toLowerCase();
+      return d.includes('asphalt') && (d.includes('concrete') || d.includes('ac'));
+    });
+    if (match) return match;
+  }
+  if (combined.includes('batching') || combined.includes('c-30') || (combined.includes('concrete') && !combined.includes('asphalt'))) {
+    const match = allLogisticsItems.find(m => {
+      const d = m.desc.toLowerCase();
+      return d.includes('structural concrete') || (d.includes('concrete') && d.includes('batching'));
+    });
+    if (match) return match;
+  }
+  if (combined.includes('sub-base') || combined.includes('subbase')) {
+    const match = allLogisticsItems.find(m => m.desc.toLowerCase().includes('sub-base') || m.desc.toLowerCase().includes('subbase'));
+    if (match) return match;
+  }
+  if (combined.includes('crushed base') || combined.includes('base course') || combined.includes('stone crusher')) {
+    const match = allLogisticsItems.find(m => {
+      const d = m.desc.toLowerCase();
+      return d.includes('aggregate base') || d.includes('base course');
+    });
+    if (match) return match;
+  }
+  if (combined.includes('precast') || combined.includes('rcp') || combined.includes('culvert') || combined.includes('pipe')) {
+    const match = allLogisticsItems.find(m => {
+      const d = m.desc.toLowerCase();
+      return d.includes('precast') || d.includes('rcp') || d.includes('culvert') || d.includes('pipe');
+    });
+    if (match) return match;
+  }
+
+  return undefined;
+}
+
+export function buildProductionListFromLogistics(
+  project: Project | undefined | null,
+  dateStr: string
+): DailyProductionItem[] {
+  const ctx = resolveLogisticsProductionContext(project, dateStr);
+  return ctx.productionItems.map(item => {
+    const facilityName = inferFacilityNameFromLogisticsItem(item);
+    return {
+      id: `p_${item.id}`,
+      linkedLogisticsId: item.id,
+      linkedLogisticsCategory: item.category || 'Production',
+      equipmentType: inferEquipmentTypeFromProductionRow({ facilityName, itemProduced: item.desc }),
+      facilityName,
+      itemProduced: item.desc,
+      unit: extractUnitFromLogisticsItem(item),
+      targetOutput: item.monthlyTarget ? Math.max(1, Math.round(item.monthlyTarget / 26)) : 0,
+      actualOutput: 0,
+      previousCumulative: item.totalToDate || 0,
+      operatingHours: 8.0,
+      remarks: `Linked to Logistics (${ctx.targetRecord?.monthName || ctx.monthKey})`
+    };
+  });
+}
+
+/**
+ * Reconciles a Daily Activities `productionList` with current Logistics & Resources values.
+ * Keeps daily `actualOutput` intact while aligning `previousCumulative = logisticsTotalToDate - actualOutput`
+ * so `previousCumulative + actualOutput` matches Logistics & Resources `Total To Date`.
+ */
+export function reconcileProductionListWithLogistics(
+  currentList: DailyProductionItem[],
+  project: Project | undefined | null,
+  dateStr: string,
+  options: { appendMissingLogisticsProduction?: boolean } = {}
+): DailyProductionItem[] {
+  const ctx = resolveLogisticsProductionContext(project, dateStr);
+  if (ctx.allItems.length === 0) return currentList;
+
+  const matchedLogisticsIds = new Set<string>();
+
+  const updated = currentList.map(row => {
+    const matched = findMatchingLogisticsItem(row, ctx.allItems);
+    if (!matched) return row;
+
+    matchedLogisticsIds.add(matched.id);
+    const actualToday = Number(row.actualOutput) || 0;
+    const syncedPrevCum = Math.max(0, Number(((matched.totalToDate || 0) - actualToday).toFixed(2)));
+    const syncedTarget = row.targetOutput > 0
+      ? row.targetOutput
+      : (matched.monthlyTarget ? Math.max(1, Math.round(matched.monthlyTarget / 26)) : 0);
+
+    return {
+      ...row,
+      equipmentType: row.equipmentType || inferEquipmentTypeFromProductionRow(row),
+      linkedLogisticsId: matched.id,
+      linkedLogisticsCategory: matched.category || row.linkedLogisticsCategory || 'Production',
+      unit: row.unit || extractUnitFromLogisticsItem(matched),
+      targetOutput: syncedTarget,
+      previousCumulative: syncedPrevCum
+    };
+  });
+
+  if (options.appendMissingLogisticsProduction) {
+    ctx.productionItems.forEach(item => {
+      if (!matchedLogisticsIds.has(item.id)) {
+        const facilityName = inferFacilityNameFromLogisticsItem(item);
+        updated.push({
+          id: `p_${item.id}`,
+          linkedLogisticsId: item.id,
+          linkedLogisticsCategory: item.category || 'Production',
+          equipmentType: inferEquipmentTypeFromProductionRow({ facilityName, itemProduced: item.desc }),
+          facilityName,
+          itemProduced: item.desc,
+          unit: extractUnitFromLogisticsItem(item),
+          targetOutput: item.monthlyTarget ? Math.max(1, Math.round(item.monthlyTarget / 26)) : 0,
+          actualOutput: 0,
+          previousCumulative: item.totalToDate || 0,
+          operatingHours: 8.0,
+          remarks: `Linked to Logistics (${ctx.targetRecord?.monthName || ctx.monthKey})`
+        });
+      }
+    });
+  }
+
+  return updated;
+}
+
+/**
+ * Propagates daily production output deltas (`newActual - prevActual`) into Logistics & Resources
+ * (`monthlyResourceRecords` and `materialProduction`) and runs chronological recalculation.
+ * Returns `null` when no linked Logistics item has an output change.
+ */
+export function syncDailyProductionToLogistics(
+  project: Project,
+  dateStr: string,
+  prevDayList: DailyProductionItem[],
+  nextDayList: DailyProductionItem[],
+  userEmail?: string
+): { monthlyResourceRecords: MonthlyResourceRecord[]; materialProduction: MaterialProductionItem[] } | null {
+  const ctx = resolveLogisticsProductionContext(project, dateStr);
+  if (ctx.allItems.length === 0) return null;
+
+  const prevByLogisticsId = new Map<string, number>();
+  (prevDayList || []).forEach(row => {
+    const matched = findMatchingLogisticsItem(row, ctx.allItems);
+    const key = row.linkedLogisticsId || matched?.id;
+    if (key) {
+      prevByLogisticsId.set(key, (prevByLogisticsId.get(key) || 0) + (Number(row.actualOutput) || 0));
+    }
+  });
+
+  const nextByLogisticsId = new Map<string, number>();
+  const rowMetaByLogisticsId = new Map<string, DailyProductionItem>();
+  (nextDayList || []).forEach(row => {
+    const matched = findMatchingLogisticsItem(row, ctx.allItems);
+    const key = row.linkedLogisticsId || matched?.id;
+    if (key) {
+      nextByLogisticsId.set(key, (nextByLogisticsId.get(key) || 0) + (Number(row.actualOutput) || 0));
+      rowMetaByLogisticsId.set(key, row);
+    }
+  });
+
+  const allAffectedIds = new Set<string>([
+    ...Array.from(prevByLogisticsId.keys()),
+    ...Array.from(nextByLogisticsId.keys())
+  ]);
+
+  const deltaById = new Map<string, number>();
+  allAffectedIds.forEach(id => {
+    const delta = (nextByLogisticsId.get(id) || 0) - (prevByLogisticsId.get(id) || 0);
+    if (Math.abs(delta) > 1e-6) {
+      deltaById.set(id, delta);
+    }
+  });
+
+  if (deltaById.size === 0) return null;
+
+  const workingRecords: MonthlyResourceRecord[] = ctx.allRecords.map(rec => ({
+    ...rec,
+    resourceMobilization: [...(rec.resourceMobilization || [])],
+    materialProduction: [...(rec.materialProduction || [])]
+  }));
+
+  let targetIdx = workingRecords.findIndex(r => r.month === ctx.monthKey);
+  if (targetIdx === -1) {
+    // Auto-create the month record for dateStr by carrying forward totals from latest baseline
+    const latestRec = workingRecords[0];
+    const [y, m] = ctx.monthKey.split('-').map(Number);
+    const monthName = (!isNaN(y) && !isNaN(m))
+      ? new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })
+      : ctx.monthKey;
+
+    const newRec: MonthlyResourceRecord = {
+      id: `mrec_${ctx.monthKey.replace('-', '_')}`,
+      month: ctx.monthKey,
+      monthName,
+      recordedDate: dateStr,
+      recordedBy: userEmail || project.lastModifiedBy || 'Authorized Officer',
+      status: 'Draft',
+      notes: `Auto-initialized from Daily Activities production tracking (${ctx.monthKey}).`,
+      resourceMobilization: latestRec ? latestRec.resourceMobilization.map(r => ({ ...r })) : [...(project.resourceMobilization || [])],
+      materialProduction: latestRec
+        ? latestRec.materialProduction.map(item => ({
+            ...item,
+            previousMonthTotal: item.totalToDate || 0,
+            thisMonth: 0,
+            totalToDate: item.totalToDate || 0
+          }))
+        : []
+    };
+    workingRecords.push(newRec);
+    targetIdx = workingRecords.length - 1;
+  }
+
+  const targetRec = workingRecords[targetIdx];
+  targetRec.materialProduction = (targetRec.materialProduction || []).map(item => {
+    const delta = deltaById.get(item.id);
+    if (!delta) return item;
+    const rowMeta = rowMetaByLogisticsId.get(item.id);
+    const updatedThisMonth = Math.max(0, Number(((Number(item.thisMonth) || 0) + delta).toFixed(2)));
+    return {
+      ...item,
+      unit: item.unit || rowMeta?.unit,
+      thisMonth: updatedThisMonth
+    };
+  });
+
+  const recalculated = linkAndRecalculateMonthlyResourceRecords(workingRecords);
+  const newLatest = recalculated[0];
+
+  return {
+    monthlyResourceRecords: recalculated,
+    materialProduction: newLatest ? newLatest.materialProduction : []
+  };
+}
+
+/**
+ * Creates a new Own Material Production item in Logistics & Resources from a Daily Activities row
+ * and returns the updated Logistics arrays alongside the newly assigned `linkedLogisticsId`.
+ */
+export function createLogisticsProductionItemFromDaily(
+  project: Project,
+  dateStr: string,
+  row: DailyProductionItem,
+  userEmail?: string
+): {
+  newLogisticsId: string;
+  monthlyResourceRecords: MonthlyResourceRecord[];
+  materialProduction: MaterialProductionItem[];
+} {
+  const ctx = resolveLogisticsProductionContext(project, dateStr);
+  const newLogisticsId = `mat_${Date.now()}`;
+  const monthlyTarget = row.targetOutput ? Math.round(row.targetOutput * 26) : 500;
+
+  const newMatItem: MaterialProductionItem = {
+    id: newLogisticsId,
+    desc: (row.itemProduced || row.facilityName || 'Site Plant Production').trim(),
+    category: 'Production',
+    scope: `${Math.max(monthlyTarget * 12, (row.previousCumulative || 0) + (row.actualOutput || 0)).toLocaleString()} ${row.unit || 'm³'}`,
+    unit: row.unit || 'm³',
+    monthlyTarget,
+    previousMonthTotal: Number(row.previousCumulative) || 0,
+    thisMonth: Number(row.actualOutput) || 0,
+    totalToDate: (Number(row.previousCumulative) || 0) + (Number(row.actualOutput) || 0),
+    used: (Number(row.previousCumulative) || 0) + (Number(row.actualOutput) || 0),
+    availableStock: 0,
+    remainingBalance: 0
+  };
+
+  const workingRecords: MonthlyResourceRecord[] = ctx.allRecords.map(rec => ({
+    ...rec,
+    resourceMobilization: [...(rec.resourceMobilization || [])],
+    materialProduction: [...(rec.materialProduction || [])]
+  }));
+
+  let targetRec = workingRecords.find(r => r.month === ctx.monthKey);
+  if (!targetRec) {
+    const [y, m] = ctx.monthKey.split('-').map(Number);
+    const monthName = (!isNaN(y) && !isNaN(m))
+      ? new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })
+      : ctx.monthKey;
+    const latestRec = workingRecords[0];
+    targetRec = {
+      id: `mrec_${ctx.monthKey.replace('-', '_')}`,
+      month: ctx.monthKey,
+      monthName,
+      recordedDate: dateStr,
+      recordedBy: userEmail || project.lastModifiedBy || 'Authorized Officer',
+      status: 'Draft',
+      notes: `Monthly logistical record initialized from Daily Activities.`,
+      resourceMobilization: latestRec ? latestRec.resourceMobilization.map(r => ({ ...r })) : [...(project.resourceMobilization || [])],
+      materialProduction: latestRec
+        ? latestRec.materialProduction.map(item => ({
+            ...item,
+            previousMonthTotal: item.totalToDate || 0,
+            thisMonth: 0,
+            totalToDate: item.totalToDate || 0
+          }))
+        : []
+    };
+    workingRecords.push(targetRec);
+  }
+
+  targetRec.materialProduction = [...targetRec.materialProduction, newMatItem];
+
+  const recalculated = linkAndRecalculateMonthlyResourceRecords(workingRecords);
+  const newLatest = recalculated[0];
+
+  return {
+    newLogisticsId,
+    monthlyResourceRecords: recalculated,
+    materialProduction: newLatest ? newLatest.materialProduction : []
+  };
+}
+
+/**
+ * Sums daily logged production output in `dailySiteLogs` for a specific month (`YYYY-MM`) keyed by `linkedLogisticsId`.
+ */
+export function getMonthlyDailyProductionTotalsMap(
+  project: Project | undefined | null,
+  monthStr: string
+): Map<string, { dailySum: number; dayCount: number }> {
+  const totals = new Map<string, { dailySum: number; dayCount: number }>();
+  if (!project?.dailySiteLogs || !monthStr) return totals;
+
+  const ctx = resolveLogisticsProductionContext(project, `${monthStr}-01`);
+
+  Object.entries(project.dailySiteLogs).forEach(([dateKey, entry]) => {
+    if (!dateKey.startsWith(monthStr) || !Array.isArray(entry?.productionList)) return;
+    entry.productionList.forEach(row => {
+      const matched = findMatchingLogisticsItem(row, ctx.allItems);
+      const id = row.linkedLogisticsId || matched?.id;
+      const actual = Number(row.actualOutput) || 0;
+      if (id && actual > 0) {
+        const cur = totals.get(id) || { dailySum: 0, dayCount: 0 };
+        totals.set(id, {
+          dailySum: Number((cur.dailySum + actual).toFixed(2)),
+          dayCount: cur.dayCount + 1
+        });
+      }
+    });
+  });
+
+  return totals;
+}
+

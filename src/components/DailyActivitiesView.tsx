@@ -2,9 +2,9 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import {
   Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Truck, Trash2, DownloadCloud, X, Eye, EyeOff,
-  Activity, Sun, AlertTriangle, Package, ClipboardList,
+  Activity, Sun, AlertTriangle, ClipboardList,
   Calendar, Factory, CheckSquare, Square, Sliders, RefreshCw,
-  Check, Printer, RotateCcw, Layers, Filter, FileText, Search, Users, Save, MessageSquare
+  Check, Printer, RotateCcw, Layers, Filter, FileText, Search, Users, Save, MessageSquare, Link2
 } from 'lucide-react';
 import {
   Project,
@@ -25,7 +25,13 @@ import {
   createDefaultMaterialsList,
   createDefaultSiteChallenges,
   createDefaultTomorrowPlans,
-  broadcastDailyActivitiesSync
+  broadcastDailyActivitiesSync,
+  resolveLogisticsProductionContext,
+  buildProductionListFromLogistics,
+  reconcileProductionListWithLogistics,
+  syncDailyProductionToLogistics,
+  createLogisticsProductionItemFromDaily,
+  extractUnitFromLogisticsItem
 } from '../lib/dailyActivitiesSync';
 import eraLogo from '../assets/logo.png';
 
@@ -332,6 +338,159 @@ export const PRESET_MATERIALS = [
   'Subbase Material (GAB/GS)'
 ];
 
+type ProductionColKey =
+  | 'facilityName'
+  | 'itemProduced'
+  | 'unit'
+  | 'targetOutput'
+  | 'actualOutput'
+  | 'previousCumulative'
+  | 'cumulativeToDate'
+  | 'logisticsLink'
+  | 'operatingHours'
+  | 'remarks';
+
+const DEFAULT_PRODUCTION_COL_WIDTHS: Record<ProductionColKey, number> = {
+  facilityName: 200,
+  itemProduced: 200,
+  unit: 76,
+  targetOutput: 88,
+  actualOutput: 96,
+  previousCumulative: 104,
+  cumulativeToDate: 118,
+  logisticsLink: 210,
+  operatingHours: 76,
+  remarks: 160
+};
+
+const PRODUCTION_COL_META: Array<{ key: ProductionColKey; label: string; min: number; max: number }> = [
+  { key: 'facilityName', label: 'Facility / Plant Name', min: 110, max: 460 },
+  { key: 'itemProduced', label: 'Material / Item', min: 110, max: 460 },
+  { key: 'unit', label: 'Unit', min: 56, max: 160 },
+  { key: 'targetOutput', label: 'Target', min: 64, max: 200 },
+  { key: 'actualOutput', label: 'Actual Today', min: 72, max: 220 },
+  { key: 'previousCumulative', label: 'Previous Total', min: 76, max: 240 },
+  { key: 'cumulativeToDate', label: 'Cumulative To Date', min: 88, max: 260 },
+  { key: 'logisticsLink', label: 'Logistics & Resources Link', min: 140, max: 460 },
+  { key: 'operatingHours', label: 'Hours', min: 56, max: 160 },
+  { key: 'remarks', label: 'Remarks', min: 96, max: 480 }
+];
+
+type WorkRegColKey =
+  | 'section'
+  | 'description'
+  | 'station'
+  | 'side'
+  | 'unit'
+  | 'dailyQty'
+  | 'previousTotal'
+  | 'dailyExecuted'
+  | 'cumulative'
+  | 'remarks'
+  | 'status';
+
+const DEFAULT_WORK_REG_COL_WIDTHS: Record<WorkRegColKey, number> = {
+  section: 192,
+  description: 240,
+  station: 112,
+  side: 68,
+  unit: 80,
+  dailyQty: 96,
+  previousTotal: 104,
+  dailyExecuted: 108,
+  cumulative: 118,
+  remarks: 160,
+  status: 96
+};
+
+const WORK_REG_COL_META: Array<{ key: WorkRegColKey; label: string; min: number; max: number }> = [
+  { key: 'section', label: 'Activity Section', min: 110, max: 420 },
+  { key: 'description', label: 'Description of Work', min: 120, max: 520 },
+  { key: 'station', label: 'Station', min: 72, max: 240 },
+  { key: 'side', label: 'Side', min: 52, max: 140 },
+  { key: 'unit', label: 'Unit', min: 60, max: 160 },
+  { key: 'dailyQty', label: 'Daily Qty', min: 68, max: 200 },
+  { key: 'previousTotal', label: 'Previous Total', min: 76, max: 220 },
+  { key: 'dailyExecuted', label: 'Daily Executed', min: 76, max: 220 },
+  { key: 'cumulative', label: 'Cumulative (To Date)', min: 88, max: 240 },
+  { key: 'remarks', label: 'Remarks & Observations', min: 96, max: 480 },
+  { key: 'status', label: 'Status', min: 76, max: 200 }
+];
+
+type SubTableKey = 'pipe' | 'box' | 'slab' | 'bridge';
+
+interface SubTableColDef {
+  key: string;
+  label: string;
+  defaultWidth: number;
+  headerClass: string;
+}
+
+const SUB_TABLE_COLS: Record<SubTableKey, SubTableColDef[]> = {
+  pipe: [
+    { key: 'location', label: 'Pipe Location', defaultWidth: 128, headerClass: 'text-center bg-slate-100' },
+    { key: 'selectedStage', label: 'Selected Stage (Today)', defaultWidth: 176, headerClass: 'text-center bg-blue-100/70 text-blue-900' },
+    { key: 'excavation', label: 'Excavation', defaultWidth: 84, headerClass: 'text-center' },
+    { key: 'masonry', label: 'Masonry inlet/outlet', defaultWidth: 96, headerClass: 'text-center' },
+    { key: 'pavedWaterway', label: 'Paved Water way', defaultWidth: 96, headerClass: 'text-center' },
+    { key: 'installation', label: 'Pipe Installation', defaultWidth: 96, headerClass: 'text-center' },
+    { key: 'backfill', label: 'Back fill', defaultWidth: 84, headerClass: 'text-center' },
+    { key: 'previous', label: 'Previous', defaultWidth: 76, headerClass: 'text-center text-slate-600' },
+    { key: 'dailyProgress', label: 'Daily Progress', defaultWidth: 84, headerClass: 'text-center text-blue-700' },
+    { key: 'toDate', label: 'To Date', defaultWidth: 76, headerClass: 'text-center text-rose-700' },
+    { key: 'dailyExecuted', label: 'Daily Executed (No.)', defaultWidth: 104, headerClass: 'text-center' }
+  ],
+  box: [
+    { key: 'location', label: 'Box Culvert Location', defaultWidth: 176, headerClass: 'text-center bg-slate-100' },
+    { key: 'selectedStage', label: 'Selected Stage (Today)', defaultWidth: 176, headerClass: 'text-center bg-emerald-100/80 text-emerald-950 font-bold' },
+    { key: 'excavation', label: 'Excavation & Blinding', defaultWidth: 100, headerClass: 'text-center' },
+    { key: 'bottomSlab', label: 'Bottom Slab', defaultWidth: 88, headerClass: 'text-center' },
+    { key: 'walls', label: 'Walls & Stem', defaultWidth: 88, headerClass: 'text-center' },
+    { key: 'topSlab', label: 'Top Slab', defaultWidth: 88, headerClass: 'text-center' },
+    { key: 'wingwalls', label: 'Wingwalls & Apron', defaultWidth: 100, headerClass: 'text-center' },
+    { key: 'backfill', label: 'Backfill', defaultWidth: 84, headerClass: 'text-center' },
+    { key: 'previous', label: 'Previous', defaultWidth: 76, headerClass: 'text-center text-slate-600' },
+    { key: 'dailyProgress', label: 'Daily Progress', defaultWidth: 84, headerClass: 'text-center text-emerald-700' },
+    { key: 'toDate', label: 'To Date', defaultWidth: 76, headerClass: 'text-center text-rose-700' },
+    { key: 'dailyExecuted', label: 'Daily Executed (No.)', defaultWidth: 104, headerClass: 'text-center' }
+  ],
+  slab: [
+    { key: 'location', label: 'Slab Culvert Location', defaultWidth: 176, headerClass: 'text-center bg-slate-100' },
+    { key: 'selectedStage', label: 'Selected Stage (Today)', defaultWidth: 176, headerClass: 'text-center bg-indigo-100/80 text-indigo-950 font-bold' },
+    { key: 'excavation', label: 'Excavation & Footing', defaultWidth: 100, headerClass: 'text-center' },
+    { key: 'abutment', label: 'Abutment Walls', defaultWidth: 88, headerClass: 'text-center' },
+    { key: 'deckSlab', label: 'RC Deck Slab', defaultWidth: 88, headerClass: 'text-center' },
+    { key: 'wingwalls', label: 'Wingwalls & Parapet', defaultWidth: 100, headerClass: 'text-center' },
+    { key: 'pitching', label: 'Bed Pitching', defaultWidth: 88, headerClass: 'text-center' },
+    { key: 'backfill', label: 'Backfill', defaultWidth: 84, headerClass: 'text-center' },
+    { key: 'previous', label: 'Previous', defaultWidth: 76, headerClass: 'text-center text-slate-600' },
+    { key: 'dailyProgress', label: 'Daily Progress', defaultWidth: 84, headerClass: 'text-center text-indigo-700' },
+    { key: 'toDate', label: 'To Date', defaultWidth: 76, headerClass: 'text-center text-rose-700' },
+    { key: 'dailyExecuted', label: 'Daily Executed (No.)', defaultWidth: 104, headerClass: 'text-center' }
+  ],
+  bridge: [
+    { key: 'location', label: 'Bridge Location', defaultWidth: 192, headerClass: 'text-center bg-slate-100' },
+    { key: 'selectedStage', label: 'Selected Stage (Today)', defaultWidth: 176, headerClass: 'text-center bg-amber-100/80 text-amber-950 font-bold' },
+    { key: 'foundation', label: 'Foundation', defaultWidth: 88, headerClass: 'text-center' },
+    { key: 'abutment', label: 'Abutment', defaultWidth: 88, headerClass: 'text-center' },
+    { key: 'pier', label: 'Pier', defaultWidth: 84, headerClass: 'text-center' },
+    { key: 'girder', label: 'Box girder / T-girder', defaultWidth: 112, headerClass: 'text-center' },
+    { key: 'slab', label: 'Slab', defaultWidth: 84, headerClass: 'text-center' },
+    { key: 'approach', label: 'Approach & Bearings', defaultWidth: 112, headerClass: 'text-center' },
+    { key: 'previous', label: 'Previous', defaultWidth: 76, headerClass: 'text-center text-slate-600' },
+    { key: 'dailyProgress', label: 'Daily Progress', defaultWidth: 84, headerClass: 'text-center text-amber-700' },
+    { key: 'toDate', label: 'To Date', defaultWidth: 76, headerClass: 'text-center text-rose-700' },
+    { key: 'dailyExecuted', label: 'Daily Executed (No.)', defaultWidth: 104, headerClass: 'text-center' }
+  ]
+};
+
+const getDefaultSubTableColWidths = (): Record<SubTableKey, Record<string, number>> => ({
+  pipe: Object.fromEntries(SUB_TABLE_COLS.pipe.map(c => [c.key, c.defaultWidth])),
+  box: Object.fromEntries(SUB_TABLE_COLS.box.map(c => [c.key, c.defaultWidth])),
+  slab: Object.fromEntries(SUB_TABLE_COLS.slab.map(c => [c.key, c.defaultWidth])),
+  bridge: Object.fromEntries(SUB_TABLE_COLS.bridge.map(c => [c.key, c.defaultWidth]))
+});
+
 function readLocalJson<T>(key: string, fallback: T): T {
   try {
     const stored = localStorage.getItem(key);
@@ -395,9 +554,18 @@ function hydrateDayFieldsFromProject(proj: Project, dateStr: string) {
     ? explicitLog.noWorkNotes
     : readLocalJson<string>(`era_no_work_notes_${proj.id}_${dateStr}`, '');
 
-  const productionList = explicitLog?.productionList && Array.isArray(explicitLog.productionList)
-    ? explicitLog.productionList
-    : readLocalJson<DailyProductionItem[]>(`era_production_${proj.id}_${dateStr}`, createDefaultProductionList());
+  const logisticsCtx = resolveLogisticsProductionContext(proj, dateStr);
+  let productionList: DailyProductionItem[];
+  if (explicitLog?.productionList && Array.isArray(explicitLog.productionList)) {
+    productionList = reconcileProductionListWithLogistics(explicitLog.productionList, proj, dateStr);
+  } else if (logisticsCtx.productionItems.length > 0) {
+    productionList = buildProductionListFromLogistics(proj, dateStr);
+  } else {
+    productionList = readLocalJson<DailyProductionItem[]>(
+      `era_production_${proj.id}_${dateStr}`,
+      createDefaultProductionList()
+    );
+  }
 
   let equipmentFleet: EquipmentFleetItem[];
   if (explicitLog?.equipmentFleet && Array.isArray(explicitLog.equipmentFleet)) {
@@ -513,6 +681,9 @@ export default function DailyActivitiesView({
   const [selectedPipeStagePct, setSelectedPipeStagePct] = useState<number>(100);
   const [selectedPipeStageKm, setSelectedPipeStageKm] = useState<number>(0.0);
   const [pipeFilterStage, setPipeFilterStage] = useState<string>('ALL');
+  const [isPipeScrollEnabled, setIsPipeScrollEnabled] = useState<boolean>(true);
+  const pipeTableScrollRef = useRef<HTMLDivElement | null>(null);
+  const workRegScrollRef = useRef<HTMLDivElement | null>(null);
 
   // Bridge Construction Quick Selection & Stage Filter States
   const [selectedBridgeLocation, setSelectedBridgeLocation] = useState<string>('Bridge @ Km 198+450 (River Dermi)');
@@ -603,8 +774,251 @@ export default function DailyActivitiesView({
   const [noWorkReason, setNoWorkReason] = useState<string>(initialHydration.noWorkReason);
   const [noWorkNotes, setNoWorkNotes] = useState<string>(initialHydration.noWorkNotes);
 
-  // Production Table State
+  // Production Table State & Column Width Arrangement
   const [productionList, setProductionList] = useState<DailyProductionItem[]>(initialHydration.productionList);
+  const [prodColWidths, setProdColWidths] = useState<Record<ProductionColKey, number>>(() => ({
+    ...DEFAULT_PRODUCTION_COL_WIDTHS,
+    ...readLocalJson<Partial<Record<ProductionColKey, number>>>(`era_prod_col_widths_${project.id}`, {})
+  }));
+  const [resizingProdCol, setResizingProdCol] = useState<ProductionColKey | null>(null);
+  const prodResizeCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    setProdColWidths({
+      ...DEFAULT_PRODUCTION_COL_WIDTHS,
+      ...readLocalJson<Partial<Record<ProductionColKey, number>>>(`era_prod_col_widths_${project.id}`, {})
+    });
+  }, [project.id]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`era_prod_col_widths_${project.id}`, JSON.stringify(prodColWidths));
+    } catch {}
+  }, [prodColWidths, project.id]);
+
+  useEffect(() => {
+    return () => {
+      prodResizeCleanupRef.current?.();
+    };
+  }, []);
+
+  const updateProdColWidth = useCallback((colKey: ProductionColKey, nextWidth: number) => {
+    const meta = PRODUCTION_COL_META.find(m => m.key === colKey);
+    const minW = meta?.min ?? 60;
+    const maxW = meta?.max ?? 480;
+    const clamped = Math.round(Math.min(maxW, Math.max(minW, nextWidth)));
+    setProdColWidths(prev => (prev[colKey] === clamped ? prev : { ...prev, [colKey]: clamped }));
+  }, []);
+
+  const startProdColResize = useCallback((colKey: ProductionColKey, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    prodResizeCleanupRef.current?.();
+
+    const startX = e.clientX;
+    const initialWidth = prodColWidths[colKey] || DEFAULT_PRODUCTION_COL_WIDTHS[colKey];
+    const meta = PRODUCTION_COL_META.find(m => m.key === colKey);
+    const minW = meta?.min ?? 60;
+    const maxW = meta?.max ?? 480;
+
+    setResizingProdCol(colKey);
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const clamped = Math.round(Math.min(maxW, Math.max(minW, initialWidth + deltaX)));
+      setProdColWidths(prev => (prev[colKey] === clamped ? prev : { ...prev, [colKey]: clamped }));
+    };
+
+    const onMouseUp = () => {
+      setResizingProdCol(null);
+      cleanup();
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      prodResizeCleanupRef.current = null;
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    prodResizeCleanupRef.current = cleanup;
+  }, [prodColWidths]);
+
+  const totalProdTableWidth = useMemo(() => {
+    const dataSum = PRODUCTION_COL_META.reduce((sum, col) => sum + (prodColWidths[col.key] || DEFAULT_PRODUCTION_COL_WIDTHS[col.key]), 0);
+    return dataSum + (!isReadonly ? 48 : 0);
+  }, [prodColWidths, isReadonly]);
+
+  // Work Register Table Column Width Arrangement State
+  const [workRegColWidths, setWorkRegColWidths] = useState<Record<WorkRegColKey, number>>(() => ({
+    ...DEFAULT_WORK_REG_COL_WIDTHS,
+    ...readLocalJson<Partial<Record<WorkRegColKey, number>>>(`era_work_reg_col_widths_${project.id}`, {})
+  }));
+  const [resizingRegCol, setResizingRegCol] = useState<WorkRegColKey | null>(null);
+  const regResizeCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    setWorkRegColWidths({
+      ...DEFAULT_WORK_REG_COL_WIDTHS,
+      ...readLocalJson<Partial<Record<WorkRegColKey, number>>>(`era_work_reg_col_widths_${project.id}`, {})
+    });
+  }, [project.id]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`era_work_reg_col_widths_${project.id}`, JSON.stringify(workRegColWidths));
+    } catch {}
+  }, [workRegColWidths, project.id]);
+
+  useEffect(() => {
+    return () => {
+      regResizeCleanupRef.current?.();
+    };
+  }, []);
+
+  const updateRegColWidth = useCallback((colKey: WorkRegColKey, nextWidth: number) => {
+    const meta = WORK_REG_COL_META.find(m => m.key === colKey);
+    const minW = meta?.min ?? 56;
+    const maxW = meta?.max ?? 520;
+    const clamped = Math.round(Math.min(maxW, Math.max(minW, nextWidth)));
+    setWorkRegColWidths(prev => (prev[colKey] === clamped ? prev : { ...prev, [colKey]: clamped }));
+  }, []);
+
+  const startRegColResize = useCallback((colKey: WorkRegColKey, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    regResizeCleanupRef.current?.();
+
+    const startX = e.clientX;
+    const initialWidth = workRegColWidths[colKey] || DEFAULT_WORK_REG_COL_WIDTHS[colKey];
+    const meta = WORK_REG_COL_META.find(m => m.key === colKey);
+    const minW = meta?.min ?? 56;
+    const maxW = meta?.max ?? 520;
+
+    setResizingRegCol(colKey);
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const clamped = Math.round(Math.min(maxW, Math.max(minW, initialWidth + deltaX)));
+      setWorkRegColWidths(prev => (prev[colKey] === clamped ? prev : { ...prev, [colKey]: clamped }));
+    };
+
+    const onMouseUp = () => {
+      setResizingRegCol(null);
+      cleanup();
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      regResizeCleanupRef.current = null;
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    regResizeCleanupRef.current = cleanup;
+  }, [workRegColWidths]);
+
+  const totalWorkRegTableWidth = useMemo(() => {
+    const dataSum = WORK_REG_COL_META.reduce((sum, col) => sum + (workRegColWidths[col.key] || DEFAULT_WORK_REG_COL_WIDTHS[col.key]), 0);
+    return dataSum + (isBulkEditMode ? 40 : 0) + (!isReadonly ? 80 : 0);
+  }, [workRegColWidths, isBulkEditMode, isReadonly]);
+
+  // Sub-row Structure Tables (Pipe, Box, Slab, Bridge) Column Width Arrangement
+  const [subTableColWidths, setSubTableColWidths] = useState<Record<SubTableKey, Record<string, number>>>(() => {
+    const defaults = getDefaultSubTableColWidths();
+    const stored = readLocalJson<Partial<Record<SubTableKey, Record<string, number>>>>(`era_work_subtable_col_widths_${project.id}`, {});
+    return {
+      pipe: { ...defaults.pipe, ...(stored.pipe || {}) },
+      box: { ...defaults.box, ...(stored.box || {}) },
+      slab: { ...defaults.slab, ...(stored.slab || {}) },
+      bridge: { ...defaults.bridge, ...(stored.bridge || {}) }
+    };
+  });
+  const [resizingSubCol, setResizingSubCol] = useState<{ table: SubTableKey; col: string } | null>(null);
+  const subResizeCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    const defaults = getDefaultSubTableColWidths();
+    const stored = readLocalJson<Partial<Record<SubTableKey, Record<string, number>>>>(`era_work_subtable_col_widths_${project.id}`, {});
+    setSubTableColWidths({
+      pipe: { ...defaults.pipe, ...(stored.pipe || {}) },
+      box: { ...defaults.box, ...(stored.box || {}) },
+      slab: { ...defaults.slab, ...(stored.slab || {}) },
+      bridge: { ...defaults.bridge, ...(stored.bridge || {}) }
+    });
+  }, [project.id]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`era_work_subtable_col_widths_${project.id}`, JSON.stringify(subTableColWidths));
+    } catch {}
+  }, [subTableColWidths, project.id]);
+
+  useEffect(() => {
+    return () => {
+      subResizeCleanupRef.current?.();
+    };
+  }, []);
+
+  const resetSubColWidth = useCallback((tableKey: SubTableKey, colKey: string) => {
+    const def = SUB_TABLE_COLS[tableKey].find(c => c.key === colKey);
+    const defaultW = def?.defaultWidth ?? 96;
+    setSubTableColWidths(prev => ({
+      ...prev,
+      [tableKey]: { ...prev[tableKey], [colKey]: defaultW }
+    }));
+  }, []);
+
+  const startSubColResize = useCallback((tableKey: SubTableKey, colKey: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    subResizeCleanupRef.current?.();
+
+    const startX = e.clientX;
+    const def = SUB_TABLE_COLS[tableKey].find(c => c.key === colKey);
+    const initialWidth = subTableColWidths[tableKey]?.[colKey] || def?.defaultWidth || 96;
+    const minW = 52;
+    const maxW = 460;
+
+    setResizingSubCol({ table: tableKey, col: colKey });
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const clamped = Math.round(Math.min(maxW, Math.max(minW, initialWidth + deltaX)));
+      setSubTableColWidths(prev => {
+        if (prev[tableKey]?.[colKey] === clamped) return prev;
+        return {
+          ...prev,
+          [tableKey]: { ...prev[tableKey], [colKey]: clamped }
+        };
+      });
+    };
+
+    const onMouseUp = () => {
+      setResizingSubCol(null);
+      cleanup();
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      subResizeCleanupRef.current = null;
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    subResizeCleanupRef.current = cleanup;
+  }, [subTableColWidths]);
+
+  const getSubTableTotalWidth = useCallback((tableKey: SubTableKey) => {
+    const sum = SUB_TABLE_COLS[tableKey].reduce(
+      (acc, col) => acc + (subTableColWidths[tableKey]?.[col.key] || col.defaultWidth),
+      0
+    );
+    return sum + (isBulkEditMode ? 32 : 0) + (!isReadonly ? 56 : 0);
+  }, [subTableColWidths, isBulkEditMode, isReadonly]);
 
   // Equipment Fleet Deployment State
   const [equipmentFleet, setEquipmentFleet] = useState<EquipmentFleetItem[]>(initialHydration.equipmentFleet);
@@ -704,6 +1118,15 @@ export default function DailyActivitiesView({
       updatedBy: s.currentUserObj?.username || s.currentUserObj?.name || 'Construction Manager'
     };
 
+    const prevDayProductionList = s.project.dailySiteLogs?.[s.selectedDate]?.productionList || [];
+    const logisticsSyncPatch = syncDailyProductionToLogistics(
+      s.project,
+      s.selectedDate,
+      prevDayProductionList,
+      s.productionList || [],
+      s.currentUserObj?.email || s.currentUserObj?.username
+    );
+
     const nextSiteLogs: Record<string, DailySiteLogEntry> = {
       ...(s.project.dailySiteLogs || {}),
       [s.selectedDate]: entry
@@ -726,7 +1149,8 @@ export default function DailyActivitiesView({
     onUpdateProject(
       {
         dailyActivities: syncedActivities,
-        dailySiteLogs: nextSiteLogs
+        dailySiteLogs: nextSiteLogs,
+        ...(logisticsSyncPatch || {})
       },
       actionDesc
     );
@@ -829,22 +1253,67 @@ export default function DailyActivitiesView({
     lastHydratedKeyRef.current = syncKey;
   }, [selectedDate, project.id, remoteLogUpdatedAt]);
 
-  // Persist local cache mirror per date
+  // Live Logistics & Resources Production Context for the active date/month
+  const logisticsProductionContext = useMemo(
+    () => resolveLogisticsProductionContext(project, selectedDate),
+    [project, selectedDate]
+  );
+
+  const logisticsSignature = useMemo(
+    () => JSON.stringify(
+      logisticsProductionContext.allItems.map(m => [
+        m.id,
+        m.desc,
+        m.scope,
+        m.monthlyTarget,
+        m.previousMonthTotal,
+        m.thisMonth,
+        m.totalToDate,
+        m.availableStock,
+        m.category
+      ])
+    ),
+    [logisticsProductionContext.allItems]
+  );
+
+  // Reconcile Site & Industrial Production Table whenever Logistics & Resources values update
   useEffect(() => {
+    if (hasPendingDirtyRef.current) return;
+    const hasExplicit = Boolean(project.dailySiteLogs?.[selectedDate]?.productionList);
+    const sourceList = hasExplicit
+      ? project.dailySiteLogs![selectedDate].productionList
+      : (logisticsProductionContext.productionItems.length > 0
+          ? buildProductionListFromLogistics(project, selectedDate)
+          : latestStateRef.current.productionList);
+    const reconciled = reconcileProductionListWithLogistics(sourceList, project, selectedDate);
+    if (JSON.stringify(reconciled) !== JSON.stringify(latestStateRef.current.productionList)) {
+      setProductionList(reconciled);
+    }
+  }, [logisticsSignature, selectedDate, project.id]);
+
+  // Persist local cache mirror per date (reclaim cleanly if quota tight)
+  useEffect(() => {
+    const entries: Array<[string, unknown]> = [
+      [`era_daily_notes_${project.id}_${selectedDate}`, dailyNotes],
+      [`era_labor_${project.id}_${selectedDate}`, laborSummary],
+      [`era_no_work_${project.id}_${selectedDate}`, isNoWorkDay],
+      [`era_no_work_reason_${project.id}_${selectedDate}`, noWorkReason],
+      [`era_no_work_notes_${project.id}_${selectedDate}`, noWorkNotes],
+      [`era_production_${project.id}_${selectedDate}`, productionList],
+      [`era_equipment_${project.id}_${selectedDate}`, equipmentFleet],
+      [`era_challenges_${project.id}_${selectedDate}`, siteChallenges],
+      [`era_plans_${project.id}_${selectedDate}`, tomorrowPlans],
+      [`era_active_sections_${project.id}`, sections],
+    ];
     try {
-      localStorage.setItem(`era_daily_notes_${project.id}_${selectedDate}`, JSON.stringify(dailyNotes));
-      localStorage.setItem(`era_labor_${project.id}_${selectedDate}`, JSON.stringify(laborSummary));
-      localStorage.setItem(`era_no_work_${project.id}_${selectedDate}`, JSON.stringify(isNoWorkDay));
-      localStorage.setItem(`era_no_work_reason_${project.id}_${selectedDate}`, JSON.stringify(noWorkReason));
-      localStorage.setItem(`era_no_work_notes_${project.id}_${selectedDate}`, JSON.stringify(noWorkNotes));
-      localStorage.setItem(`era_production_${project.id}_${selectedDate}`, JSON.stringify(productionList));
-      localStorage.setItem(`era_equipment_${project.id}_${selectedDate}`, JSON.stringify(equipmentFleet));
-      localStorage.setItem(`era_materials_${project.id}_${selectedDate}`, JSON.stringify(materialsList));
-      localStorage.setItem(`era_challenges_${project.id}_${selectedDate}`, JSON.stringify(siteChallenges));
-      localStorage.setItem(`era_plans_${project.id}_${selectedDate}`, JSON.stringify(tomorrowPlans));
-      localStorage.setItem(`era_active_sections_${project.id}`, JSON.stringify(sections));
-    } catch {}
-  }, [dailyNotes, laborSummary, isNoWorkDay, noWorkReason, noWorkNotes, productionList, equipmentFleet, materialsList, siteChallenges, tomorrowPlans, sections, project.id, selectedDate]);
+      localStorage.removeItem(`era_materials_${project.id}_${selectedDate}`);
+      for (const [k, v] of entries) {
+        localStorage.setItem(k, JSON.stringify(v));
+      }
+    } catch {
+      // Primary persistence lives in project.dailySiteLogs & Firestore; skip mirror on tight quota
+    }
+  }, [dailyNotes, laborSummary, isNoWorkDay, noWorkReason, noWorkNotes, productionList, equipmentFleet, siteChallenges, tomorrowPlans, sections, project.id, selectedDate]);
 
   // Navigate date with Previous/Next buttons
   const handleDateNav = (offset: number) => {
@@ -2223,14 +2692,14 @@ export default function DailyActivitiesView({
 
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
             <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              <span>Plant &amp; Materials</span>
+              <span>Site Plant Production</span>
               <Factory className="w-4 h-4 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="mt-1.5 text-xl font-bold text-slate-900 dark:text-white tabular-nums">
               {summaryStats.totalPlantActual.toLocaleString()} units
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
-              {summaryStats.totalProductionUnits} plants · {summaryStats.totalMaterialUsed.toLocaleString()} mat. used
+              {summaryStats.totalProductionUnits} plant units active
             </div>
           </div>
 
@@ -2540,9 +3009,6 @@ export default function DailyActivitiesView({
             <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono tabular-nums print:hidden">
               <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
                 Labor: {summaryStats.totalLaborCount}
-              </span>
-              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
-                Mat Used: {summaryStats.totalMaterialUsed.toLocaleString()}
               </span>
               {lastSyncedAt && (
                 <span className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
@@ -3049,12 +3515,22 @@ export default function DailyActivitiesView({
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse">
+            <div ref={workRegScrollRef} className="overflow-x-auto">
+              <table
+                className="min-w-full table-fixed text-xs text-left border-collapse"
+                style={{ width: `${totalWorkRegTableWidth}px` }}
+              >
+                <colgroup>
+                  {isBulkEditMode && <col style={{ width: '40px' }} />}
+                  {WORK_REG_COL_META.map(col => (
+                    <col key={col.key} style={{ width: `${workRegColWidths[col.key]}px` }} />
+                  ))}
+                  {!isReadonly && <col style={{ width: '80px' }} />}
+                </colgroup>
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
                     {isBulkEditMode && (
-                      <th className="p-2.5 w-10 text-center border-r border-slate-200 print:hidden">
+                      <th className="p-2.5 text-center border-r border-slate-200 print:hidden">
                         <input 
                           type="checkbox"
                           checked={selectedRowIds.length > 0 && selectedRowIds.length === currentActivities.length}
@@ -3063,18 +3539,49 @@ export default function DailyActivitiesView({
                         />
                       </th>
                     )}
-                    <th className="p-2.5 w-48 border-r border-slate-200">Activity Section</th>
-                    <th className="p-2.5 border-r border-slate-200">Description of Work</th>
-                    <th className="p-2.5 w-28 text-center border-r border-slate-200">Station</th>
-                    <th className="p-2.5 w-16 text-center border-r border-slate-200">Side</th>
-                    <th className="p-2.5 w-20 text-center border-r border-slate-200 text-purple-700 font-bold">Unit</th>
-                    <th className="p-2.5 w-24 text-center border-r border-slate-200">Daily Qty</th>
-                    <th className="p-2.5 w-24 text-center border-r border-slate-200 text-slate-500">Previous Total</th>
-                    <th className="p-2.5 w-24 text-center border-r border-slate-200 text-blue-700">Daily Executed</th>
-                    <th className="p-2.5 w-28 text-center border-r border-slate-200 text-rose-600 font-bold">Cumulative (To Date)</th>
-                    <th className="p-2.5 w-36 border-r border-slate-200 text-slate-700 font-bold">Remarks &amp; Observations</th>
-                    <th className="p-2.5 w-24 text-center border-r border-slate-200 text-emerald-700 font-bold">Status</th>
-                    {!isReadonly && <th className="p-2.5 w-20 text-center print:hidden">Actions</th>}
+                    {[
+                      { key: 'section' as WorkRegColKey, label: 'Activity Section', align: 'text-left' },
+                      { key: 'description' as WorkRegColKey, label: 'Description of Work', align: 'text-left' },
+                      { key: 'station' as WorkRegColKey, label: 'Station', align: 'text-center' },
+                      { key: 'side' as WorkRegColKey, label: 'Side', align: 'text-center' },
+                      { key: 'unit' as WorkRegColKey, label: 'Unit', align: 'text-center text-purple-700 font-bold' },
+                      { key: 'dailyQty' as WorkRegColKey, label: 'Daily Qty', align: 'text-center' },
+                      { key: 'previousTotal' as WorkRegColKey, label: 'Previous Total', align: 'text-center text-slate-500' },
+                      { key: 'dailyExecuted' as WorkRegColKey, label: 'Daily Executed', align: 'text-center text-blue-700' },
+                      { key: 'cumulative' as WorkRegColKey, label: 'Cumulative (To Date)', align: 'text-center text-rose-600 font-bold' },
+                      { key: 'remarks' as WorkRegColKey, label: 'Remarks & Observations', align: 'text-left text-slate-700 font-bold' },
+                      { key: 'status' as WorkRegColKey, label: 'Status', align: 'text-center text-emerald-700 font-bold' }
+                    ].map(col => (
+                      <th
+                        key={col.key}
+                        className={`p-2.5 border-r border-slate-200 relative group/col select-none ${col.align}`}
+                      >
+                        <span className="block truncate pr-1.5" title={col.label}>
+                          {col.label}
+                        </span>
+                        <div
+                          role="separator"
+                          aria-orientation="vertical"
+                          title="Drag to resize column (double-click to reset)"
+                          onMouseDown={e => startRegColResize(col.key, e)}
+                          onDoubleClick={() => updateRegColWidth(col.key, DEFAULT_WORK_REG_COL_WIDTHS[col.key])}
+                          className={`print:hidden absolute top-0 right-0 h-full w-2 -mr-1 cursor-col-resize z-10 flex items-center justify-center transition-colors ${
+                            resizingRegCol === col.key
+                              ? 'bg-blue-500/30'
+                              : 'hover:bg-blue-400/20'
+                          }`}
+                        >
+                          <span
+                            className={`w-[2px] h-4 rounded-full transition-colors ${
+                              resizingRegCol === col.key
+                                ? 'bg-blue-600 h-full'
+                                : 'bg-transparent group-hover/col:bg-blue-400/80'
+                            }`}
+                          />
+                        </div>
+                      </th>
+                    ))}
+                    {!isReadonly && <th className="p-2.5 text-center print:hidden">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -3360,26 +3867,133 @@ export default function DailyActivitiesView({
                                 </div>
                               </div>
 
+                              {/* DEDICATED ERA PIPE CONSTRUCTION TABLE SCROLL CONTROLS */}
+                              <div className="bg-blue-50/70 border-b border-blue-200 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px] print:hidden">
+                                <div className="flex items-center gap-1.5 text-blue-900 font-semibold">
+                                  <span>Scroll Option ({pipeActivities.length} pipe rows):</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsPipeScrollEnabled(prev => !prev)}
+                                    className={`px-2 py-0.5 rounded border font-bold transition cursor-pointer ${
+                                      isPipeScrollEnabled
+                                        ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'bg-white text-blue-800 border-blue-300 hover:bg-blue-100'
+                                    }`}
+                                    title={isPipeScrollEnabled ? 'Switch to Full Table Height' : 'Enable Compact Scrollable Viewport (420px)'}
+                                  >
+                                    {isPipeScrollEnabled ? 'Scroll View: ON (Max 420px)' : 'Scroll View: OFF (Full Height)'}
+                                  </button>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const inner = pipeTableScrollRef.current;
+                                      const outer = workRegScrollRef.current;
+                                      const target = (inner && inner.scrollWidth > inner.clientWidth + 2) ? inner : outer;
+                                      target?.scrollBy({ left: -240, behavior: 'smooth' });
+                                    }}
+                                    className="px-2 py-0.5 rounded bg-white hover:bg-blue-100 text-slate-700 border border-slate-300 font-medium flex items-center gap-0.5 cursor-pointer"
+                                    title="Scroll Pipe table left"
+                                  >
+                                    <ChevronLeft className="w-3.5 h-3.5" />
+                                    <span>Left</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const inner = pipeTableScrollRef.current;
+                                      const outer = workRegScrollRef.current;
+                                      const target = (inner && inner.scrollWidth > inner.clientWidth + 2) ? inner : outer;
+                                      target?.scrollBy({ left: 240, behavior: 'smooth' });
+                                    }}
+                                    className="px-2 py-0.5 rounded bg-white hover:bg-blue-100 text-slate-700 border border-slate-300 font-medium flex items-center gap-0.5 cursor-pointer"
+                                    title="Scroll Pipe table right"
+                                  >
+                                    <span>Right</span>
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                  {isPipeScrollEnabled && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => pipeTableScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+                                        className="px-2 py-0.5 rounded bg-white hover:bg-blue-100 text-slate-700 border border-slate-300 font-medium flex items-center gap-0.5 cursor-pointer"
+                                        title="Scroll to top of Pipe table"
+                                      >
+                                        <ChevronUp className="w-3.5 h-3.5" />
+                                        <span>Top</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const el = pipeTableScrollRef.current;
+                                          if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+                                        }}
+                                        className="px-2 py-0.5 rounded bg-white hover:bg-blue-100 text-slate-700 border border-slate-300 font-medium flex items-center gap-0.5 cursor-pointer"
+                                        title="Scroll to bottom of Pipe table"
+                                      >
+                                        <ChevronDown className="w-3.5 h-3.5" />
+                                        <span>Bottom</span>
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
                               {/* DEDICATED ERA PIPE CONSTRUCTION TABLE */}
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-xs text-left border-collapse">
-                                  <thead>
+                              <div
+                                ref={pipeTableScrollRef}
+                                className={
+                                  isPipeScrollEnabled
+                                    ? 'w-full max-w-full overflow-x-auto overflow-y-auto max-h-[420px] print:max-h-none print:overflow-visible'
+                                    : 'w-full max-w-full overflow-x-auto print:overflow-visible'
+                                }
+                              >
+                                <table
+                                  className="min-w-full table-fixed text-xs text-left border-collapse"
+                                  style={{ width: `${getSubTableTotalWidth('pipe')}px` }}
+                                >
+                                  <colgroup>
+                                    {isBulkEditMode && <col style={{ width: '32px' }} />}
+                                    {SUB_TABLE_COLS.pipe.map(col => (
+                                      <col key={col.key} style={{ width: `${subTableColWidths.pipe[col.key] || col.defaultWidth}px` }} />
+                                    ))}
+                                    {!isReadonly && <col style={{ width: '56px' }} />}
+                                  </colgroup>
+                                  <thead className="sticky top-0 z-20 shadow-xs">
                                     <tr className="bg-slate-200 text-slate-800 font-bold text-[10px] uppercase tracking-wide border-b border-slate-300">
-                                      {isBulkEditMode && <th className="p-2 text-center border-r border-slate-300 print:hidden w-8">✓</th>}
-                                      <th className="p-2 border-r border-slate-300 w-28 text-center bg-slate-100">Pipe Location</th>
-                                      <th className="p-2 border-r border-slate-300 w-44 text-center bg-blue-100/70 text-blue-900">
-                                        Selected Stage (Today)
-                                      </th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Excavation</th>
-                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Masonry inlet/outlet</th>
-                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Paved Water way</th>
-                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Pipe Installation</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Back fill</th>
-                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-slate-600">Previous</th>
-                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-blue-700">Daily Progress</th>
-                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-rose-700">To Date</th>
-                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Daily Executed (No.)</th>
-                                      {!isReadonly && <th className="p-2 text-center w-14 print:hidden">Action</th>}
+                                      {isBulkEditMode && <th className="p-2 text-center border-r border-slate-300 print:hidden">✓</th>}
+                                      {SUB_TABLE_COLS.pipe.map(col => {
+                                        const isResizingThis = resizingSubCol?.table === 'pipe' && resizingSubCol?.col === col.key;
+                                        return (
+                                          <th
+                                            key={col.key}
+                                            className={`p-2 border-r border-slate-300 relative group/subcol select-none ${col.headerClass}`}
+                                          >
+                                            <span className="block truncate pr-1" title={col.label}>
+                                              {col.label}
+                                            </span>
+                                            <div
+                                              role="separator"
+                                              aria-orientation="vertical"
+                                              title="Drag to resize column (double-click to reset)"
+                                              onMouseDown={e => startSubColResize('pipe', col.key, e)}
+                                              onDoubleClick={() => resetSubColWidth('pipe', col.key)}
+                                              className={`print:hidden absolute top-0 right-0 h-full w-2 -mr-1 cursor-col-resize z-10 flex items-center justify-center transition-colors ${
+                                                isResizingThis ? 'bg-blue-500/30' : 'hover:bg-blue-400/20'
+                                              }`}
+                                            >
+                                              <span
+                                                className={`w-[2px] h-3.5 rounded-full transition-colors ${
+                                                  isResizingThis ? 'bg-blue-600 h-full' : 'bg-transparent group-hover/subcol:bg-blue-400/80'
+                                                }`}
+                                              />
+                                            </div>
+                                          </th>
+                                        );
+                                      })}
+                                      {!isReadonly && <th className="p-2 text-center print:hidden">Action</th>}
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
@@ -3901,25 +4515,50 @@ export default function DailyActivitiesView({
 
                               {/* DEDICATED BOX CULVERT TABLE */}
                               <div className="overflow-x-auto">
-                                <table className="w-full text-xs text-left border-collapse">
+                                <table
+                                  className="min-w-full table-fixed text-xs text-left border-collapse"
+                                  style={{ width: `${getSubTableTotalWidth('box')}px` }}
+                                >
+                                  <colgroup>
+                                    {isBulkEditMode && <col style={{ width: '32px' }} />}
+                                    {SUB_TABLE_COLS.box.map(col => (
+                                      <col key={col.key} style={{ width: `${subTableColWidths.box[col.key] || col.defaultWidth}px` }} />
+                                    ))}
+                                    {!isReadonly && <col style={{ width: '56px' }} />}
+                                  </colgroup>
                                   <thead>
                                     <tr className="bg-slate-200 text-slate-800 font-bold text-[10px] uppercase tracking-wide border-b border-slate-300">
-                                      {isBulkEditMode && <th className="p-2 text-center border-r border-slate-300 print:hidden w-8">✓</th>}
-                                      <th className="p-2 border-r border-slate-300 w-44 text-center bg-slate-100">Box Culvert Location</th>
-                                      <th className="p-2 border-r border-slate-300 w-44 text-center bg-emerald-100/80 text-emerald-950 font-bold">
-                                        Selected Stage (Today)
-                                      </th>
-                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Excavation & Blinding</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Bottom Slab</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Walls & Stem</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Top Slab</th>
-                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Wingwalls & Apron</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Backfill</th>
-                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-slate-600">Previous</th>
-                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-emerald-700">Daily Progress</th>
-                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-rose-700">To Date</th>
-                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Daily Executed (No.)</th>
-                                      {!isReadonly && <th className="p-2 text-center w-14 print:hidden">Action</th>}
+                                      {isBulkEditMode && <th className="p-2 text-center border-r border-slate-300 print:hidden">✓</th>}
+                                      {SUB_TABLE_COLS.box.map(col => {
+                                        const isResizingThis = resizingSubCol?.table === 'box' && resizingSubCol?.col === col.key;
+                                        return (
+                                          <th
+                                            key={col.key}
+                                            className={`p-2 border-r border-slate-300 relative group/subcol select-none ${col.headerClass}`}
+                                          >
+                                            <span className="block truncate pr-1" title={col.label}>
+                                              {col.label}
+                                            </span>
+                                            <div
+                                              role="separator"
+                                              aria-orientation="vertical"
+                                              title="Drag to resize column (double-click to reset)"
+                                              onMouseDown={e => startSubColResize('box', col.key, e)}
+                                              onDoubleClick={() => resetSubColWidth('box', col.key)}
+                                              className={`print:hidden absolute top-0 right-0 h-full w-2 -mr-1 cursor-col-resize z-10 flex items-center justify-center transition-colors ${
+                                                isResizingThis ? 'bg-emerald-500/30' : 'hover:bg-emerald-400/20'
+                                              }`}
+                                            >
+                                              <span
+                                                className={`w-[2px] h-3.5 rounded-full transition-colors ${
+                                                  isResizingThis ? 'bg-emerald-600 h-full' : 'bg-transparent group-hover/subcol:bg-emerald-500/80'
+                                                }`}
+                                              />
+                                            </div>
+                                          </th>
+                                        );
+                                      })}
+                                      {!isReadonly && <th className="p-2 text-center print:hidden">Action</th>}
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
@@ -4401,25 +5040,50 @@ export default function DailyActivitiesView({
 
                               {/* DEDICATED SLAB CULVERT TABLE */}
                               <div className="overflow-x-auto">
-                                <table className="w-full text-xs text-left border-collapse">
+                                <table
+                                  className="min-w-full table-fixed text-xs text-left border-collapse"
+                                  style={{ width: `${getSubTableTotalWidth('slab')}px` }}
+                                >
+                                  <colgroup>
+                                    {isBulkEditMode && <col style={{ width: '32px' }} />}
+                                    {SUB_TABLE_COLS.slab.map(col => (
+                                      <col key={col.key} style={{ width: `${subTableColWidths.slab[col.key] || col.defaultWidth}px` }} />
+                                    ))}
+                                    {!isReadonly && <col style={{ width: '56px' }} />}
+                                  </colgroup>
                                   <thead>
                                     <tr className="bg-slate-200 text-slate-800 font-bold text-[10px] uppercase tracking-wide border-b border-slate-300">
-                                      {isBulkEditMode && <th className="p-2 text-center border-r border-slate-300 print:hidden w-8">✓</th>}
-                                      <th className="p-2 border-r border-slate-300 w-44 text-center bg-slate-100">Slab Culvert Location</th>
-                                      <th className="p-2 border-r border-slate-300 w-44 text-center bg-indigo-100/80 text-indigo-950 font-bold">
-                                        Selected Stage (Today)
-                                      </th>
-                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Excavation & Footing</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Abutment Walls</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">RC Deck Slab</th>
-                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Wingwalls & Parapet</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Bed Pitching</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Backfill</th>
-                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-slate-600">Previous</th>
-                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-indigo-700">Daily Progress</th>
-                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-rose-700">To Date</th>
-                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Daily Executed (No.)</th>
-                                      {!isReadonly && <th className="p-2 text-center w-14 print:hidden">Action</th>}
+                                      {isBulkEditMode && <th className="p-2 text-center border-r border-slate-300 print:hidden">✓</th>}
+                                      {SUB_TABLE_COLS.slab.map(col => {
+                                        const isResizingThis = resizingSubCol?.table === 'slab' && resizingSubCol?.col === col.key;
+                                        return (
+                                          <th
+                                            key={col.key}
+                                            className={`p-2 border-r border-slate-300 relative group/subcol select-none ${col.headerClass}`}
+                                          >
+                                            <span className="block truncate pr-1" title={col.label}>
+                                              {col.label}
+                                            </span>
+                                            <div
+                                              role="separator"
+                                              aria-orientation="vertical"
+                                              title="Drag to resize column (double-click to reset)"
+                                              onMouseDown={e => startSubColResize('slab', col.key, e)}
+                                              onDoubleClick={() => resetSubColWidth('slab', col.key)}
+                                              className={`print:hidden absolute top-0 right-0 h-full w-2 -mr-1 cursor-col-resize z-10 flex items-center justify-center transition-colors ${
+                                                isResizingThis ? 'bg-indigo-500/30' : 'hover:bg-indigo-400/20'
+                                              }`}
+                                            >
+                                              <span
+                                                className={`w-[2px] h-3.5 rounded-full transition-colors ${
+                                                  isResizingThis ? 'bg-indigo-600 h-full' : 'bg-transparent group-hover/subcol:bg-indigo-500/80'
+                                                }`}
+                                              />
+                                            </div>
+                                          </th>
+                                        );
+                                      })}
+                                      {!isReadonly && <th className="p-2 text-center print:hidden">Action</th>}
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
@@ -4901,25 +5565,50 @@ export default function DailyActivitiesView({
 
                               {/* DEDICATED BRIDGE TABLE */}
                               <div className="overflow-x-auto">
-                                <table className="w-full text-xs text-left border-collapse">
+                                <table
+                                  className="min-w-full table-fixed text-xs text-left border-collapse"
+                                  style={{ width: `${getSubTableTotalWidth('bridge')}px` }}
+                                >
+                                  <colgroup>
+                                    {isBulkEditMode && <col style={{ width: '32px' }} />}
+                                    {SUB_TABLE_COLS.bridge.map(col => (
+                                      <col key={col.key} style={{ width: `${subTableColWidths.bridge[col.key] || col.defaultWidth}px` }} />
+                                    ))}
+                                    {!isReadonly && <col style={{ width: '56px' }} />}
+                                  </colgroup>
                                   <thead>
                                     <tr className="bg-slate-200 text-slate-800 font-bold text-[10px] uppercase tracking-wide border-b border-slate-300">
-                                      {isBulkEditMode && <th className="p-2 text-center border-r border-slate-300 print:hidden w-8">✓</th>}
-                                      <th className="p-2 border-r border-slate-300 w-48 text-center bg-slate-100">Bridge Location</th>
-                                      <th className="p-2 border-r border-slate-300 w-44 text-center bg-amber-100/80 text-amber-950 font-bold">
-                                        Selected Stage (Today)
-                                      </th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Foundation</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Abutment</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Pier</th>
-                                      <th className="p-2 border-r border-slate-300 w-28 text-center">Box girder / T-girder</th>
-                                      <th className="p-2 border-r border-slate-300 w-20 text-center">Slab</th>
-                                      <th className="p-2 border-r border-slate-300 w-28 text-center">Approach & Bearings</th>
-                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-slate-600">Previous</th>
-                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-amber-700">Daily Progress</th>
-                                      <th className="p-2 border-r border-slate-300 w-16 text-center text-rose-700">To Date</th>
-                                      <th className="p-2 border-r border-slate-300 w-24 text-center">Daily Executed (No.)</th>
-                                      {!isReadonly && <th className="p-2 text-center w-14 print:hidden">Action</th>}
+                                      {isBulkEditMode && <th className="p-2 text-center border-r border-slate-300 print:hidden">✓</th>}
+                                      {SUB_TABLE_COLS.bridge.map(col => {
+                                        const isResizingThis = resizingSubCol?.table === 'bridge' && resizingSubCol?.col === col.key;
+                                        return (
+                                          <th
+                                            key={col.key}
+                                            className={`p-2 border-r border-slate-300 relative group/subcol select-none ${col.headerClass}`}
+                                          >
+                                            <span className="block truncate pr-1" title={col.label}>
+                                              {col.label}
+                                            </span>
+                                            <div
+                                              role="separator"
+                                              aria-orientation="vertical"
+                                              title="Drag to resize column (double-click to reset)"
+                                              onMouseDown={e => startSubColResize('bridge', col.key, e)}
+                                              onDoubleClick={() => resetSubColWidth('bridge', col.key)}
+                                              className={`print:hidden absolute top-0 right-0 h-full w-2 -mr-1 cursor-col-resize z-10 flex items-center justify-center transition-colors ${
+                                                isResizingThis ? 'bg-amber-500/30' : 'hover:bg-amber-400/20'
+                                              }`}
+                                            >
+                                              <span
+                                                className={`w-[2px] h-3.5 rounded-full transition-colors ${
+                                                  isResizingThis ? 'bg-amber-600 h-full' : 'bg-transparent group-hover/subcol:bg-amber-500/80'
+                                                }`}
+                                              />
+                                            </div>
+                                          </th>
+                                        );
+                                      })}
+                                      {!isReadonly && <th className="p-2 text-center print:hidden">Action</th>}
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
@@ -5278,7 +5967,7 @@ export default function DailyActivitiesView({
                                     type="number"
                                     value={act.metricKm || act.metricM3 || act.bridgeDailyProgress || 0}
                                     onChange={e => handleCellUpdate(act.id, 'metricKm', parseFloat(e.target.value) || 0)}
-                                    className="w-16 text-center bg-transparent px-1 py-0.5 text-xs font-bold text-blue-700 outline-none focus:bg-white rounded"
+                                    className="w-full min-w-0 flex-1 text-center bg-transparent px-1 py-0.5 text-xs font-bold text-blue-700 outline-none focus:bg-white rounded"
                                   />
                                   <span className="text-[10px] text-slate-400 font-normal">{currentUnit}</span>
                                 </div>
@@ -5397,36 +6086,57 @@ export default function DailyActivitiesView({
           </div>
         )}
 
-        {/* 2. PRODUCTION TABLE (PLANT & QUARRY OUTPUT - FULLY EDITABLE & DELETABLE) */}
+        {/* 2. PRODUCTION TABLE (PLANT & QUARRY OUTPUT - LINKED WITH LOGISTICS & RESOURCES) */}
         {(activeTab === 'all' || activeTab === 'production') && (
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-            <div className="p-3 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-              <div className="flex items-center gap-2">
+            <div className="p-3 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 flex flex-wrap justify-between items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Factory className="w-4 h-4 text-purple-600" />
                 <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wide">
                   2. Site & Industrial Production Table (Batching, Crushing & Precast Plants)
                 </h3>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60">
+                  <Link2 className="w-3 h-3" />
+                  Linked: Logistics & Resources ({logisticsProductionContext.targetRecord?.monthName || logisticsProductionContext.monthKey})
+                </span>
               </div>
               {!isReadonly && (
-                <div className="flex items-center gap-2 print:hidden">
+                <div className="flex items-center gap-2 flex-wrap print:hidden">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const synced = reconcileProductionListWithLogistics(productionList, project, selectedDate, { appendMissingLogisticsProduction: true });
+                      setProductionList(synced);
+                      scheduleResourceSync({ productionList: synced }, 'Synced Site & Industrial Production Table from Logistics & Resources');
+                      setFeedbackNotice({
+                        type: 'success',
+                        text: `Site & Industrial Production Table synced with Logistics & Resources (${logisticsProductionContext.productionItems.length} production plants).`
+                      });
+                      setTimeout(() => setFeedbackNotice(null), 3500);
+                    }}
+                    className="text-xs text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 font-semibold flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 transition cursor-pointer"
+                    title="Pull and synchronize production items, targets, and cumulative totals from Logistics & Resources"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Sync from Logistics
+                  </button>
                   <button 
                     onClick={() => {
-                      const next = [...productionList, { id: 'p_' + Date.now(), facilityName: 'New Processing Unit', itemProduced: 'Aggregate / Concrete', unit: 'm³', targetOutput: 200, actualOutput: 150, previousCumulative: 0, operatingHours: 8.0, remarks: 'Active' }];
+                      const next = [...productionList, { id: 'p_' + Date.now(), facilityName: 'New Processing Unit', itemProduced: 'Aggregate / Concrete', unit: 'm³', targetOutput: 200, actualOutput: 0, previousCumulative: 0, operatingHours: 8.0, remarks: 'Active' }];
                       setProductionList(next);
                       scheduleResourceSync({ productionList: next }, 'Added plant production unit');
                     }}
-                    className="text-xs text-purple-700 hover:text-purple-900 font-medium flex items-center gap-1 px-2.5 py-1 rounded bg-purple-50 border border-purple-200 transition"
+                    className="text-xs text-purple-700 hover:text-purple-900 font-medium flex items-center gap-1 px-2.5 py-1 rounded bg-purple-50 border border-purple-200 transition cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" /> Add Plant Row
                   </button>
                   {productionList.length > 0 && (
                     <button 
                       onClick={() => {
-                        if (!confirm('Clear all production units from the table?')) return;
+                        if (!confirm('Clear all production units from this daily table?')) return;
                         setProductionList([]);
                         scheduleResourceSync({ productionList: [] }, 'Cleared plant production table');
                       }}
-                      className="text-xs text-rose-600 hover:text-rose-800 font-medium px-2 py-1"
+                      className="text-xs text-rose-600 hover:text-rose-800 font-medium px-2 py-1 cursor-pointer"
                       title="Delete all production rows"
                     >
                       Clear Table
@@ -5437,29 +6147,74 @@ export default function DailyActivitiesView({
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse">
+              <table
+                className="min-w-full table-fixed text-xs text-left border-collapse"
+                style={{ width: `${totalProdTableWidth}px` }}
+              >
+                <colgroup>
+                  {PRODUCTION_COL_META.map(col => (
+                    <col key={col.key} style={{ width: `${prodColWidths[col.key]}px` }} />
+                  ))}
+                  {!isReadonly && <col style={{ width: '48px' }} />}
+                </colgroup>
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold text-[11px]">
-                    <th className="p-2.5 border-r border-slate-200 dark:border-slate-700">Facility / Plant Name</th>
-                    <th className="p-2.5 border-r border-slate-200 dark:border-slate-700">Material / Item</th>
-                    <th className="p-2.5 w-20 text-center border-r border-slate-200 dark:border-slate-700">Unit</th>
-                    <th className="p-2.5 w-24 text-center border-r border-slate-200 dark:border-slate-700">Target</th>
-                    <th className="p-2.5 w-24 text-center border-r border-slate-200 dark:border-slate-700 text-blue-700 dark:text-blue-400">Actual Today</th>
-                    <th className="p-2.5 w-24 text-center border-r border-slate-200 dark:border-slate-700 text-slate-500">Previous Total</th>
-                    <th className="p-2.5 w-28 text-center border-r border-slate-200 dark:border-slate-700 text-rose-600 font-bold">Cumulative To Date</th>
-                    <th className="p-2.5 w-20 text-center border-r border-slate-200 dark:border-slate-700">Hours</th>
-                    <th className="p-2.5 border-r border-slate-200 dark:border-slate-700">Remarks</th>
-                    {!isReadonly && <th className="p-2.5 w-12 text-center print:hidden">Action</th>}
+                    {[
+                      { key: 'facilityName' as ProductionColKey, label: 'Facility / Plant Name', align: 'text-left' },
+                      { key: 'itemProduced' as ProductionColKey, label: 'Material / Item', align: 'text-left' },
+                      { key: 'unit' as ProductionColKey, label: 'Unit', align: 'text-center' },
+                      { key: 'targetOutput' as ProductionColKey, label: 'Target', align: 'text-center' },
+                      { key: 'actualOutput' as ProductionColKey, label: 'Actual Today', align: 'text-center text-blue-700 dark:text-blue-400' },
+                      { key: 'previousCumulative' as ProductionColKey, label: 'Previous Total', align: 'text-center text-slate-500' },
+                      { key: 'cumulativeToDate' as ProductionColKey, label: 'Cumulative To Date', align: 'text-center text-rose-600 font-bold' },
+                      { key: 'logisticsLink' as ProductionColKey, label: 'Logistics & Resources Link', align: 'text-left text-emerald-700 dark:text-emerald-400' },
+                      { key: 'operatingHours' as ProductionColKey, label: 'Hours', align: 'text-center' },
+                      { key: 'remarks' as ProductionColKey, label: 'Remarks', align: 'text-left' }
+                    ].map(col => (
+                      <th
+                        key={col.key}
+                        className={`p-2.5 border-r border-slate-200 dark:border-slate-700 relative group/col select-none ${col.align}`}
+                      >
+                        <span className="block truncate pr-1.5" title={col.label}>
+                          {col.label}
+                        </span>
+                        <div
+                          role="separator"
+                          aria-orientation="vertical"
+                          title="Drag to resize column (double-click to reset)"
+                          onMouseDown={e => startProdColResize(col.key, e)}
+                          onDoubleClick={() => updateProdColWidth(col.key, DEFAULT_PRODUCTION_COL_WIDTHS[col.key])}
+                          className={`print:hidden absolute top-0 right-0 h-full w-2 -mr-1 cursor-col-resize z-10 flex items-center justify-center transition-colors ${
+                            resizingProdCol === col.key
+                              ? 'bg-indigo-500/30'
+                              : 'hover:bg-indigo-400/20'
+                          }`}
+                        >
+                          <span
+                            className={`w-[2px] h-4 rounded-full transition-colors ${
+                              resizingProdCol === col.key
+                                ? 'bg-indigo-600 dark:bg-indigo-400 h-full'
+                                : 'bg-transparent group-hover/col:bg-indigo-400/80'
+                            }`}
+                          />
+                        </div>
+                      </th>
+                    ))}
+                    {!isReadonly && <th className="p-2.5 text-center print:hidden">Action</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {productionList.length > 0 ? productionList.map((prod, idx) => {
                     const cumTotal = (prod.previousCumulative || 0) + (prod.actualOutput || 0);
+                    const linkedLogisticsItem = prod.linkedLogisticsId
+                      ? logisticsProductionContext.allItems.find(m => m.id === prod.linkedLogisticsId)
+                      : undefined;
                     return (
                       <tr key={prod.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition text-slate-800 dark:text-slate-100">
                         <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 font-medium">
                           <input 
                             value={prod.facilityName}
+                            disabled={isReadonly}
                             onChange={e => {
                               const list = productionList.map((item, i) => i === idx ? { ...item, facilityName: e.target.value } : item);
                               setProductionList(list);
@@ -5471,6 +6226,7 @@ export default function DailyActivitiesView({
                         <td className="p-1.5 border-r border-slate-200 dark:border-slate-700">
                           <input 
                             value={prod.itemProduced}
+                            disabled={isReadonly}
                             onChange={e => {
                               const list = productionList.map((item, i) => i === idx ? { ...item, itemProduced: e.target.value } : item);
                               setProductionList(list);
@@ -5482,6 +6238,7 @@ export default function DailyActivitiesView({
                         <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 text-center">
                           <select 
                             value={prod.unit}
+                            disabled={isReadonly}
                             onChange={e => {
                               const list = productionList.map((item, i) => i === idx ? { ...item, unit: e.target.value } : item);
                               setProductionList(list);
@@ -5489,6 +6246,9 @@ export default function DailyActivitiesView({
                             }}
                             className="w-full text-center bg-transparent px-1 py-0.5 outline-none font-bold text-xs cursor-pointer"
                           >
+                            {!MEASUREMENT_UNITS.includes(prod.unit) && prod.unit && (
+                              <option value={prod.unit}>{prod.unit}</option>
+                            )}
                             {MEASUREMENT_UNITS.map(u => (
                               <option key={u} value={u}>{u}</option>
                             ))}
@@ -5498,6 +6258,7 @@ export default function DailyActivitiesView({
                           <input 
                             type="number"
                             value={prod.targetOutput}
+                            disabled={isReadonly}
                             onChange={e => {
                               const list = productionList.map((item, i) => i === idx ? { ...item, targetOutput: parseFloat(e.target.value) || 0 } : item);
                               setProductionList(list);
@@ -5510,6 +6271,7 @@ export default function DailyActivitiesView({
                           <input 
                             type="number"
                             value={prod.actualOutput}
+                            disabled={isReadonly}
                             onChange={e => {
                               const list = productionList.map((item, i) => i === idx ? { ...item, actualOutput: parseFloat(e.target.value) || 0 } : item);
                               setProductionList(list);
@@ -5522,21 +6284,140 @@ export default function DailyActivitiesView({
                           <input 
                             type="number"
                             value={prod.previousCumulative || 0}
+                            disabled={isReadonly || Boolean(linkedLogisticsItem)}
+                            title={linkedLogisticsItem ? 'Auto-synced with Logistics & Resources Total To Date' : 'Previous cumulative output'}
                             onChange={e => {
                               const list = productionList.map((item, i) => i === idx ? { ...item, previousCumulative: parseFloat(e.target.value) || 0 } : item);
                               setProductionList(list);
                               scheduleResourceSync({ productionList: list }, 'Updated plant previous cumulative');
                             }}
-                            className="w-full text-center bg-transparent px-1 py-0.5 outline-none focus:bg-white dark:focus:bg-slate-900 rounded text-slate-500 font-medium tabular-nums"
+                            className="w-full text-center bg-transparent px-1 py-0.5 outline-none focus:bg-white dark:focus:bg-slate-900 rounded text-slate-500 font-medium tabular-nums disabled:opacity-80"
                           />
                         </td>
                         <td className="p-2 border-r border-slate-200 dark:border-slate-700 text-center font-bold text-rose-600 tabular-nums">
                           {cumTotal.toLocaleString()} {prod.unit}
                         </td>
+                        <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 text-[10px]">
+                          <div className="space-y-1">
+                            <select
+                              value={linkedLogisticsItem?.id || ''}
+                              disabled={isReadonly}
+                              onChange={e => {
+                                const selectedId = e.target.value;
+                                if (!selectedId) {
+                                  const list = productionList.map((item, i) =>
+                                    i === idx ? { ...item, linkedLogisticsId: '__unlinked__', linkedLogisticsCategory: undefined } : item
+                                  );
+                                  setProductionList(list);
+                                  scheduleResourceSync({ productionList: list }, 'Unlinked plant row from Logistics & Resources');
+                                  return;
+                                }
+                                const chosen = logisticsProductionContext.allItems.find(m => m.id === selectedId);
+                                if (!chosen) return;
+                                const curActual = Number(prod.actualOutput) || 0;
+                                const list = productionList.map((item, i) =>
+                                  i === idx
+                                    ? {
+                                        ...item,
+                                        linkedLogisticsId: chosen.id,
+                                        linkedLogisticsCategory: chosen.category || 'Production',
+                                        itemProduced: chosen.desc,
+                                        unit: extractUnitFromLogisticsItem(chosen),
+                                        targetOutput: item.targetOutput > 0 ? item.targetOutput : (chosen.monthlyTarget ? Math.max(1, Math.round(chosen.monthlyTarget / 26)) : 0),
+                                        previousCumulative: Math.max(0, Number(((chosen.totalToDate || 0) - curActual).toFixed(2)))
+                                      }
+                                    : item
+                                );
+                                setProductionList(list);
+                                scheduleResourceSync({ productionList: list }, `Linked plant row to Logistics item: ${chosen.desc}`);
+                              }}
+                              className={`w-full rounded px-1.5 py-0.5 text-[10px] font-semibold border outline-none cursor-pointer ${
+                                linkedLogisticsItem
+                                  ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                                  : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                              }`}
+                            >
+                              <option value="">— Unlinked (Select Logistics Item) —</option>
+                              {logisticsProductionContext.productionItems.length > 0 && (
+                                <optgroup label="Own Material Production (Logistics)">
+                                  {logisticsProductionContext.productionItems.map(m => (
+                                    <option key={m.id} value={m.id}>
+                                      {m.desc} ({(m.totalToDate || 0).toLocaleString()} {extractUnitFromLogisticsItem(m)})
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {logisticsProductionContext.supplyItems.length > 0 && (
+                                <optgroup label="Material Supply Logistics">
+                                  {logisticsProductionContext.supplyItems.map(m => (
+                                    <option key={m.id} value={m.id}>
+                                      {m.desc} ({(m.totalToDate || 0).toLocaleString()})
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </select>
+                            {linkedLogisticsItem ? (
+                              <div className="flex items-center justify-between gap-1 text-[9px] font-mono text-emerald-700 dark:text-emerald-400 px-0.5">
+                                <span>Mo: {(linkedLogisticsItem.thisMonth || 0).toLocaleString()}/{(linkedLogisticsItem.monthlyTarget || 0).toLocaleString()}</span>
+                                <span>Bal: {(linkedLogisticsItem.remainingBalance || 0).toLocaleString()}</span>
+                              </div>
+                            ) : (
+                              !isReadonly && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const created = createLogisticsProductionItemFromDaily(
+                                      project,
+                                      selectedDate,
+                                      prod,
+                                      currentUserObj?.email || currentUserObj?.username
+                                    );
+                                    const list = productionList.map((item, i) =>
+                                      i === idx ? { ...item, linkedLogisticsId: created.newLogisticsId, linkedLogisticsCategory: 'Production' } : item
+                                    );
+                                    setProductionList(list);
+                                    latestStateRef.current = { ...latestStateRef.current, productionList: list };
+                                    const nowIso = new Date().toISOString();
+                                    const entry = {
+                                      date: selectedDate,
+                                      weather,
+                                      shift,
+                                      dailyNotes,
+                                      isNoWorkDay,
+                                      noWorkReason,
+                                      noWorkNotes,
+                                      laborSummary: laborSummary.map(l => ({ category: l.category, count: Number(l.count) || 0 })),
+                                      equipmentFleet,
+                                      materialsList,
+                                      productionList: list,
+                                      siteChallenges,
+                                      tomorrowPlans,
+                                      updatedAt: nowIso,
+                                      updatedBy: currentUserObj?.username || currentUserObj?.email || 'Construction Manager'
+                                    };
+                                    onUpdateProject(
+                                      {
+                                        dailySiteLogs: { ...(project.dailySiteLogs || {}), [selectedDate]: entry },
+                                        monthlyResourceRecords: created.monthlyResourceRecords,
+                                        materialProduction: created.materialProduction
+                                      },
+                                      `Created and linked Logistics production item for ${prod.itemProduced || prod.facilityName}`
+                                    );
+                                  }}
+                                  className="text-[9px] font-bold text-purple-700 dark:text-purple-300 hover:underline px-0.5 cursor-pointer"
+                                >
+                                  + Push to Logistics & Resources
+                                </button>
+                              )
+                            )}
+                          </div>
+                        </td>
                         <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 text-center">
                           <input 
                             type="number"
                             value={prod.operatingHours || 8}
+                            disabled={isReadonly}
                             onChange={e => {
                               const list = productionList.map((item, i) => i === idx ? { ...item, operatingHours: parseFloat(e.target.value) || 0 } : item);
                               setProductionList(list);
@@ -5548,6 +6429,7 @@ export default function DailyActivitiesView({
                         <td className="p-1.5 border-r border-slate-200 dark:border-slate-700">
                           <input 
                             value={prod.remarks || ''}
+                            disabled={isReadonly}
                             onChange={e => {
                               const list = productionList.map((item, i) => i === idx ? { ...item, remarks: e.target.value } : item);
                               setProductionList(list);
@@ -5565,7 +6447,7 @@ export default function DailyActivitiesView({
                                 setProductionList(list);
                                 scheduleResourceSync({ productionList: list }, 'Removed plant production row');
                               }}
-                              className="text-slate-400 hover:text-rose-600 p-1 rounded"
+                              className="text-slate-400 hover:text-rose-600 p-1 rounded cursor-pointer"
                               title="Delete row"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -5576,8 +6458,8 @@ export default function DailyActivitiesView({
                     );
                   }) : (
                     <tr>
-                      <td colSpan={10} className="p-3 text-center text-slate-400 italic">
-                        No production units currently recorded. Click "+ Add Plant Row" above to add asphalt or concrete plants.
+                      <td colSpan={11} className="p-3 text-center text-slate-400 italic">
+                        No production units currently recorded. Click "Sync from Logistics" or "+ Add Plant Row" above.
                       </td>
                     </tr>
                   )}
@@ -5715,135 +6597,6 @@ export default function DailyActivitiesView({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
-
-              {/* Material Received / Used Tracker */}
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-                <div className="p-3 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <Package className="w-4 h-4 text-emerald-600" />
-                    <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase">3.1 Material Received / Used Tracker</h3>
-                  </div>
-                  {!isReadonly && (
-                    <div className="flex items-center gap-2 print:hidden">
-                      <button 
-                        onClick={() => {
-                          const list = [...materialsList, { id: 'm_' + Date.now(), material: PRESET_MATERIALS[0], received: 100, used: 40, remarks: 'On site' }];
-                          setMaterialsList(list);
-                          scheduleResourceSync({ materialsList: list }, 'Added material tracker item');
-                        }}
-                        className="text-xs text-emerald-600 hover:text-emerald-800 font-medium"
-                      >
-                        + Add Material
-                      </button>
-                      {materialsList.length > 0 && (
-                        <button 
-                          onClick={() => {
-                            if (!confirm('Clear all materials from this list?')) return;
-                            setMaterialsList([]);
-                            scheduleResourceSync({ materialsList: [] }, 'Cleared material tracker');
-                          }}
-                          className="text-xs text-rose-500 hover:text-rose-700"
-                          title="Clear all materials"
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-[11px]">
-                        <th className="p-2 border-r border-slate-200 dark:border-slate-700">Material</th>
-                        <th className="p-2 w-16 text-center border-r border-slate-200 dark:border-slate-700">Received</th>
-                        <th className="p-2 w-16 text-center border-r border-slate-200 dark:border-slate-700">Used</th>
-                        <th className="p-2 w-16 text-center border-r border-slate-200 dark:border-slate-700 text-blue-700 dark:text-blue-400 font-bold">Balance</th>
-                        <th className="p-2 border-r border-slate-200 dark:border-slate-700">Remarks</th>
-                        {!isReadonly && <th className="p-2 w-8 text-center print:hidden"></th>}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {materialsList.length > 0 ? materialsList.map((m, idx) => (
-                        <tr key={m.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                          <td className="p-1.5 border-r border-slate-200 dark:border-slate-700 font-medium">
-                            <input 
-                              value={m.material}
-                              onChange={e => {
-                                const list = materialsList.map((item, i) => i === idx ? { ...item, material: e.target.value } : item);
-                                setMaterialsList(list);
-                                scheduleResourceSync({ materialsList: list }, 'Updated material name');
-                              }}
-                              className="w-full bg-transparent px-1 py-0.5 outline-none text-slate-800 dark:text-slate-100 font-medium"
-                            />
-                          </td>
-                          <td className="p-1.5 text-center border-r border-slate-200 dark:border-slate-700">
-                            <input 
-                              type="number"
-                              value={m.received}
-                              onChange={e => {
-                                const list = materialsList.map((item, i) => i === idx ? { ...item, received: parseFloat(e.target.value) || 0 } : item);
-                                setMaterialsList(list);
-                                scheduleResourceSync({ materialsList: list }, 'Updated material received quantity');
-                              }}
-                              className="w-full text-center bg-transparent outline-none font-medium tabular-nums"
-                            />
-                          </td>
-                          <td className="p-1.5 text-center border-r border-slate-200 dark:border-slate-700">
-                            <input 
-                              type="number"
-                              value={m.used}
-                              onChange={e => {
-                                const list = materialsList.map((item, i) => i === idx ? { ...item, used: parseFloat(e.target.value) || 0 } : item);
-                                setMaterialsList(list);
-                                scheduleResourceSync({ materialsList: list }, 'Updated material used quantity');
-                              }}
-                              className="w-full text-center bg-transparent outline-none text-rose-600 font-medium tabular-nums"
-                            />
-                          </td>
-                          <td className="p-2 text-center border-r border-slate-200 dark:border-slate-700 font-bold text-blue-700 dark:text-blue-400 tabular-nums">
-                            {m.received - m.used}
-                          </td>
-                          <td className="p-1.5 border-r border-slate-200 dark:border-slate-700">
-                            <input 
-                              value={m.remarks}
-                              onChange={e => {
-                                const list = materialsList.map((item, i) => i === idx ? { ...item, remarks: e.target.value } : item);
-                                setMaterialsList(list);
-                                scheduleResourceSync({ materialsList: list }, 'Updated material remarks');
-                              }}
-                              className="w-full bg-transparent outline-none text-slate-600 dark:text-slate-300"
-                            />
-                          </td>
-                          {!isReadonly && (
-                            <td className="p-1 text-center print:hidden">
-                              <button 
-                                onClick={() => {
-                                  const list = materialsList.filter((_, i) => i !== idx);
-                                  setMaterialsList(list);
-                                  scheduleResourceSync({ materialsList: list }, 'Deleted material item');
-                                }}
-                                className="text-slate-400 hover:text-rose-600 p-0.5 rounded"
-                                title="Delete row"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      )) : (
-                        <tr>
-                          <td colSpan={6} className="p-3 text-center text-slate-400 italic">
-                            No materials recorded. Click "+ Add Material" above to track cement, bitumen, or rebar.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 

@@ -1806,7 +1806,7 @@ let isSyncingQueueRunning = false;
         }
       });
 
-      localStorage.setItem('era_offline_sync_queue', JSON.stringify(remaining));
+      safeSetItem('era_offline_sync_queue', JSON.stringify(remaining));
       setOfflineQueueLength(remaining.length);
       setLastSyncTime(new Date().toLocaleTimeString());
       fetchSyncLogs();
@@ -1845,7 +1845,7 @@ let isBatchSyncRunning = false;
         }
       });
 
-      localStorage.setItem('era_offline_sync_queue', JSON.stringify(remaining));
+      safeSetItem('era_offline_sync_queue', JSON.stringify(remaining));
       setOfflineQueueLength(remaining.length);
       setLastSyncTime(new Date().toLocaleTimeString());
       fetchSyncLogs();

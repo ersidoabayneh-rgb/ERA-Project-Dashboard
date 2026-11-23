@@ -22,6 +22,109 @@ export function safeDispatchCustomEvent(name: string, detail?: any): void {
   }
 }
 
+export function reclaimFirestoreWebStorageKeys(): number {
+  if (typeof window === 'undefined' || !window.localStorage) return 0;
+  let removed = 0;
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (
+        k.startsWith('firestore_mutations_') ||
+        k.startsWith('firestore_clients_') ||
+        k.startsWith('firestore_online_state_') ||
+        k.startsWith('firestore_sequence_number_') ||
+        k.startsWith('firestore_overlay_') ||
+        k.startsWith('firestore_throttle_')
+      ) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach((k) => {
+      try {
+        localStorage.removeItem(k);
+        removed++;
+      } catch {}
+    });
+  } catch {}
+  return removed;
+}
+
+export function pruneReconstructibleStorage(aggressive = false): number {
+  if (typeof window === 'undefined' || !window.localStorage) return 0;
+  let removed = reclaimFirestoreWebStorageKeys();
+  try {
+    const obsoleteKeys: string[] = [];
+    const cacheKeys: string[] = [];
+
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+
+      const matchProj = k.match(/^era_proj_v(\d+)$/);
+      if (matchProj && parseInt(matchProj[1], 10) < 28) {
+        obsoleteKeys.push(k);
+        continue;
+      }
+      const matchUsers = k.match(/^era_users_v(\d+)$/);
+      if (matchUsers && parseInt(matchUsers[1], 10) < 28) {
+        obsoleteKeys.push(k);
+        continue;
+      }
+      const matchAppr = k.match(/^era_appr_v(\d+)$/);
+      if (matchAppr && parseInt(matchAppr[1], 10) < 28) {
+        obsoleteKeys.push(k);
+        continue;
+      }
+
+      if (aggressive) {
+        if (
+          k === 'era_sync_logs_v28' ||
+          k.startsWith('era_hist_backup_') ||
+          k.startsWith('era_daily_notes_') ||
+          k.startsWith('era_labor_') ||
+          k.startsWith('era_no_work_') ||
+          k.startsWith('era_production_') ||
+          k.startsWith('era_equipment_') ||
+          k.startsWith('era_materials_') ||
+          k.startsWith('era_challenges_') ||
+          k.startsWith('era_plans_')
+        ) {
+          cacheKeys.push(k);
+        }
+      }
+    }
+
+    obsoleteKeys.forEach((k) => {
+      try {
+        localStorage.removeItem(k);
+        removed++;
+      } catch {}
+    });
+    if (aggressive) {
+      cacheKeys.forEach((k) => {
+        try {
+          localStorage.removeItem(k);
+          removed++;
+        } catch {}
+      });
+    }
+  } catch (cleanError) {
+    console.error('Error during localStorage cleanup:', cleanError);
+  }
+  return removed;
+}
+
+function isQuotaError(error: unknown): boolean {
+  if (!error) return false;
+  if (error instanceof DOMException) {
+    return error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED' || error.code === 22;
+  }
+  const msg = (error as any)?.message || String(error);
+  return msg.includes('QuotaExceededError') || msg.includes('exceeded the quota');
+}
+
 export function safeSetItem(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
@@ -39,47 +142,30 @@ export function safeSetItem(key: string, value: string): void {
     }
   } catch (error) {
     console.warn(`localStorage.setItem failed for key "${key}":`, error);
-    if (error instanceof DOMException && (
-      error.name === 'QuotaExceededError' ||
-      error.name === 'NS_ERROR_DOM_QUOTA_REACHED'
-    )) {
-      console.warn('LocalStorage quota exceeded. Attempting to clear older or unused storage keys...');
+    if (isQuotaError(error)) {
+      console.warn('LocalStorage quota exceeded. Reclaiming orphaned Firestore & cache storage keys...');
+      // First pass: remove orphaned Firestore WebStorage keys & obsolete old-version keys
+      pruneReconstructibleStorage(false);
       try {
-        const keysToRemove: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k) {
-            // Remove older versions of projects/users/approvals keys (e.g. up to v27)
-            const matchProj = k.match(/^era_proj_v(\d+)$/);
-            if (matchProj && parseInt(matchProj[1], 10) < 28) {
-              keysToRemove.push(k);
-            }
-            const matchUsers = k.match(/^era_users_v(\d+)$/);
-            if (matchUsers && parseInt(matchUsers[1], 10) < 28) {
-              keysToRemove.push(k);
-            }
-            const matchAppr = k.match(/^era_appr_v(\d+)$/);
-            if (matchAppr && parseInt(matchAppr[1], 10) < 28) {
-              keysToRemove.push(k);
-            }
-          }
+        localStorage.setItem(key, value);
+        if (typeof window !== 'undefined') {
+          safeDispatchCustomEvent('local_project_mutated', { key });
         }
-        if (keysToRemove.length > 0) {
-          console.info('Removing obsolete keys:', keysToRemove);
-          keysToRemove.forEach(k => localStorage.removeItem(k));
-          try {
-            localStorage.setItem(key, value);
-            if (typeof window !== 'undefined') {
-              safeDispatchCustomEvent('local_project_mutated', { key });
-            }
-            return;
-          } catch (retryError) {
-            console.error('Failed to setItem even after clearing obsolete keys:', retryError);
+        return;
+      } catch {
+        // Second pass: remove reconstructible per-date caches & sync logs
+        pruneReconstructibleStorage(true);
+        try {
+          localStorage.setItem(key, value);
+          if (typeof window !== 'undefined') {
+            safeDispatchCustomEvent('local_project_mutated', { key });
           }
+          return;
+        } catch (retryError) {
+          console.error('Failed to setItem even after aggressive localStorage cleanup:', retryError);
         }
-      } catch (cleanError) {
-        console.error('Error during localStorage cleanup:', cleanError);
       }
     }
   }
 }
+

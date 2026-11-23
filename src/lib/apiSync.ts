@@ -2,7 +2,7 @@ import { Project, User as AppUser, ApprovalRequest, ContractorScoringWeights, Co
 import { db } from './firebase';
 import { doc, setDoc, deleteDoc, getDocs, getDoc, collection } from 'firebase/firestore';
 import { defaultProjectTemplate, defaultZeroRowMetrics } from '../data/defaultProject';
-import { safeDispatchCustomEvent } from './storage';
+import { safeDispatchCustomEvent, safeSetItem, reclaimFirestoreWebStorageKeys } from './storage';
 import { syncProjectReportExclusionFlag } from './reportExclusionUtils';
 
 export enum OperationType {
@@ -66,8 +66,8 @@ export function recordSyncLog(entry: {
       if (stored) currentLogs = JSON.parse(stored);
     } catch {}
 
-    // Prepend newest logs, capped at 100 entries
-    currentLogs = [newLog, ...currentLogs].slice(0, 100);
+    // Prepend newest logs, capped at 50 entries to stay quota-friendly
+    currentLogs = [newLog, ...currentLogs].slice(0, 50);
     localStorage.setItem(SYNC_LOGS_STORAGE_KEY, JSON.stringify(currentLogs));
 
     safeDispatchCustomEvent('sync_log_recorded', newLog);
@@ -164,6 +164,21 @@ export async function reactivateSync(): Promise<void> {
 
 export function handleFsError(err: any): void {
   const msg = err?.message || String(err || '');
+  if (
+    msg.includes('QuotaExceededError') ||
+    msg.includes('exceeded the quota') ||
+    msg.includes('WebStorageSharedClientState') ||
+    msg.includes('INTERNAL ASSERTION FAILED') ||
+    msg.includes('Unexpected state') ||
+    msg.includes('b815')
+  ) {
+    reclaimFirestoreWebStorageKeys();
+    if (!quotaExhaustedState) {
+      quotaExhaustedState = true;
+      console.warn('[Firestore Notice]: Local browser cache quota reached; reclaimed stale cache and continuing in resilient mode.');
+    }
+    return;
+  }
   if (
     msg.includes('resource-exhausted') || 
     msg.includes('Quota limit exceeded') || 
@@ -292,7 +307,7 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
       const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
       const queue: Project[] = JSON.parse(queueStr);
       const filtered = queue.filter(p => p.id !== proj.id);
-      localStorage.setItem('era_offline_sync_queue', JSON.stringify(filtered));
+      safeSetItem('era_offline_sync_queue', JSON.stringify(filtered));
       return;
     }
   } catch {}
@@ -365,7 +380,7 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
             const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
             const queue: Project[] = JSON.parse(queueStr);
             const filtered = queue.filter(p => p.id !== proj.id);
-            localStorage.setItem('era_offline_sync_queue', JSON.stringify(filtered));
+            safeSetItem('era_offline_sync_queue', JSON.stringify(filtered));
           } catch {}
           console.log('Project successfully synchronized with backend REST API.');
           recordSyncLog({
@@ -389,7 +404,7 @@ export async function safeSyncProject(proj: Project, isBackgroundQueueSync = fal
       const queue: Project[] = JSON.parse(queueStr);
       if (!queue.some(p => p.id === proj.id)) {
         queue.push(proj);
-        localStorage.setItem('era_offline_sync_queue', JSON.stringify(queue));
+        safeSetItem('era_offline_sync_queue', JSON.stringify(queue));
         recordSyncLog({
           recordType: 'project',
           recordId: proj.id,
@@ -414,14 +429,14 @@ export async function safeDeleteProject(id: string, projectName?: string, delete
     const deletedIds: string[] = JSON.parse(deletedStr);
     if (!deletedIds.includes(id)) {
       deletedIds.push(id);
-      localStorage.setItem('era_deleted_project_ids', JSON.stringify(deletedIds));
+      safeSetItem('era_deleted_project_ids', JSON.stringify(deletedIds));
     }
 
     // Clean from offline sync queue
     const queueStr = localStorage.getItem('era_offline_sync_queue') || '[]';
     const queue: Project[] = JSON.parse(queueStr);
     const filteredQueue = queue.filter(p => p.id !== id);
-    localStorage.setItem('era_offline_sync_queue', JSON.stringify(filteredQueue));
+    safeSetItem('era_offline_sync_queue', JSON.stringify(filteredQueue));
 
     // Clean from local cached projects
     const projStr = localStorage.getItem('era_proj_v28');
@@ -429,7 +444,7 @@ export async function safeDeleteProject(id: string, projectName?: string, delete
       const projs: Project[] = JSON.parse(projStr);
       if (Array.isArray(projs)) {
         const filteredProjs = projs.filter(p => p.id !== id);
-        localStorage.setItem('era_proj_v28', JSON.stringify(filteredProjs));
+        safeSetItem('era_proj_v28', JSON.stringify(filteredProjs));
       }
     }
 
