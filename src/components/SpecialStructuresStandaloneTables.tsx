@@ -45,32 +45,13 @@ export const BRIDGE_CONSTRUCTION_STAGES = [
 ] as const;
 export type BridgeConstructionStage = typeof BRIDGE_CONSTRUCTION_STAGES[number];
 
-export const PRESET_PIPE_LOCATIONS = [
-  '200+313', '201+150', '202+400', '203+220', '204+510',
-  '205+800', '206+120', '207+350', '208+600', '209+180',
-  '210+450', '211+300', '212+750', '213+600', '214+900'
-];
+export const PRESET_PIPE_LOCATIONS: string[] = [];
 
-export const PRESET_BOX_CULVERT_LOCATIONS = [
-  'Box Culvert @ Km 195+600 (2x2m)',
-  'Box Culvert @ Km 198+250 (3x2.5m)',
-  'Box Culvert @ Km 204+100 (2x2m)',
-  'Box Culvert @ Km 209+850 (3x3m)'
-];
+export const PRESET_BOX_CULVERT_LOCATIONS: string[] = [];
 
-export const PRESET_SLAB_CULVERT_LOCATIONS = [
-  'Slab Culvert @ Km 197+200 (Span 4m)',
-  'Slab Culvert @ Km 201+650 (Span 5m)',
-  'Slab Culvert @ Km 206+300 (Span 6m)',
-  'Slab Culvert @ Km 212+100 (Span 4m)'
-];
+export const PRESET_SLAB_CULVERT_LOCATIONS: string[] = [];
 
-export const PRESET_BRIDGE_LOCATIONS = [
-  'Dermi River Bridge (Km 196+400, 3-Span)',
-  'Chiri River Bridge (Km 202+150, 4-Span)',
-  'Nansebo River Bridge (Km 208+900, 5-Span)',
-  'Wabe River Bridge (Km 215+350, 6-Span)'
-];
+export const PRESET_BRIDGE_LOCATIONS: string[] = [];
 
 export type SubTableKey = 'pipe' | 'box' | 'slab' | 'bridge';
 
