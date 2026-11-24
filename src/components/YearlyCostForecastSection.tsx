@@ -18,7 +18,7 @@ import {
 } from 'recharts';
 import { Project } from '../types';
 import { parseMonthKey, isProjectActiveLifecycle } from '../lib/monthlySync';
-import { parseLocalDate } from '../lib/dateUtils';
+import { parseLocalDate, getRevisedCompletionDate } from '../lib/dateUtils';
 
 // ==========================================
 // 1. EFY & Financial PA Derivation Helpers
@@ -71,9 +71,8 @@ interface FinancialPaMetrics {
   empiricalPn: number;
   firstPaRate: number;
   latestPaRate: number;
-  paRateGainPct: number; // percentage-point gain from earliest to latest IPC (or single IPC rate)
-  empiricalAnnualIncrement: number; // annualized escalation increment rate r (decimal e.g. 0.0435)
-  paByEfy: Record<number, { pa: number; gross: number; count: number }>;
+  paRateGainPct: number;
+  empiricalAnnualIncrement: number;
   methodologySummary: string;
 }
 
@@ -104,7 +103,6 @@ function deriveFinancialPaMetrics(project: Project): FinancialPaMetrics {
         monthIndex = fallbackDate.getMonth();
       }
 
-      const efy = year !== null && monthIndex !== null ? getEfyFromGregorian(year, monthIndex) : null;
       const timeMs =
         year !== null && monthIndex !== null
           ? new Date(year, monthIndex, 15).getTime()
@@ -116,24 +114,11 @@ function deriveFinancialPaMetrics(project: Project): FinancialPaMetrics {
         gross,
         pa,
         paRate: gross > 0 ? pa / gross : 0,
-        efy,
         timeMs
       };
     })
     .filter(entry => entry.gross > 0 || entry.pa > 0)
     .sort((a, b) => a.timeMs - b.timeMs);
-
-  const paByEfy: Record<number, { pa: number; gross: number; count: number }> = {};
-  validIpcs.forEach(entry => {
-    if (entry.efy !== null) {
-      if (!paByEfy[entry.efy]) {
-        paByEfy[entry.efy] = { pa: 0, gross: 0, count: 0 };
-      }
-      paByEfy[entry.efy].pa += entry.pa;
-      paByEfy[entry.efy].gross += entry.gross;
-      paByEfy[entry.efy].count += 1;
-    }
-  });
 
   const ipcTotalGross = validIpcs.reduce((s, e) => s + e.gross, 0);
   const ipcTotalPa = validIpcs.reduce((s, e) => s + e.pa, 0);
@@ -162,7 +147,6 @@ function deriveFinancialPaMetrics(project: Project): FinancialPaMetrics {
     latestPaRate = ipcsWithGross[ipcsWithGross.length - 1].paRate;
     const netDeltaRate = latestPaRate - firstPaRate;
 
-    // Also compute step-by-step positive increments across IPCs
     let positiveStepsSum = 0;
     let positiveStepsCount = 0;
     for (let i = 1; i < ipcsWithGross.length; i++) {
@@ -207,7 +191,6 @@ function deriveFinancialPaMetrics(project: Project): FinancialPaMetrics {
     latestPaRate,
     paRateGainPct,
     empiricalAnnualIncrement: Number(empiricalAnnualIncrement.toFixed(4)),
-    paByEfy,
     methodologySummary
   };
 }
@@ -241,7 +224,6 @@ const HeaderTooltip: React.FC<HeaderTooltipProps> = ({
       <span className="truncate">{title}</span>
       <Info className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 group-hover:text-amber-500 dark:group-hover:text-amber-300 transition-colors shrink-0" />
 
-      {/* Tooltip Card */}
       <div
         className={`absolute bottom-full mb-2.5 hidden group-hover:block w-72 sm:w-80 p-3 bg-slate-900 dark:bg-slate-950 text-slate-100 text-left text-xs rounded-xl shadow-2xl border border-slate-700 dark:border-indigo-500/70 z-50 pointer-events-none backdrop-blur-md transition-all ${
           align === 'right' ? 'right-0' : align === 'center' ? 'left-1/2 -translate-x-1/2' : 'left-0'
@@ -282,7 +264,6 @@ interface CustomForecastTooltipProps {
   active?: boolean;
   payload?: any[];
   label?: string;
-  chartUnit: 'millions' | 'full';
   formatBr: (v: number) => string;
 }
 
@@ -303,28 +284,28 @@ const CustomForecastTooltip: React.FC<CustomForecastTooltipProps> = ({
           </span>
         </div>
         <div className="text-[10px] text-slate-400 font-semibold">
-          {data.isPast ? 'Basis: Monthly Cumulative Actual Accomplishment + Certified PA' : 'Basis: Monthly Cumulative Plan + Forecasted PA'}
+          Remaining Works Forecast · Plan &amp; EFY Basis
         </div>
         <div className="space-y-1 pt-1 font-mono text-[11px]">
           <div className="flex justify-between items-center text-slate-300">
-            <span>{data.isPast ? 'Actual Work Value:' : 'Base Planned Work:'}</span>
+            <span>Remaining Base Planned:</span>
             <span className="font-bold text-white">{formatBr(data.baseCost)}</span>
           </div>
           <div className="flex justify-between items-center text-rose-300">
-            <span>{data.isPast ? 'Price Adjustment:' : 'Forecasted PA Adder:'}</span>
+            <span>Forecasted PA Adder:</span>
             <span className="font-bold">+{formatBr(data.paAdder)}</span>
           </div>
           <div className="flex justify-between items-center text-emerald-300 font-bold border-t border-slate-800 pt-1">
-            <span>Total Cost incl. PA:</span>
+            <span>Estimated Outlay incl. PA:</span>
             <span>{formatBr(data.escalatedCost)}</span>
           </div>
           <div className="flex justify-between items-center text-purple-300">
-            <span>Cumulative Outlay:</span>
+            <span>Cumulative Remaining:</span>
             <span>{formatBr(data.cumulativeEscalated)}</span>
           </div>
           <div className="flex justify-between items-center text-amber-300 text-[10px] pt-1 border-t border-slate-800">
-            <span>{data.isPast ? 'Monthly Cum. Actual Δ:' : 'Monthly Cum. Plan Δ:'}</span>
-            <span>+{data.fyProgressIncrement.toFixed(1)}% ({data.sharePct.toFixed(1)}%)</span>
+            <span>Share of Remaining Works:</span>
+            <span>{data.sharePct.toFixed(1)}% ({data.planBasisNote})</span>
           </div>
         </div>
       </div>
@@ -334,7 +315,7 @@ const CustomForecastTooltip: React.FC<CustomForecastTooltipProps> = ({
 };
 
 // ==========================================
-// 4. Main Yearly Cost Forecast Section
+// 4. Main Yearly Cost Forecast Section (Remaining Works Only)
 // ==========================================
 interface YearlyCostForecastSectionProps {
   project: Project;
@@ -345,16 +326,16 @@ interface YearlyCostForecastSectionProps {
 
 export interface ForecastYearRow {
   efyYear: number;
-  year: string; // EFY start Gregorian year string
+  year: string;
   efy: string;
   periodLabel: string;
   efyLabel: string;
-  isPast: boolean;
   isCurrent: boolean;
   isFinish: boolean;
-  basisType: 'actual' | 'plan' | 'fallback_plan';
+  basisType: 'plan' | 'efy_pace';
   sharePct: number;
   fyProgressIncrement: number;
+  activeMonthsInEfy: number;
   startRefLabel: string;
   startRefVal: number;
   endRefLabel: string;
@@ -401,14 +382,13 @@ export default function YearlyCostForecastSection({
   }, [financialPa.empiricalAnnualIncrement, hasCustomIncrement]);
 
   const [calendarView, setCalendarView] = useState<'EFY' | 'G.C.'>('EFY');
-  const [scopeView, setScopeView] = useState<'future' | 'all'>('all');
   const [showDivisionBreakdown, setShowDivisionBreakdown] = useState<boolean>(false);
   const [showChart, setShowChart] = useState<boolean>(true);
   const [chartUnit, setChartUnit] = useState<'millions' | 'full'>('millions');
   const [chartType, setChartType] = useState<'line' | 'area'>('line');
   const [copied, setCopied] = useState<boolean>(false);
 
-  // 2. Division Work Quantities & Contract Values
+  // 2. Remaining Works (Unexecuted BOQ Balance)
   const seriesList = project.series || [];
   const totalSeriesContract = seriesList.reduce((sum, s) => sum + (s.contractAmt || 0), 0) || BAC;
   const totalSeriesExec = seriesList.reduce((sum, s) => sum + (s.execAmt || 0), 0) || EV;
@@ -440,246 +420,173 @@ export default function YearlyCostForecastSection({
       .sort((a, b) => a.serial - b.serial);
   }, [project.monthly]);
 
-  // Boundary reader at the end of a specific EFY `efyYear` (June of `efyYear + 8`, or closest preceding point)
-  const getCumulativeAtEfyEnd = (efyYear: number, metric: 'actual' | 'plan'): { value: number; matched: string } => {
-    if (parsedMonthly.length === 0) {
-      return { value: 0, matched: 'N/A' };
-    }
-
-    const endBoundarySerial = getEfyEndGregYear(efyYear) * 12 + 5; // June of (efyYear + 8)
-    const startBoundarySerial = getEfyStartGregYear(efyYear) * 12 + 6; // July of (efyYear + 7)
-
-    const validPoints = parsedMonthly.filter(pt =>
-      metric === 'actual' ? pt.actual !== null : true
-    );
-    if (validPoints.length === 0) {
-      return { value: 0, matched: 'N/A' };
-    }
-
-    const onOrBeforeEnd = validPoints.filter(pt => pt.serial <= endBoundarySerial);
-    if (onOrBeforeEnd.length > 0) {
-      const latest = onOrBeforeEnd[onOrBeforeEnd.length - 1];
-      const val = metric === 'actual' ? (latest.actual ?? 0) : latest.plan;
-      return { value: val, matched: latest.key };
-    }
-
-    // If no entries exist on or before EFY end (i.e. project starts after this EFY)
-    const first = validPoints[0];
-    if (first.serial >= startBoundarySerial) {
-      return { value: 0, matched: `< ${first.key}` };
-    }
-    return { value: 0, matched: 'N/A' };
-  };
-
-  // Monthly plan velocity baseline (June -> July increment from Monthly Cumulative)
-  const juneJulIncrement = useMemo(() => {
+  // Average Monthly Plan pace (% per month) derived from Monthly Cumulative Plan curve
+  const avgMonthlyPlanPace = useMemo(() => {
     const juneEntry = (project.monthly || []).find(m => m.month && (m.month.toLowerCase().includes('jun') || m.month.includes('-06')));
     const julyEntry = (project.monthly || []).find(m => m.month && (m.month.toLowerCase().includes('jul') || m.month.includes('-07')));
     const jPlan = Number(juneEntry?.revisedPlan ?? juneEntry?.originalPlan ?? 0);
     const jlPlan = Number(julyEntry?.revisedPlan ?? julyEntry?.originalPlan ?? 0);
-    if (jlPlan > jPlan) return jlPlan - jPlan;
+
     if (parsedMonthly.length >= 2) {
       const first = parsedMonthly[0].plan;
       const last = parsedMonthly[parsedMonthly.length - 1].plan;
       const span = Math.max(1, parsedMonthly[parsedMonthly.length - 1].serial - parsedMonthly[0].serial);
-      return Math.max(0.1, (last - first) / span);
+      const avg = (last - first) / span;
+      if (avg > 0.1) return avg;
     }
+    if (jlPlan > jPlan) return jlPlan - jPlan;
     return 1.5;
   }, [project.monthly, parsedMonthly]);
 
-  // 4. Determine Current EFY, Previous EFYs, and Upcoming EFYs
+  // 4. Determine Current EFY & Forecast Remaining Works across Current + Upcoming EFYs based on Plan & EFY
   const currentEfy = getCurrentEfy(project);
 
-  const { pastProjections, futureProjections, totalPrevBase, totalPrevPa, totalPrevEscalated } = useMemo(() => {
-    const efySet = new Set<number>();
-    parsedMonthly.forEach(pt => efySet.add(pt.efy));
-    Object.keys(financialPa.paByEfy).forEach(k => efySet.add(parseInt(k, 10)));
+  const futureProjections: ForecastYearRow[] = useMemo(() => {
+    const now = new Date();
+    const currentMonthSerial = now.getFullYear() * 12 + now.getMonth();
 
-    // Include start/completion dates if available
-    const startDt = parseLocalDate(project.startDate);
-    if (startDt) {
-      efySet.add(getEfyFromGregorian(startDt.getFullYear(), startDt.getMonth()));
-    }
-    efySet.add(currentEfy);
+    const getPlanAtSerial = (targetSerial: number): { value: number; matched: string } => {
+      if (parsedMonthly.length === 0) return { value: 0, matched: 'N/A' };
+      const onOrBefore = parsedMonthly.filter(pt => pt.serial <= targetSerial);
+      if (onOrBefore.length > 0) {
+        const latest = onOrBefore[onOrBefore.length - 1];
+        return { value: latest.plan, matched: latest.key };
+      }
+      return { value: 0, matched: `< ${parsedMonthly[0].key}` };
+    };
 
-    const allRecordedEfys = Array.from(efySet).sort((a, b) => a - b);
+    const getEfyStartSerial = (efy: number) => getEfyStartGregYear(efy) * 12 + 6; // July
+    const getEfyEndSerial = (efy: number) => getEfyEndGregYear(efy) * 12 + 5; // June
 
-    // Previous EFYs: strictly < currentEfy that had activity or monthly entries
-    const previousEfys = allRecordedEfys.filter(e => e < currentEfy);
+    // Remaining active months inside an EFY relative to current calendar month
+    const getRemainingMonthsInEfy = (efy: number): number => {
+      const startSerial = Math.max(getEfyStartSerial(efy), currentMonthSerial);
+      const endSerial = getEfyEndSerial(efy);
+      return Math.max(0, endSerial - startSerial + 1);
+    };
 
-    // Current & Upcoming EFYs: >= currentEfy (ensure at least Current EFY + 2 upcoming when needed, or follow monthly plan horizon)
-    let upcomingAndCurrentEfys = allRecordedEfys.filter(e => e >= currentEfy);
-    if (upcomingAndCurrentEfys.length === 0) {
-      upcomingAndCurrentEfys = [currentEfy, currentEfy + 1, currentEfy + 2];
-    } else if (remainingBalance > 0) {
-      let lastEfy = upcomingAndCurrentEfys[upcomingAndCurrentEfys.length - 1];
-      const latestPlanAtLast = getCumulativeAtEfyEnd(lastEfy, 'plan').value;
-      // Extend horizon up to 3 EFYs only when the recorded monthly plan has not yet reached 100%
-      if (latestPlanAtLast < 99.9) {
-        while (upcomingAndCurrentEfys.length < 3) {
-          lastEfy += 1;
-          upcomingAndCurrentEfys.push(lastEfy);
-        }
+    // Determine candidate EFYs (>= currentEfy) from Monthly Cumulative Plan & Contract Revision Date
+    const efySet = new Set<number>([currentEfy]);
+    parsedMonthly.forEach(pt => {
+      if (pt.efy >= currentEfy) efySet.add(pt.efy);
+    });
+
+    const revCompDate = getRevisedCompletionDate(
+      project.startDate,
+      project.origDays,
+      project.eotDays,
+      project.interimEotDays
+    );
+    const revCompEfy = revCompDate
+      ? getEfyFromGregorian(revCompDate.getFullYear(), revCompDate.getMonth())
+      : currentEfy;
+
+    if (revCompEfy > currentEfy && remainingBalance > 0) {
+      const cappedRevEfy = Math.min(revCompEfy, currentEfy + 6);
+      for (let e = currentEfy; e <= cappedRevEfy; e++) {
+        efySet.add(e);
       }
     }
 
-    // -----------------------------------------------------------------------
-    // A. PREVIOUS EFYs: Monthly Cumulative Actual Accomplishment + Price Adj
-    // -----------------------------------------------------------------------
-    const prevRaw = previousEfys.map(efy => {
-      const startActual = getCumulativeAtEfyEnd(efy - 1, 'actual');
-      const endActual = getCumulativeAtEfyEnd(efy, 'actual');
-      const actualIncPct = Math.max(0, endActual.value - startActual.value);
-      const baseCost = totalSeriesContract * (actualIncPct / 100);
-      const ipcInfo = financialPa.paByEfy[efy];
+    let candidateEfys = Array.from(efySet).sort((a, b) => a - b);
 
-      return {
-        efyYear: efy,
-        startActual,
-        endActual,
-        actualIncPct,
-        baseCost,
-        directIpcPa: ipcInfo ? ipcInfo.pa : 0,
-        hasDirectIpc: Boolean(ipcInfo && ipcInfo.pa > 0)
-      };
-    });
+    // Evaluate explicit Monthly Cumulative Plan increments for each EFY >= currentEfy
+    // For Current EFY: measures remaining planned work inside Current EFY (from prior closed month or EFY start through June of Current EFY)
+    const evalPlanRows = (efys: number[]) =>
+      efys.map(efy => {
+        const prevEfyEndSerial = getEfyEndSerial(efy - 1);
+        const startBaselineSerial =
+          efy === currentEfy
+            ? Math.max(prevEfyEndSerial, currentMonthSerial - 1)
+            : prevEfyEndSerial;
 
-    // Reconcile historical Price Adjustment from Financial Data across Previous EFYs:
-    // Any IPCs strictly inside `currentEfy` remain in current EFY; all prior PA belongs to Previous EFYs.
-    const currentAndFutureDirectPa = Object.keys(financialPa.paByEfy)
-      .filter((efyKey) => parseInt(efyKey, 10) >= currentEfy)
-      .reduce((s, efyKey) => s + (financialPa.paByEfy[Number(efyKey)]?.pa || 0), 0);
+        const endSerial = getEfyEndSerial(efy);
+        const startPlan = getPlanAtSerial(startBaselineSerial);
+        const endPlan = getPlanAtSerial(endSerial);
+        let planInc = Math.max(0, endPlan.value - startPlan.value);
 
-    const historicalTotalPaTarget = Math.max(0, financialPa.totalPa - currentAndFutureDirectPa);
-    const directMappedOnPrev = prevRaw.reduce(
-      (s, r) => s + (r.hasDirectIpc ? r.directIpcPa : 0),
-      0
-    );
-    const unallocatedPrevPa = Math.max(0, historicalTotalPaTarget - directMappedOnPrev);
-    const unmappedPrevBaseSum = prevRaw.reduce(
-      (s, r) => s + (r.baseCost > 0 && !r.hasDirectIpc ? r.baseCost : 0),
-      0
-    );
-    const totalPrevBaseSum = prevRaw.reduce((s, r) => s + r.baseCost, 0);
-
-    let runningPrevCum = 0;
-    let runningPrevBase = 0;
-
-    const builtPast: ForecastYearRow[] = prevRaw.map((r, rIdx) => {
-      const startGreg = getEfyStartGregYear(r.efyYear);
-      const endGreg = getEfyEndGregYear(r.efyYear);
-
-      let paAdder = 0;
-      let paSourceTag = 'No PA';
-
-      if (r.hasDirectIpc) {
-        paAdder = r.directIpcPa;
-        paSourceTag = 'Certified IPC PA';
-        if (unallocatedPrevPa > 0 && unmappedPrevBaseSum === 0 && totalPrevBaseSum > 0 && r.baseCost > 0) {
-          paAdder += unallocatedPrevPa * (r.baseCost / totalPrevBaseSum);
-          paSourceTag = 'Certified IPC + Historical PA';
+        // If mid-EFY current month already exceeded monthly plan entries, also check full current-EFY plan delta before falling back
+        if (efy === currentEfy && planInc === 0) {
+          const fullEfyStartPlan = getPlanAtSerial(prevEfyEndSerial);
+          const fullEfyDelta = Math.max(0, endPlan.value - fullEfyStartPlan.value);
+          if (fullEfyDelta > 0) {
+            return {
+              efyYear: efy,
+              startPlan: fullEfyStartPlan,
+              endPlan,
+              planInc: fullEfyDelta,
+              activeMonths: getRemainingMonthsInEfy(efy)
+            };
+          }
         }
-      } else if (unallocatedPrevPa > 0 && r.baseCost > 0 && unmappedPrevBaseSum > 0) {
-        paAdder = unallocatedPrevPa * (r.baseCost / unmappedPrevBaseSum);
-        paSourceTag = 'Financial Data Historical PA';
-      } else if (unallocatedPrevPa > 0 && totalPrevBaseSum === 0 && rIdx === prevRaw.length - 1) {
-        paAdder = unallocatedPrevPa;
-        paSourceTag = 'Financial Data Historical PA';
-      } else if (r.baseCost > 0 && basePaFactor > 1.0 && financialPa.totalPa === 0) {
-        paAdder = r.baseCost * (basePaFactor - 1.0);
-        paSourceTag = 'Sensitivity Factor';
+
+        return {
+          efyYear: efy,
+          startPlan,
+          endPlan,
+          planInc,
+          activeMonths: getRemainingMonthsInEfy(efy)
+        };
+      });
+
+    let futurePlansRaw = evalPlanRows(candidateEfys);
+    let totalExplicitPlanInc = futurePlansRaw.reduce((sum, item) => sum + item.planInc, 0);
+
+    // If Monthly Cumulative Plan has no remaining plan increments >= currentEfy while unexecuted work remains,
+    // determine EFY horizon from revised completion EFY or Monthly Cumulative Plan burn pace
+    if (totalExplicitPlanInc <= 0 && remainingBalance > 0) {
+      if (candidateEfys.length < 2) {
+        const monthsNeeded = Math.max(12, Math.ceil(remainingPct / Math.max(0.5, avgMonthlyPlanPace)));
+        const remCurrMonths = getRemainingMonthsInEfy(currentEfy);
+        let coveredMonths = remCurrMonths;
+        let nextEfy = currentEfy;
+        while (coveredMonths < monthsNeeded && candidateEfys.length < 4) {
+          nextEfy += 1;
+          candidateEfys.push(nextEfy);
+          coveredMonths += 12;
+        }
+        if (candidateEfys.length === 1) {
+          candidateEfys.push(currentEfy + 1);
+        }
+        futurePlansRaw = evalPlanRows(candidateEfys);
+        totalExplicitPlanInc = futurePlansRaw.reduce((sum, item) => sum + item.planInc, 0);
       }
+    }
 
-      const pnFactor = r.baseCost > 0 ? 1.0 + paAdder / r.baseCost : basePaFactor;
-      const escalatedCost = r.baseCost + paAdder;
-      runningPrevCum += escalatedCost;
-      runningPrevBase += r.baseCost;
-
-      const shareOfContract = totalSeriesContract > 0 ? (r.baseCost / totalSeriesContract) * 100 : r.actualIncPct;
-
-      return {
-        efyYear: r.efyYear,
-        year: String(startGreg),
-        efy: `EFY ${r.efyYear}`,
-        periodLabel: `${startGreg}/${endGreg} G.C.`,
-        efyLabel: `EFY ${r.efyYear} (${startGreg}/${endGreg})`,
-        isPast: true,
-        isCurrent: false,
-        isFinish: false,
-        basisType: 'actual',
-        sharePct: shareOfContract,
-        fyProgressIncrement: r.actualIncPct,
-        startRefLabel: r.startActual.matched,
-        startRefVal: r.startActual.value,
-        endRefLabel: r.endActual.matched,
-        endRefVal: r.endActual.value,
-        baseCost: r.baseCost,
-        pnFactor,
-        paAdder,
-        paSourceTag,
-        escalatedCost,
-        cumulativeEscalated: runningPrevCum,
-        balanceRemaining: Math.max(0, totalSeriesContract - runningPrevBase)
-      };
-    });
-
-    // -----------------------------------------------------------------------
-    // B. CURRENT EFY & UPCOMING EFYs: Monthly Cumulative Plan + Forecasted PA
-    // -----------------------------------------------------------------------
-    const futurePlansRaw = upcomingAndCurrentEfys.map(efy => {
-      const startPlan = getCumulativeAtEfyEnd(efy - 1, 'plan');
-      const endPlan = getCumulativeAtEfyEnd(efy, 'plan');
-      const planInc = Math.max(0, endPlan.value - startPlan.value);
-      return {
-        efyYear: efy,
-        startPlan,
-        endPlan,
-        planInc
-      };
-    });
-
-    // Filter trailing zero-plan padding beyond last active year unless needed as minimum 3-year fallback
-    const totalFuturePlanInc = futurePlansRaw.reduce((sum, item) => sum + item.planInc, 0);
-    const hasExplicitMonthlyPlans = totalFuturePlanInc > 0;
-
+    const hasExplicitMonthlyPlans = totalExplicitPlanInc > 0;
     const effectiveFuturePlans = hasExplicitMonthlyPlans
       ? futurePlansRaw.filter(item => item.efyYear === currentEfy || item.planInc > 0)
       : futurePlansRaw;
 
     const effectivePlanSum = effectiveFuturePlans.reduce((sum, item) => sum + item.planInc, 0);
+    const totalActiveMonths = effectiveFuturePlans.reduce((sum, item) => sum + item.activeMonths, 0) || 1;
 
-    const futureWeights = effectiveFuturePlans.map((item, idx) => {
-      if (effectivePlanSum > 0 && item.planInc > 0) {
+    const futureWeights = effectiveFuturePlans.map(item => {
+      if (effectivePlanSum > 0) {
         return (item.planInc / effectivePlanSum) * 100;
       }
-      if (effectivePlanSum > 0 && item.planInc === 0) {
-        return 0;
-      }
-      // Fallback distribution only if monthly cumulative has zero future plan increments
-      if (effectiveFuturePlans.length === 1) return 100;
-      if (effectiveFuturePlans.length === 2) return idx === 0 ? 58 : 42;
-      if (effectiveFuturePlans.length === 3) return idx === 0 ? 45 : idx === 1 ? 35 : 20;
-      return 100 / effectiveFuturePlans.length;
+      // Distribute remaining works across EFYs proportionally by remaining active calendar months & plan pace
+      return (item.activeMonths / totalActiveMonths) * 100;
     });
 
     const sumWeights = futureWeights.reduce((a, b) => a + b, 0) || 100;
-    const normalizedFutureWeights = futureWeights.map(w => (w / sumWeights) * 100);
+    const normalizedWeights = futureWeights.map(w => (w / sumWeights) * 100);
 
-    let runningFutureEscalated = 0;
+    let runningRemainingEscalated = 0;
     let remBalanceTrack = remainingBalance;
 
-    const builtFuture: ForecastYearRow[] = effectiveFuturePlans.map((planData, idx) => {
+    return effectiveFuturePlans.map((planData, idx) => {
       const startGreg = getEfyStartGregYear(planData.efyYear);
       const endGreg = getEfyEndGregYear(planData.efyYear);
-      const sharePct = normalizedFutureWeights[idx];
+      const sharePct = normalizedWeights[idx];
       const baseCost = remainingBalance * (sharePct / 100);
 
-      // Forecasted Pn using Baseline P0 & Annual Increment Rate derived from Financial Data PA
+      // Forecasted Pn using Baseline P0 & Annual PA Increment Rate derived from Financial Data page
       const pnFactor = basePaFactor * Math.pow(1 + annualInflation, idx);
       const paAdder = baseCost * Math.max(0, pnFactor - 1.0);
       const escalatedCost = baseCost + paAdder;
 
-      runningFutureEscalated += escalatedCost;
+      runningRemainingEscalated += escalatedCost;
       remBalanceTrack = Math.max(0, remBalanceTrack - baseCost);
 
       return {
@@ -688,12 +595,12 @@ export default function YearlyCostForecastSection({
         efy: `EFY ${planData.efyYear}`,
         periodLabel: `${startGreg}/${endGreg} G.C.`,
         efyLabel: `EFY ${planData.efyYear} (${startGreg}/${endGreg})`,
-        isPast: false,
         isCurrent: planData.efyYear === currentEfy,
         isFinish: idx === effectiveFuturePlans.length - 1,
-        basisType: planData.planInc > 0 ? 'plan' : 'fallback_plan',
+        basisType: planData.planInc > 0 ? 'plan' : 'efy_pace',
         sharePct,
         fyProgressIncrement: planData.planInc,
+        activeMonthsInEfy: planData.activeMonths,
         startRefLabel: planData.startPlan.matched,
         startRefVal: planData.startPlan.value,
         endRefLabel: planData.endPlan.matched,
@@ -703,47 +610,18 @@ export default function YearlyCostForecastSection({
         paAdder,
         paSourceTag: idx === 0 ? 'Current Forecast (P0)' : `Forecast (P0 × (1+r)^${idx})`,
         escalatedCost,
-        cumulativeEscalated: runningFutureEscalated,
+        cumulativeEscalated: runningRemainingEscalated,
         balanceRemaining: idx === effectiveFuturePlans.length - 1 ? 0 : remBalanceTrack
       };
     });
+  }, [parsedMonthly, project.startDate, project.origDays, project.eotDays, project.interimEotDays, currentEfy, remainingBalance, remainingPct, avgMonthlyPlanPace, basePaFactor, annualInflation]);
 
-    const prevBase = builtPast.reduce((s, r) => s + r.baseCost, 0);
-    const prevPa = builtPast.reduce((s, r) => s + r.paAdder, 0);
-    const prevEsc = builtPast.reduce((s, r) => s + r.escalatedCost, 0);
-
-    return {
-      pastProjections: builtPast,
-      futureProjections: builtFuture,
-      totalPrevBase: prevBase,
-      totalPrevPa: prevPa,
-      totalPrevEscalated: prevEsc
-    };
-  }, [parsedMonthly, financialPa, project.startDate, currentEfy, totalSeriesContract, remainingBalance, basePaFactor, annualInflation]);
-
-  // Cumulative progression when viewing Full Lifecycle (`scopeView === 'all'`)
-  const activeProjections = useMemo(() => {
-    if (scopeView === 'future') {
-      return futureProjections;
-    }
-    // Re-accumulate total cumulative escalated cost smoothly from Previous EFYs -> Current -> Upcoming EFYs
-    let runningAll = 0;
-    return [...pastProjections, ...futureProjections].map(row => {
-      runningAll += row.escalatedCost;
-      return {
-        ...row,
-        cumulativeEscalated: runningAll
-      };
-    });
-  }, [scopeView, pastProjections, futureProjections]);
-
-  // Recharts dataset mirrors active scope
-  const chartData = activeProjections.map((p) => {
+  // Recharts dataset strictly represents Remaining Works Forecast across Current & Upcoming EFYs
+  const chartData = futureProjections.map((p) => {
     return {
       periodLabel: calendarView === 'EFY' ? p.efy : p.periodLabel,
       fullPeriod: `${p.efy} (${p.periodLabel})`,
       efyYearLabel: p.efy,
-      isPast: p.isPast,
       baseCost: p.baseCost,
       baseCostM: p.baseCost / 1_000_000,
       paAdder: p.paAdder,
@@ -753,48 +631,45 @@ export default function YearlyCostForecastSection({
       cumulativeEscalated: p.cumulativeEscalated,
       cumulativeEscalatedM: p.cumulativeEscalated / 1_000_000,
       pnFactor: p.pnFactor,
-      fyProgressIncrement: p.fyProgressIncrement,
-      sharePct: p.sharePct
+      sharePct: p.sharePct,
+      planBasisNote: p.basisType === 'plan' ? `+${p.fyProgressIncrement.toFixed(1)}% Plan` : `${p.activeMonthsInEfy} mos EFY pace`
     };
   });
 
-  // Summary aggregates
+  // Summary aggregates (strictly Remaining Works)
   const totalBaseForecast = futureProjections.reduce((sum, r) => sum + r.baseCost, 0);
   const totalFuturePaAdder = futureProjections.reduce((sum, r) => sum + r.paAdder, 0);
   const totalProjectedEscalated = futureProjections.reduce((sum, r) => sum + r.escalatedCost, 0);
+  const avgFuturePn = futureProjections.reduce((a, b) => a + b.pnFactor, 0) / (futureProjections.length || 1);
 
-  const grandTotalBase = totalPrevBase + totalBaseForecast;
-  const grandTotalPa = totalPrevPa + totalFuturePaAdder;
-  const grandTotalEscalated = totalPrevEscalated + totalProjectedEscalated;
-
-  const totalLifetimePa = grandTotalPa;
+  const totalLifetimePa = financialPa.totalPa + totalFuturePaAdder;
   const ppaThresholdRatio = BAC > 0 ? (totalLifetimePa / BAC) * 100 : 0;
   const isPpaCompliant = ppaThresholdRatio <= 20.0;
+
+  const firstForecastEfy = futureProjections[0]?.efy || `EFY ${currentEfy}`;
+  const lastForecastEfy = futureProjections[futureProjections.length - 1]?.efy || `EFY ${currentEfy}`;
 
   // Copy summary report to clipboard
   const handleCopySummary = () => {
     const summaryText = `=====================================================
-YEARLY ESTIMATED COST FORECAST & PRICE ESCALATION AUDIT
+YEARLY ESTIMATED COST FORECAST (REMAINING WORKS ONLY)
 Project: ${project.name} (ID: ${project.id || 'N/A'})
 Evaluation Date: ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-Current Operating EFY: EFY ${currentEfy}
-Contract Price (BAC): ${formatBr(BAC)}
-Total Executed To-Date: ${formatBr(totalSeriesExec)} (${executedPct.toFixed(1)}%)
-Remaining Unexecuted Balance: ${formatBr(remainingBalance)} (${remainingPct.toFixed(1)}%)
+Forecast Horizon: ${firstForecastEfy} – ${lastForecastEfy} (Current & Upcoming EFYs)
+Total Contract Price (BAC): ${formatBr(BAC)}
+Executed To-Date: ${formatBr(totalSeriesExec)} (${executedPct.toFixed(1)}%)
+Remaining Works (Forecast Base): ${formatBr(remainingBalance)} (${remainingPct.toFixed(1)}%)
 Financial Data PA Baseline P0: ${basePaFactor.toFixed(4)} (${((basePaFactor - 1) * 100).toFixed(2)}% PA/Gross)
 Financial Data Annual PA Increment (r): ${(annualInflation * 100).toFixed(2)}% p.a. (${financialPa.methodologySummary})
 -----------------------------------------------------
-PREVIOUS EFYs (MONTHLY CUMULATIVE ACTUALS + PA):
-${pastProjections.length > 0 ? pastProjections.map(r => `• ${r.efy} [${r.periodLabel}] | Actual: +${r.fyProgressIncrement.toFixed(1)}% (${r.startRefLabel}→${r.endRefLabel}) | Work Value: ${formatBr(r.baseCost)} | PA (${r.paSourceTag}): +${formatBr(r.paAdder)} | Total: ${formatBr(r.escalatedCost)}`).join('\n') : '• No closed prior EFYs recorded.'}
+REMAINING WORKS FORECAST BY EFY (PLAN & EFY BASIS):
+${futureProjections.map(r => `• ${r.efy} [${r.periodLabel}] ${r.isCurrent ? '[CURRENT]' : '[UPCOMING]'} | Share: ${r.sharePct.toFixed(1)}% (${r.basisType === 'plan' ? `+${r.fyProgressIncrement.toFixed(1)}% Plan` : `${r.activeMonthsInEfy} mos EFY pace`}) | Base: ${formatBr(r.baseCost)} | Pn: ${r.pnFactor.toFixed(4)} | PA: +${formatBr(r.paAdder)} | Est. Outlay: ${formatBr(r.escalatedCost)} | Cum.: ${formatBr(r.cumulativeEscalated)}`).join('\n')}
 -----------------------------------------------------
-CURRENT & UPCOMING EFYs (MONTHLY CUMULATIVE PLAN + FORECASTED PA):
-${futureProjections.map(r => `• ${r.efy} [${r.periodLabel}] ${r.isCurrent ? '[CURRENT]' : '[UPCOMING]'} | Plan Δ: +${r.fyProgressIncrement.toFixed(1)}% (${r.sharePct.toFixed(1)}% rem.) | Base: ${formatBr(r.baseCost)} | Pn: ${r.pnFactor.toFixed(4)} | PA: +${formatBr(r.paAdder)} | Escalated: ${formatBr(r.escalatedCost)} | Cum.: ${formatBr(r.cumulativeEscalated)}`).join('\n')}
------------------------------------------------------
-SUMMARY TO COMPLETION:
-Previous EFYs Accomplished (incl. PA): ${formatBr(totalPrevEscalated)} (Base: ${formatBr(totalPrevBase)} + PA: ${formatBr(totalPrevPa)})
-Current & Upcoming Plan Commitment: ${formatBr(totalProjectedEscalated)} (Base: ${formatBr(totalBaseForecast)} + PA: ${formatBr(totalFuturePaAdder)})
-Total Lifetime PA (Certified + Forecasted): ${formatBr(totalLifetimePa)} (${ppaThresholdRatio.toFixed(2)}% of Contract Price)
-PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXCEEDS 20% STATUTORY THRESHOLD'}
+TOTAL FORECAST FOR REMAINING WORKS:
+Base Remaining Works: ${formatBr(totalBaseForecast)}
+Forecasted Price Adjustment: +${formatBr(totalFuturePaAdder)}
+Total Estimated Outlay to Completion: ${formatBr(totalProjectedEscalated)}
+PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} (${ppaThresholdRatio.toFixed(2)}% of Contract) -> ${isPpaCompliant ? 'COMPLIANT' : 'EXCEEDS 20% CAP'}
 =====================================================`;
     navigator.clipboard.writeText(summaryText);
     setCopied(true);
@@ -804,13 +679,13 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
   // CSV Export handler
   const handleExportCsv = () => {
     const csvRows: string[][] = [
-      ['# ETHIOPIAN ROADS ADMINISTRATION - YEARLY ESTIMATED COST FORECAST & ESCALATION AUDIT'],
+      ['# ETHIOPIAN ROADS ADMINISTRATION - YEARLY ESTIMATED COST FORECAST (REMAINING WORKS ONLY)'],
       ['Project Name', project.name],
       ['Project ID', project.id || 'N/A'],
-      ['Current EFY', `EFY ${currentEfy}`],
+      ['Current Operating EFY', `EFY ${currentEfy}`],
       ['Contract Price (BAC)', formatBr(BAC)],
-      ['Total Executed To Date', formatBr(totalSeriesExec)],
-      ['Remaining Unexecuted Balance', formatBr(remainingBalance)],
+      ['Executed To-Date', formatBr(totalSeriesExec)],
+      ['Remaining Works (Forecast Base)', formatBr(remainingBalance)],
       ['Financial Data Baseline Factor (P0)', basePaFactor.toFixed(4)],
       ['Forecasted PA Increment Rate (r p.a.)', `${(annualInflation * 100).toFixed(2)}%`],
       ['Financial Data PA Derivation', financialPa.methodologySummary],
@@ -820,25 +695,25 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
         'Operating Fiscal Year (EFY)',
         'Gregorian Calendar Period',
         'Period Stage',
-        'Data Source Basis',
-        'Monthly Cumulative Increment (%)',
-        'Contract / Remaining Share (%)',
-        'Base Work Value (ETB)',
+        'Plan / EFY Basis',
+        'Monthly Cum. Plan Δ (%)',
+        'Remaining Work Share (%)',
+        'Remaining Base Cost (ETB)',
         'Escalation Factor (Pn)',
-        'Price Adjustment (ETB)',
-        'PA Source',
-        'Total Cost incl. PA (ETB)',
-        'Cumulative Outlay (ETB)',
+        'Forecasted PA (ETB)',
+        'PA Formula Tier',
+        'Estimated Outlay incl. PA (ETB)',
+        'Cumulative Remaining Outlay (ETB)',
         'Remaining Balance Liability (ETB)'
       ]
     ];
 
-    activeProjections.forEach(r => {
+    futureProjections.forEach(r => {
       csvRows.push([
         r.efy,
         r.periodLabel,
-        r.isPast ? 'Previous EFY (Actual)' : r.isCurrent ? 'Current Operating EFY (Plan)' : r.isFinish ? 'Completion & Handover (Plan)' : 'Upcoming EFY (Plan)',
-        r.basisType === 'actual' ? 'Monthly Cumulative Actual' : r.basisType === 'plan' ? 'Monthly Cumulative Plan' : 'Remaining Balance Schedule Fallback',
+        r.isCurrent ? 'Current Operating EFY' : r.isFinish ? 'Completion & Handover EFY' : 'Upcoming EFY',
+        r.basisType === 'plan' ? 'Monthly Cumulative Plan' : `EFY Horizon (${r.activeMonthsInEfy} mos)`,
         r.fyProgressIncrement.toFixed(2),
         r.sharePct.toFixed(2),
         r.baseCost.toFixed(2),
@@ -853,31 +728,16 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
 
     csvRows.push([]);
     csvRows.push([
-      'SUBTOTAL PREVIOUS EFYs',
-      '-',
-      'Actual Accomplishment + PA',
-      'Monthly Cumulative Actual',
-      '-',
-      '-',
-      totalPrevBase.toFixed(2),
-      totalPrevBase > 0 ? (1 + totalPrevPa / totalPrevBase).toFixed(4) : '1.0000',
-      totalPrevPa.toFixed(2),
-      'Financial Data',
-      totalPrevEscalated.toFixed(2),
-      totalPrevEscalated.toFixed(2),
-      '-'
-    ]);
-    csvRows.push([
-      'SUBTOTAL CURRENT & UPCOMING EFYs',
-      '-',
-      'Remaining Plan Forecast',
-      'Monthly Cumulative Plan',
+      'TOTAL REMAINING WORKS FORECAST',
+      `${firstForecastEfy} - ${lastForecastEfy}`,
+      'Current + Upcoming EFYs',
+      'Plan & EFY Basis',
       '-',
       '100.00%',
       totalBaseForecast.toFixed(2),
-      (futureProjections.reduce((a, b) => a + b.pnFactor, 0) / (futureProjections.length || 1)).toFixed(4),
+      avgFuturePn.toFixed(4),
       totalFuturePaAdder.toFixed(2),
-      'Forecasted Increment',
+      'Financial Data PA Increment',
       totalProjectedEscalated.toFixed(2),
       totalProjectedEscalated.toFixed(2),
       '0.00'
@@ -888,7 +748,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `Yearly_Cost_Forecast_${project.id || 'project'}_${calendarView}.csv`);
+    link.setAttribute('download', `Remaining_Works_Cost_Forecast_${project.id || 'project'}_${calendarView}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -909,11 +769,11 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                 Yearly Estimated Cost Forecast Table
               </h3>
               <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50">
-                Previous Actuals + Current/Upcoming Plan &amp; PA Forecast
+                Remaining Works Only · Plan &amp; EFY Basis
               </span>
             </div>
             <p className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Previous EFYs computed from Monthly Cumulative Actual Accomplishment (incl. Price Adjustment); Current (EFY {currentEfy}) &amp; Upcoming EFYs computed from Monthly Cumulative Plan with Price Adjustment forecasted from Financial Data PA increment.
+              Forecasts strictly the remaining unexecuted works ({formatBr(remainingBalance)} / {remainingPct.toFixed(1)}%) across Current (EFY {currentEfy}) &amp; Upcoming EFYs based on the Monthly Cumulative Plan and EFY schedule, with Price Adjustment escalated from Financial Data PA increment.
             </p>
           </div>
         </div>
@@ -946,7 +806,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
           <button
             onClick={handleCopySummary}
             className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 text-slate-700 dark:text-slate-200 font-bold text-2xs transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-600 shadow-xs cursor-pointer"
-            title="Copy executive financial summary to clipboard"
+            title="Copy remaining works forecast summary to clipboard"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />}
             <span>{copied ? 'Copied!' : 'Copy Summary'}</span>
@@ -955,7 +815,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
           <button
             onClick={handleExportCsv}
             className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-2xs transition flex items-center gap-1.5 shadow-sm cursor-pointer border border-indigo-500"
-            title="Export complete Yearly Cost Forecast ledger as CSV"
+            title="Export Remaining Works Cost Forecast ledger as CSV"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
@@ -963,21 +823,21 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
         </div>
       </div>
 
-      {/* Executive Financial KPI Cards */}
+      {/* Executive Financial KPI Cards (Remaining Works Only) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* Metric 1: Previous EFYs Accomplished (Actual + PA) */}
+        {/* Metric 1: Remaining Works Base Value */}
         <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2 relative overflow-hidden shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-extrabold tracking-wide">
-              Previous EFYs (Actual + PA)
+            <span className="text-[10px] text-amber-600 dark:text-amber-400 uppercase font-extrabold tracking-wide">
+              Remaining Works (Base Plan)
             </span>
-            <DollarSign className="w-3.5 h-3.5 text-slate-500" />
+            <DollarSign className="w-3.5 h-3.5 text-amber-500" />
           </div>
           <div className="text-base sm:text-lg font-mono font-black text-slate-900 dark:text-white">
-            {formatBr(totalPrevEscalated)}
+            {formatBr(remainingBalance)}
           </div>
           <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight font-mono">
-            Base Actual: <strong className="text-slate-700 dark:text-slate-200">{formatBr(totalPrevBase)}</strong> + PA: <strong className="text-rose-600 dark:text-rose-400">+{formatBr(totalPrevPa)}</strong>
+            {remainingPct.toFixed(1)}% of Contract ({formatBr(totalSeriesContract)} &minus; {formatBr(totalSeriesExec)} Exec.)
           </div>
         </div>
 
@@ -1000,11 +860,11 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
           </div>
         </div>
 
-        {/* Metric 3: Current & Upcoming Forecasted PA */}
+        {/* Metric 3: Forecasted PA on Remaining Works */}
         <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2 relative overflow-hidden shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-rose-600 dark:text-rose-400 uppercase font-extrabold tracking-wide">
-              Forecasted Future PA Adder
+              Forecasted PA (Remaining)
             </span>
             <Activity className="w-3.5 h-3.5 text-rose-500" />
           </div>
@@ -1012,15 +872,15 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
             +{formatBr(totalFuturePaAdder)}
           </div>
           <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
-            Rem. Base Plan: <strong className="text-slate-700 dark:text-slate-200 font-mono">{formatBr(remainingBalance)}</strong> ({remainingPct.toFixed(1)}% of BOQ).
+            Avg Esc. Pn: <strong className="text-slate-700 dark:text-slate-200 font-mono">{avgFuturePn.toFixed(4)}</strong> across {futureProjections.length} EFYs.
           </div>
         </div>
 
-        {/* Metric 4: Current & Upcoming Escalated Outlay */}
+        {/* Metric 4: Total Estimated Cost for Remaining Works */}
         <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 space-y-2 relative overflow-hidden shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-black tracking-wide">
-              Current &amp; Upcoming Outlay
+              Total Remaining Cost incl. PA
             </span>
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
           </div>
@@ -1028,15 +888,15 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
             {formatBr(totalProjectedEscalated)}
           </div>
           <div className="text-[10px] text-indigo-600/80 dark:text-indigo-300/80 leading-tight flex items-center justify-between">
-            <span>Full Lifecycle Total:</span>
+            <span>EFY Horizon:</span>
             <strong className="font-mono text-indigo-900 dark:text-white font-bold">
-              {formatBr(grandTotalEscalated)}
+              {firstForecastEfy} &ndash; {lastForecastEfy}
             </strong>
           </div>
         </div>
       </div>
 
-      {/* Visual Line Chart for Multi-Year Forecast (Recharts) */}
+      {/* Visual Line Chart for Remaining Works Multi-Year Forecast */}
       {showChart && (
         <div className="p-4 bg-slate-50/70 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-200 dark:border-slate-700/60">
@@ -1046,13 +906,13 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
               </div>
               <div>
                 <h4 className="text-xs font-black uppercase tracking-wide text-slate-900 dark:text-white flex items-center gap-2">
-                  Yearly Estimated Cost Forecast Trajectory
+                  Remaining Works Cost Forecast Trajectory
                   <span className="text-[9px] font-mono font-normal px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50">
-                    {scopeView === 'all' ? 'All EFYs (Actuals + Plan Forecast)' : 'Current & Upcoming EFYs'}
+                    {firstForecastEfy} &ndash; {lastForecastEfy}
                   </span>
                 </h4>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                  Visual breakdown of Base Work Value (Actuals for prior EFYs / Plan for current &amp; upcoming EFYs), Price Adjustment, and Total Cost incl. PA.
+                  Visual breakdown of Base Remaining Works (Plan &amp; EFY), Forecasted Price Adjustment, and Total Estimated Outlay to Completion.
                 </p>
               </div>
             </div>
@@ -1123,13 +983,13 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     tick={{ fill: '#a855f7', fontSize: 10 }}
                     tickFormatter={(val) => chartUnit === 'millions' ? `${val.toFixed(1)}M` : `${(val / 1e6).toFixed(0)}M`}
                   />
-                  <RechartsTooltip content={<CustomForecastTooltip chartUnit={chartUnit} formatBr={formatBr} />} />
+                  <RechartsTooltip content={<CustomForecastTooltip formatBr={formatBr} />} />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
                   <Line
                     yAxisId="left"
                     type="monotone"
                     dataKey={chartUnit === 'millions' ? 'baseCostM' : 'baseCost'}
-                    name="Base Work Value (Actual / Plan)"
+                    name="Remaining Base Work (Plan)"
                     stroke="#6366f1"
                     strokeWidth={2.5}
                     dot={{ r: 4, fill: '#6366f1', strokeWidth: 1.5, stroke: '#ffffff' }}
@@ -1139,7 +999,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     yAxisId="left"
                     type="monotone"
                     dataKey={chartUnit === 'millions' ? 'paAdderM' : 'paAdder'}
-                    name="Price Adjustment (Certified / Forecasted)"
+                    name="Forecasted Price Adjustment"
                     stroke="#f43f5e"
                     strokeWidth={2.5}
                     strokeDasharray="4 4"
@@ -1150,7 +1010,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     yAxisId="left"
                     type="monotone"
                     dataKey={chartUnit === 'millions' ? 'escalatedCostM' : 'escalatedCost'}
-                    name="Total Annual Outlay (incl. PA)"
+                    name="Annual Estimated Outlay (incl. PA)"
                     stroke="#10b981"
                     strokeWidth={3.5}
                     dot={{ r: 5, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }}
@@ -1160,7 +1020,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     yAxisId="right"
                     type="monotone"
                     dataKey={chartUnit === 'millions' ? 'cumulativeEscalatedM' : 'cumulativeEscalated'}
-                    name="Cumulative Outlay (Right Axis)"
+                    name="Cumulative Remaining (Right Axis)"
                     stroke="#a855f7"
                     strokeWidth={2}
                     strokeDasharray="2 2"
@@ -1180,12 +1040,12 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     tick={{ fill: '#64748b', fontSize: 10 }}
                     tickFormatter={(val) => chartUnit === 'millions' ? `${val.toFixed(1)}M` : `${(val / 1e6).toFixed(0)}M`}
                   />
-                  <RechartsTooltip content={<CustomForecastTooltip chartUnit={chartUnit} formatBr={formatBr} />} />
+                  <RechartsTooltip content={<CustomForecastTooltip formatBr={formatBr} />} />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
                   <Area
                     type="monotone"
                     dataKey={chartUnit === 'millions' ? 'baseCostM' : 'baseCost'}
-                    name="Base Work Value (Actual / Plan)"
+                    name="Remaining Base Work (Plan)"
                     fill="#6366f1"
                     stroke="#4f46e5"
                     fillOpacity={0.3}
@@ -1194,7 +1054,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                   <Area
                     type="monotone"
                     dataKey={chartUnit === 'millions' ? 'paAdderM' : 'paAdder'}
-                    name="Price Adjustment (Certified / Forecasted)"
+                    name="Forecasted Price Adjustment"
                     fill="#f43f5e"
                     stroke="#e11d48"
                     fillOpacity={0.3}
@@ -1203,7 +1063,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                   <Line
                     type="monotone"
                     dataKey={chartUnit === 'millions' ? 'escalatedCostM' : 'escalatedCost'}
-                    name="Total Annual Outlay (incl. PA)"
+                    name="Annual Estimated Outlay (incl. PA)"
                     stroke="#10b981"
                     strokeWidth={3}
                     dot={{ r: 4, fill: '#10b981' }}
@@ -1222,11 +1082,11 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <h4 className="text-xs font-black uppercase text-slate-900 dark:text-white tracking-wide">
-                Division Work Quantities &amp; Financial Status (Series 1000 - 11000)
+                Division Work Quantities &amp; Remaining Balance (Series 1000 - 11000)
               </h4>
             </div>
             <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-              Unexecuted BOQ balance feeding into multi-year forecast: <strong className="text-amber-600 dark:text-amber-400">{formatBr(remainingBalance)}</strong>
+              Remaining unexecuted BOQ feeding forecast: <strong className="text-amber-600 dark:text-amber-400">{formatBr(remainingBalance)}</strong>
             </span>
           </div>
 
@@ -1286,7 +1146,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
         </div>
       )}
 
-      {/* Interactive Scenario Simulation & Filter Controls Toolbar */}
+      {/* Interactive Sensitivity & Scenario Parameters Toolbar */}
       <div className="bg-slate-50 dark:bg-slate-900/50 p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -1350,7 +1210,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
           </div>
         </div>
 
-        {/* Financial Data PA Empirical Increment Provenance Pill Strip */}
+        {/* Financial Data PA Empirical Increment Provenance Strip */}
         <div className="p-2.5 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/50 text-[10.5px] text-slate-700 dark:text-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
@@ -1359,7 +1219,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
             </span>
           </div>
           <span className="font-mono text-[10px] font-bold text-indigo-700 dark:text-indigo-300 shrink-0">
-            Previous EFYs: Actuals + PA | Current/Upcoming: Plan + Forecasted PA
+            Scope: Remaining Works Only ({remainingPct.toFixed(1)}% Balance · Plan &amp; EFY)
           </span>
         </div>
 
@@ -1428,30 +1288,15 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
             </div>
           </div>
 
-          {/* Parameter 3: Scope View Horizon */}
+          {/* Parameter 3: Forecast Scope & Plan Basis */}
           <div className="flex items-center justify-between bg-white dark:bg-slate-800/80 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
             <div>
-              <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-bold block">Forecast Horizon</span>
-              <span className="text-[9px] text-slate-500 dark:text-slate-400">Scope period display</span>
+              <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-bold block">Forecast Scope</span>
+              <span className="text-[9px] text-slate-500 dark:text-slate-400">{firstForecastEfy} &ndash; {lastForecastEfy}</span>
             </div>
-            <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700">
-              <button
-                onClick={() => setScopeView('all')}
-                className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
-                  scopeView === 'all' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                All EFYs
-              </button>
-              <button
-                onClick={() => setScopeView('future')}
-                className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
-                  scopeView === 'future' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Current+Future
-              </button>
-            </div>
+            <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-mono">
+              Remaining Only
+            </span>
           </div>
 
           {/* Parameter 4: Calendar System Toggle (EFY vs G.C.) */}
@@ -1482,51 +1327,51 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
         </div>
       </div>
 
-      {/* Single Comprehensive Year-by-Year Table with Interactive Header Tooltips */}
+      {/* Remaining Works Forecast Table */}
       <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 shadow-xs">
         <table className="w-full text-xs text-left border-collapse">
           <thead className="bg-slate-50 dark:bg-slate-900/80 text-[10px] uppercase font-mono font-bold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
             <tr>
-              {/* Header 1: Operating Period */}
+              {/* Header 1: Operating EFY */}
               <th className="p-3">
                 <HeaderTooltip
                   title={`Operating Period (${calendarView === 'EFY' ? 'EFY' : 'G.C.'})`}
-                  tooltipTitle="Ethiopian Fiscal Year Period"
+                  tooltipTitle="Ethiopian Fiscal Year Horizon"
                   formula="EFY N = Jul (N+7) to Jun (N+8)"
-                  explanation={`Ethiopian Fiscal Year spans Hamle 1 to Sene 30 (July through June G.C.). Previous EFYs (< EFY ${currentEfy}) reflect Monthly Cumulative actual accomplishments; Current and Upcoming EFYs reflect Monthly Cumulative plans and forecasted Price Adjustment.`}
-                  methodologyNote={`Current Operating EFY is EFY ${currentEfy} (Jul ${getEfyStartGregYear(currentEfy)}–Jun ${getEfyEndGregYear(currentEfy)}).`}
+                  explanation={`Forecast starts strictly from Current Operating EFY (EFY ${currentEfy}) through completion EFY for unexecuted remaining works only.`}
+                  methodologyNote={`Current EFY ${currentEfy} spans Jul ${getEfyStartGregYear(currentEfy)} to Jun ${getEfyEndGregYear(currentEfy)}.`}
                   align="left"
                 />
               </th>
 
-              {/* Header 2: Status / Lifecycle */}
+              {/* Header 2: EFY Stage & Plan Basis */}
               <th className="p-3 text-center">
                 <HeaderTooltip
-                  title="Stage & Basis"
-                  tooltipTitle="Fiscal Year Data Basis"
-                  explanation="Previous EFYs use Monthly Cumulative Actual Accomplishment + Financial Data Price Adjustment. Current and Upcoming EFYs use the Monthly Cumulative Plan + Forecasted Price Adjustment."
+                  title="Stage & Plan Basis"
+                  tooltipTitle="Remaining Works Schedule Basis"
+                  explanation="Allocates remaining unexecuted BOQ work across Current & Upcoming EFYs strictly using the Monthly Cumulative Plan increments (or EFY horizon pace if monthly plan ended early)."
                   align="center"
                 />
               </th>
 
-              {/* Header 3: Monthly Cumulative Progress & Share */}
+              {/* Header 3: Plan Increment & Remaining Work Share */}
               <th className="p-3 text-center">
                 <HeaderTooltip
-                  title="Monthly Cum. Δ & Share (%)"
-                  tooltipTitle="Actuals (Prior EFY) / Plan (Current & Future)"
-                  formula="ΔActual = Act(End) - Act(Start) | ΔPlan = Plan(End) - Plan(Start)"
-                  explanation="Previous EFYs extract cumulative Actual accomplishment gained in that EFY from the Monthly Cumulative page. Current & Upcoming EFYs extract Planned increments from the Monthly Cumulative page."
+                  title="Rem. Share & Plan Δ (%)"
+                  tooltipTitle="EFY Weight of Remaining Works"
+                  formula="Share% = (EFY ΔPlan / Total Future ΔPlan) × 100"
+                  explanation="Percentage of the remaining unexecuted contract works scheduled inside each EFY based on Monthly Cumulative Plan increments and active EFY months."
                   align="center"
                 />
               </th>
 
-              {/* Header 4: Base Work Value */}
+              {/* Header 4: Remaining Base Cost */}
               <th className="p-3 text-right">
                 <HeaderTooltip
-                  title="Base Work Value (ETB)"
-                  tooltipTitle="Actual Accomplished / Planned Valuation"
-                  formula="Prior: Contract × ΔActual% | Future: Rem.Balance × NormPlan%"
-                  explanation="Unescalated contract work value: calculated from Actual accomplishment % for prior EFYs and from Monthly Cumulative Plan share of remaining balance for current and upcoming EFYs."
+                  title="Remaining Base Cost (ETB)"
+                  tooltipTitle="Base Remaining Planned Allocation"
+                  formula="Base = Rem. Balance × EFY Share%"
+                  explanation="Portion of the remaining unexecuted BOQ balance allocated to this EFY prior to Price Adjustment escalation."
                   align="right"
                 />
               </th>
@@ -1535,82 +1380,77 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
               <th className="p-3 text-center">
                 <HeaderTooltip
                   title="Factor (Pn)"
-                  tooltipTitle="FIDIC Sub-Clause 13.8 Price Adjustment"
+                  tooltipTitle="FIDIC Sub-Clause 13.8 Escalation Factor"
                   formula="Pn = P0 × (1 + r)^t"
-                  explanation="Price adjustment multiplier. For Previous EFYs, reflects actual PA ratio from Financial Data; for Current & Upcoming EFYs, compounds baseline P0 by the PA increment rate r derived from Financial Data IPCs."
+                  explanation="Price adjustment multiplier compounding empirical Financial Data baseline P0 by the annual PA increment rate r across upcoming EFYs."
                   align="center"
                 />
               </th>
 
-              {/* Header 6: Price Adjustment Adder */}
+              {/* Header 6: Forecasted Price Adjustment */}
               <th className="p-3 text-right">
                 <HeaderTooltip
-                  title="Price Adjustment (ETB)"
-                  tooltipTitle="Certified / Forecasted Price Adjustment"
-                  formula="PA = Base Value × (Pn - 1.0)"
-                  explanation="Historical certified Price Adjustment from Financial Data for prior EFYs, and forecasted Price Adjustment using the Financial Data PA increment rate for Current and Upcoming EFYs."
+                  title="Forecasted PA (ETB)"
+                  tooltipTitle="Projected Price Adjustment"
+                  formula="PA = Remaining Base × (Pn - 1.0)"
+                  explanation="Estimated Price Adjustment liability for the remaining works scheduled in this EFY."
                   align="right"
                 />
               </th>
 
-              {/* Header 7: Total Cost incl. PA */}
+              {/* Header 7: Total Estimated Outlay incl. PA */}
               <th className="p-3 text-right">
                 <HeaderTooltip
-                  title="Total Outlay incl. PA (ETB)"
-                  tooltipTitle="Total Fiscal Year Cost Commitment"
-                  formula="Outlay = Base Work Value + Price Adjustment"
-                  explanation="Combined fiscal year monetary cost combining base measured work (actual or planned) and Price Adjustment."
+                  title="Estimated Outlay incl. PA (ETB)"
+                  tooltipTitle="Total EFY Remaining Work Commitment"
+                  formula="Outlay = Remaining Base + Forecasted PA"
+                  explanation="Total projected monetary commitment for remaining works in this EFY including forecasted Price Adjustment."
                   align="right"
                 />
               </th>
 
-              {/* Header 8: Cumulative Outlay */}
+              {/* Header 8: Cumulative Remaining Outlay */}
               <th className="p-3 text-right">
                 <HeaderTooltip
-                  title="Cumulative Outlay (ETB)"
-                  tooltipTitle="Progressive Cash Commitment"
-                  formula="Cumulative(t) = Σ Outlay(1..t)"
-                  explanation="Running progressive total of annual outlays including Price Adjustment across the displayed horizon."
+                  title="Cumulative Remaining (ETB)"
+                  tooltipTitle="Progressive Remaining Cash Flow"
+                  formula="Cumulative(t) = Σ Outlay(current..t)"
+                  explanation="Running cumulative cash requirement across the remaining forecast horizon from Current EFY to completion."
                   align="right"
                 />
               </th>
 
-              {/* Header 9: Remaining Balance */}
+              {/* Header 9: Unexecuted Balance After EFY */}
               <th className="p-3 text-right">
                 <HeaderTooltip
                   title="Remaining Balance (ETB)"
-                  tooltipTitle="Unexecuted Contract Liability"
-                  formula="Balance(t) = Balance(t-1) - Base Value(t)"
-                  explanation="Remaining base contract liability amortizing systematically down to Br. 0.00 upon completion."
+                  tooltipTitle="Post-EFY Unexecuted Contract Balance"
+                  formula="Balance(t) = Balance(t-1) - Base(t)"
+                  explanation="Remaining base contract balance diminishing systematically to Br. 0.00 upon completion."
                   align="right"
                 />
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 font-medium text-slate-700 dark:text-slate-200">
-            {activeProjections.map((row, rIdx) => {
-              const isPast = row.isPast;
+            {futureProjections.map((row, rIdx) => {
               const isCurrent = row.isCurrent;
               const isFinish = row.isFinish;
 
-              const rowClass = isPast
-                ? 'bg-slate-50/70 dark:bg-slate-900/40 text-slate-600 dark:text-slate-300 border-l-4 border-slate-400'
-                : isCurrent
+              const rowClass = isCurrent
                 ? 'bg-amber-50/80 dark:bg-amber-950/25 border-l-4 border-amber-500 font-bold text-slate-900 dark:text-slate-100'
                 : isFinish
                 ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-l-4 border-emerald-500 font-semibold text-slate-900 dark:text-slate-100'
                 : 'hover:bg-slate-50/80 dark:hover:bg-slate-750/50 border-l-4 border-indigo-400 transition text-slate-800 dark:text-slate-200';
 
               return (
-                <tr key={`fiscal-pred-${row.isPast ? 'past' : 'fut'}-${row.efyYear}-${rIdx}`} className={rowClass}>
+                <tr key={`rem-efy-${row.efyYear}-${rIdx}`} className={rowClass}>
                   {/* 1. Operating Period */}
                   <td className="p-3 font-bold text-slate-900 dark:text-white">
                     <div className="flex items-center gap-2">
                       <span
                         className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                          isPast
-                            ? 'bg-slate-400'
-                            : isCurrent
+                          isCurrent
                             ? 'bg-amber-500 animate-pulse'
                             : isFinish
                             ? 'bg-emerald-500'
@@ -1628,45 +1468,40 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     </div>
                   </td>
 
-                  {/* 2. Status / Lifecycle Stage */}
+                  {/* 2. Stage & Plan Basis */}
                   <td className="p-3 text-center">
-                    {isPast ? (
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-bold">
-                          Previous EFY (Actual)
-                        </span>
-                        <span className="text-[8.5px] text-slate-400 font-normal">Monthly Cum. Actual</span>
-                      </div>
-                    ) : isCurrent ? (
+                    {isCurrent ? (
                       <div className="flex flex-col items-center gap-0.5">
                         <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700 font-bold flex items-center justify-center gap-1 mx-auto w-fit">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-                          Current EFY (Plan)
+                          Current EFY
                         </span>
-                        <span className="text-[8.5px] text-amber-600 dark:text-amber-400 font-normal">Monthly Cum. Plan</span>
+                        <span className="text-[8.5px] text-amber-600 dark:text-amber-400 font-normal">
+                          {row.basisType === 'plan' ? 'Monthly Cum. Plan' : `${row.activeMonthsInEfy} mos EFY Horizon`}
+                        </span>
                       </div>
                     ) : isFinish ? (
                       <div className="flex flex-col items-center gap-0.5">
                         <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 font-bold">
-                          Upcoming / Handover
+                          Completion EFY
                         </span>
                         <span className="text-[8.5px] text-emerald-600 dark:text-emerald-400 font-normal">
-                          {row.basisType === 'plan' ? 'Monthly Cum. Plan' : 'Schedule Rem. Share'}
+                          {row.basisType === 'plan' ? 'Monthly Cum. Plan' : `${row.activeMonthsInEfy} mos EFY Horizon`}
                         </span>
                       </div>
                     ) : (
                       <div className="flex flex-col items-center gap-0.5">
                         <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold">
-                          Upcoming EFY (Plan)
+                          Upcoming EFY
                         </span>
                         <span className="text-[8.5px] text-indigo-500 dark:text-indigo-400 font-normal">
-                          {row.basisType === 'plan' ? 'Monthly Cum. Plan' : 'Schedule Rem. Share'}
+                          {row.basisType === 'plan' ? 'Monthly Cum. Plan' : `${row.activeMonthsInEfy} mos EFY Horizon`}
                         </span>
                       </div>
                     )}
                   </td>
 
-                  {/* 3. Monthly Cumulative Actual / Plan & Work Share */}
+                  {/* 3. Share % & Plan Increment */}
                   <td className="p-3 text-center font-mono">
                     <div className="space-y-1">
                       <div className="flex items-center justify-center gap-1.5 flex-wrap">
@@ -1674,29 +1509,33 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                           {row.sharePct.toFixed(1)}%
                         </span>
                         <span
-                          className={`text-[10px] px-1.5 py-0.2 rounded border ${
-                            isPast
-                              ? 'text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 border-sky-200 dark:border-sky-800/50'
-                              : 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-700/50'
-                          }`}
-                          title={`${isPast ? 'Actual' : 'Plan'} increment: ${row.startRefLabel} (${row.startRefVal.toFixed(1)}%) -> ${row.endRefLabel} (${row.endRefVal.toFixed(1)}%)`}
+                          className="text-[10px] px-1.5 py-0.2 rounded border text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-700/50"
+                          title={
+                            row.basisType === 'plan'
+                              ? `Plan increment: ${row.startRefLabel} (${row.startRefVal.toFixed(1)}%) -> ${row.endRefLabel} (${row.endRefVal.toFixed(1)}%)`
+                              : `Distributed across ${row.activeMonthsInEfy} active months in ${row.efy}`
+                          }
                         >
-                          +{row.fyProgressIncrement.toFixed(1)}% {isPast ? 'Actual' : 'Plan'}
+                          {row.basisType === 'plan'
+                            ? `+${row.fyProgressIncrement.toFixed(1)}% Plan`
+                            : `${row.activeMonthsInEfy}m Pace`}
                         </span>
                       </div>
                       <span className="text-[9px] text-slate-500 dark:text-slate-400 block font-sans">
-                        {row.startRefLabel} ({row.startRefVal.toFixed(1)}%) &rarr; {row.endRefLabel} ({row.endRefVal.toFixed(1)}%)
+                        {row.basisType === 'plan'
+                          ? `${row.startRefLabel} (${row.startRefVal.toFixed(1)}%) \u2192 ${row.endRefLabel} (${row.endRefVal.toFixed(1)}%)`
+                          : `${row.periodLabel} (${row.activeMonthsInEfy} active mos)`}
                       </span>
                       <div className="w-20 bg-slate-200 dark:bg-slate-700 rounded-full h-1 mx-auto overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${isPast ? 'bg-sky-500' : isCurrent ? 'bg-amber-500' : isFinish ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+                          className={`h-full rounded-full ${isCurrent ? 'bg-amber-500' : isFinish ? 'bg-emerald-500' : 'bg-indigo-500'}`}
                           style={{ width: `${Math.min(100, Math.max(0, row.sharePct))}%` }}
                         />
                       </div>
                     </div>
                   </td>
 
-                  {/* 4. Base Work Value */}
+                  {/* 4. Remaining Base Cost */}
                   <td className="p-3 text-right font-mono text-slate-700 dark:text-slate-300 font-medium">
                     {formatBr(row.baseCost)}
                   </td>
@@ -1713,17 +1552,17 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
                     </div>
                   </td>
 
-                  {/* 6. Price Adjustment */}
+                  {/* 6. Forecasted Price Adjustment */}
                   <td className="p-3 text-right font-mono font-semibold text-rose-600 dark:text-rose-400">
                     +{formatBr(row.paAdder)}
                   </td>
 
-                  {/* 7. Total Cost incl. PA */}
+                  {/* 7. Total Estimated Outlay incl. PA */}
                   <td className="p-3 text-right font-mono font-black text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm">
                     {formatBr(row.escalatedCost)}
                   </td>
 
-                  {/* 8. Cumulative Outlay */}
+                  {/* 8. Cumulative Remaining Outlay */}
                   <td className="p-3 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">
                     {formatBr(row.cumulativeEscalated)}
                   </td>
@@ -1739,58 +1578,20 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
 
           {/* Summary Footer */}
           <tfoot className="bg-slate-100 dark:bg-slate-850 font-black text-xs border-t-2 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white">
-            {scopeView === 'all' && pastProjections.length > 0 && (
-              <tr className="bg-slate-50 dark:bg-slate-900/60 font-bold text-[11px] border-b border-slate-200 dark:border-slate-700">
-                <td className="p-2.5 uppercase text-slate-600 dark:text-slate-300" colSpan={2}>
-                  Subtotal — Previous EFYs (Monthly Cum. Actuals + PA)
-                </td>
-                <td className="p-2.5 text-center font-mono text-sky-700 dark:text-sky-400">
-                  {pastProjections.reduce((s, r) => s + r.fyProgressIncrement, 0).toFixed(1)}% Actual
-                </td>
-                <td className="p-2.5 text-right font-mono text-slate-700 dark:text-slate-200">{formatBr(totalPrevBase)}</td>
-                <td className="p-2.5 text-center font-mono text-slate-600 dark:text-slate-300">
-                  {totalPrevBase > 0 ? (1 + totalPrevPa / totalPrevBase).toFixed(4) : basePaFactor.toFixed(4)}
-                </td>
-                <td className="p-2.5 text-right font-mono text-rose-600 dark:text-rose-400">+{formatBr(totalPrevPa)}</td>
-                <td className="p-2.5 text-right font-mono text-slate-900 dark:text-white">{formatBr(totalPrevEscalated)}</td>
-                <td className="p-2.5 text-right font-mono text-indigo-600 dark:text-indigo-400">{formatBr(totalPrevEscalated)}</td>
-                <td className="p-2.5 text-right font-mono text-slate-500 dark:text-slate-400">
-                  {formatBr(Math.max(0, totalSeriesContract - totalPrevBase))}
-                </td>
-              </tr>
-            )}
-            <tr className="border-b border-slate-200 dark:border-slate-700">
-              <td className="p-3 uppercase" colSpan={2}>
-                {scopeView === 'all' ? 'Subtotal — Current & Upcoming EFYs (Plan Forecast)' : 'Total Forecast to Project Completion'}
+            <tr className="bg-indigo-50/70 dark:bg-indigo-950/30">
+              <td className="p-3 uppercase text-indigo-900 dark:text-indigo-200" colSpan={2}>
+                Total Forecast — Remaining Works ({firstForecastEfy} &ndash; {lastForecastEfy})
               </td>
               <td className="p-3 text-center font-mono text-amber-700 dark:text-amber-400">100.0%</td>
-              <td className="p-3 text-right font-mono text-slate-800 dark:text-slate-200">{formatBr(totalBaseForecast)}</td>
+              <td className="p-3 text-right font-mono text-slate-800 dark:text-slate-100">{formatBr(totalBaseForecast)}</td>
               <td className="p-3 text-center font-mono text-indigo-700 dark:text-indigo-300">
-                Avg {(futureProjections.reduce((a, b) => a + b.pnFactor, 0) / (futureProjections.length || 1)).toFixed(4)}
+                Avg {avgFuturePn.toFixed(4)}
               </td>
               <td className="p-3 text-right font-mono text-rose-600 dark:text-rose-400">+{formatBr(totalFuturePaAdder)}</td>
               <td className="p-3 text-right font-mono text-emerald-600 dark:text-emerald-400 text-sm">{formatBr(totalProjectedEscalated)}</td>
-              <td className="p-3 text-right font-mono text-indigo-600 dark:text-indigo-400 text-sm">
-                {formatBr(scopeView === 'all' ? grandTotalEscalated : totalProjectedEscalated)}
-              </td>
+              <td className="p-3 text-right font-mono text-indigo-600 dark:text-indigo-400 text-sm">{formatBr(totalProjectedEscalated)}</td>
               <td className="p-3 text-right font-mono text-emerald-600 dark:text-emerald-400">Br. 0.00</td>
             </tr>
-            {scopeView === 'all' && pastProjections.length > 0 && (
-              <tr className="bg-indigo-50/70 dark:bg-indigo-950/30 font-black">
-                <td className="p-3 uppercase text-indigo-900 dark:text-indigo-200" colSpan={2}>
-                  Grand Total — Full Project Lifecycle (Previous + Planned)
-                </td>
-                <td className="p-3 text-center font-mono text-indigo-700 dark:text-indigo-300">Full Scope</td>
-                <td className="p-3 text-right font-mono text-indigo-900 dark:text-white">{formatBr(grandTotalBase)}</td>
-                <td className="p-3 text-center font-mono text-indigo-700 dark:text-indigo-300">
-                  {grandTotalBase > 0 ? (1 + grandTotalPa / grandTotalBase).toFixed(4) : basePaFactor.toFixed(4)}
-                </td>
-                <td className="p-3 text-right font-mono text-rose-600 dark:text-rose-400">+{formatBr(grandTotalPa)}</td>
-                <td className="p-3 text-right font-mono text-emerald-700 dark:text-emerald-300 text-sm">{formatBr(grandTotalEscalated)}</td>
-                <td className="p-3 text-right font-mono text-indigo-700 dark:text-indigo-300 text-sm">{formatBr(grandTotalEscalated)}</td>
-                <td className="p-3 text-right font-mono text-emerald-600 dark:text-emerald-400">Br. 0.00</td>
-              </tr>
-            )}
           </tfoot>
         </table>
       </div>
@@ -1801,10 +1602,10 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
         <div className="p-3.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-1.5">
           <div className="font-bold flex items-center gap-1.5 text-slate-900 dark:text-white">
             <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-            <span>FIDIC Sub-Clause 13.8 &amp; Monthly Cumulative Methodology:</span>
+            <span>Remaining Works Plan &amp; EFY Methodology:</span>
           </div>
           <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-            Previous EFYs (&lt; EFY {currentEfy}) are computed directly from cumulative <strong>Actual accomplishment</strong> recorded on the Monthly Cumulative page plus historical Price Adjustment from Financial Data. Current (EFY {currentEfy}) and Upcoming EFYs are allocated from the Monthly Cumulative <strong>Plan</strong> (&Delta;Plan = Plan_end &minus; Plan_start) across the remaining BOQ balance ({formatBr(remainingBalance)}), with Price Adjustment forecasted via Pn = P0 &times; (1 + r)^t using P0 = {basePaFactor.toFixed(4)} and Financial Data increment r = {(annualInflation * 100).toFixed(2)}% p.a. (velocity baseline ~{juneJulIncrement.toFixed(2)}%/mo).
+            Forecast covers strictly the remaining unexecuted BOQ balance (<strong>{formatBr(remainingBalance)}</strong>) from <strong>{firstForecastEfy}</strong> through <strong>{lastForecastEfy}</strong> using Monthly Cumulative Plan increments and active EFY windows. Price Adjustment is compounded via <strong>Pn = P0 &times; (1 + r)^t</strong> using Financial Data baseline <strong>P0 = {basePaFactor.toFixed(4)}</strong> and increment rate <strong>r = {(annualInflation * 100).toFixed(2)}% p.a.</strong> (Plan pace ~{avgMonthlyPlanPace.toFixed(2)}%/mo).
           </p>
         </div>
 
@@ -1826,7 +1627,7 @@ PPA 20% Statutory Cap Status: ${isPpaCompliant ? 'COMPLIANT (Within 20%)' : 'EXC
             </span>
           </div>
           <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-            Total lifetime Price Adjustment (Previous EFYs {formatBr(totalPrevPa)} + Current &amp; Upcoming Forecast {formatBr(totalFuturePaAdder)}) equals <strong className="text-slate-900 dark:text-white font-mono">{formatBr(totalLifetimePa)}</strong>, representing <strong className={isPpaCompliant ? 'text-emerald-600 dark:text-emerald-400 font-mono' : 'text-rose-600 dark:text-rose-400 font-mono'}>{ppaThresholdRatio.toFixed(2)}%</strong> of Accepted Contract Amount ({formatBr(BAC)}).
+            Combined Price Adjustment (Certified PA to-date {formatBr(financialPa.totalPa)} + Forecasted PA on remaining works {formatBr(totalFuturePaAdder)}) equals <strong className="text-slate-900 dark:text-white font-mono">{formatBr(totalLifetimePa)}</strong>, representing <strong className={isPpaCompliant ? 'text-emerald-600 dark:text-emerald-400 font-mono' : 'text-rose-600 dark:text-rose-400 font-mono'}>{ppaThresholdRatio.toFixed(2)}%</strong> of Accepted Contract Amount ({formatBr(BAC)}).
           </p>
         </div>
       </div>
