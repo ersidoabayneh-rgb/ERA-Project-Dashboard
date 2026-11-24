@@ -34,6 +34,7 @@ import {
   extractUnitFromLogisticsItem
 } from '../lib/dailyActivitiesSync';
 import eraLogo from '../assets/logo.png';
+import { SpecialStructuresStandaloneTables } from './SpecialStructuresStandaloneTables';
 
 interface DailyActivitiesViewProps {
   project: Project;
@@ -3616,7 +3617,7 @@ export default function DailyActivitiesView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {sections.length > 0 ? sections.map((sec, secIdx) => {
+                  {sections.filter(sec => !sec.isSpecial && !['14', '15', '16', '17', '14.1', '14.2'].includes(sec.id)).length > 0 ? sections.filter(sec => !sec.isSpecial && !['14', '15', '16', '17', '14.1', '14.2'].includes(sec.id)).map((sec, secIdx) => {
                     if (workRegisterActivityFilter !== 'ALL' && sec.id !== workRegisterActivityFilter) {
                       return null;
                     }
@@ -6125,6 +6126,36 @@ export default function DailyActivitiesView({
               </table>
             </div>
           </div>
+        )}
+
+        {/* SEPARATE STRUCTURE SUB-REGISTER TABLES (14. RCP Pipe, 15. Box Culvert, 16. Slab Culvert, 17. Bridge) */}
+        {(activeTab === 'all' || activeTab === 'register') && (
+          <SpecialStructuresStandaloneTables
+            project={project}
+            selectedDate={selectedDate}
+            activities={activities}
+            currentActivities={currentActivities}
+            sections={sections}
+            isReadonly={isReadonly}
+            isBulkEditMode={isBulkEditMode}
+            selectedRowIds={selectedRowIds}
+            handleToggleSelectRow={handleToggleSelectRow}
+            handleCellUpdate={handleCellUpdate}
+            handleDeleteRow={handleDeleteRow}
+            handleAddRowAt={handleAddRowAt}
+            handleDeleteSection={handleDeleteSection}
+            handleClearSectionEntries={handleClearSectionEntries}
+            setEditingActivity={setEditingActivity}
+            setIsResourceModalOpen={setIsResourceModalOpen}
+            triggerDebouncedSave={triggerDebouncedSave}
+            workRegisterActivityFilter={workRegisterActivityFilter}
+            workRegisterStatusFilter={workRegisterStatusFilter}
+            searchQuery={searchQuery}
+            showActiveOnly={showActiveOnly}
+            hiddenStructureViews={hiddenStructureViews}
+            toggleStructureVisibility={toggleStructureVisibility}
+            toggleAllStructuresVisibility={toggleAllStructuresVisibility}
+          />
         )}
 
         {/* 2. PRODUCTION TABLE (PLANT & QUARRY OUTPUT - LINKED WITH LOGISTICS & RESOURCES) */}
