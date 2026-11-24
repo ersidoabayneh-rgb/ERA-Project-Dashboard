@@ -1,4 +1,4 @@
-import { Project, MonthlyProgress, ProjectLifecycleStatus } from '../types';
+import { Project, MonthlyProgress, ProjectLifecycleStatus, ProgressPlanHistoryItem } from '../types';
 
 export const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const FULL_MONTH_NAMES = [
@@ -98,7 +98,9 @@ export function parseMonthKey(str: string | undefined | null): ParsedMonth | nul
     const sLower = s.toLowerCase();
 
     if (sLower.includes(shortName) || sLower.includes(fullName)) {
-      const yearMatch = s.match(/\b(20\d{2}|\d{2})\b/);
+      const fourDigitMatch = s.match(/\b((?:19|20)\d{2})\b/);
+      const twoDigitMatch = s.match(/\b(\d{2})\b/);
+      const yearMatch = fourDigitMatch || twoDigitMatch;
       let year = yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear();
       if (year < 100) year += 2000;
 
@@ -668,4 +670,53 @@ export function updateMonthlyWithProgress(
     monthKey: currentMonthKey,
     lastActual: lastValue
   };
+}
+
+/**
+ * Parses a ProgressPlanHistoryItem monthLabel (e.g. "Sep '24", "Aug-26", "November 2026", "2026-11")
+ * into a monotonic chronological integer rank (year * 12 + monthIndex + 1), or 0 if unparseable.
+ */
+export function parseProgressPlanMonthRank(monthLabel?: string | null): number {
+  if (!monthLabel || typeof monthLabel !== 'string') return 0;
+  const normalized = monthLabel
+    .trim()
+    .replace(/['’`]+/g, ' ')
+    .replace(/,/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return 0;
+
+  const parsed = parseMonthKey(normalized);
+  if (parsed) {
+    return parsed.year * 12 + parsed.monthIndex + 1;
+  }
+  return 0;
+}
+
+/**
+ * Sorts elapsed month history items strictly in descending chronological order (latest month on top).
+ */
+export function sortProgressPlanHistoryWithOrder(
+  items: ProgressPlanHistoryItem[],
+  order: 'desc' | 'asc' = 'desc'
+): ProgressPlanHistoryItem[] {
+  return [...(items || [])].sort((a, b) => {
+    const valA = parseProgressPlanMonthRank(a.monthLabel);
+    const valB = parseProgressPlanMonthRank(b.monthLabel);
+    if (valA !== valB) {
+      return order === 'desc' ? valB - valA : valA - valB;
+    }
+    const timeA = Date.parse(a.approvedAt || a.lockedAt || '') || 0;
+    const timeB = Date.parse(b.approvedAt || b.lockedAt || '') || 0;
+    if (timeA !== timeB) {
+      return order === 'desc' ? timeB - timeA : timeA - timeB;
+    }
+    return 0;
+  });
+}
+
+export function sortProgressPlanHistoryDescending(
+  items: ProgressPlanHistoryItem[]
+): ProgressPlanHistoryItem[] {
+  return sortProgressPlanHistoryWithOrder(items, 'desc');
 }

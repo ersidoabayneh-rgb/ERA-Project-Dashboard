@@ -38,12 +38,18 @@ import {
   History,
   Sparkles,
   AlertTriangle,
-  ArrowUpDown,
   Lock,
   Unlock
 } from 'lucide-react';
+import {
+  parseMonthKey,
+  sortProgressPlanHistoryDescending,
+  sortProgressPlanHistoryWithOrder
+} from '../lib/monthlySync';
 import { generateProgressComparisonPdf } from '../lib/progressComparisonPdfGenerator';
 import { getCredentialSignatures } from '../lib/pdfReportEngine';
+
+export { sortProgressPlanHistoryDescending, sortProgressPlanHistoryWithOrder };
 
 export const getPreviousPeriodSuggestion = (
   existingList: ProgressPlanHistoryItem[], 
@@ -63,14 +69,22 @@ export const getPreviousPeriodSuggestion = (
     }
   }
   
-  const clean = refLabel.trim().replace(/['’]/g, '');
-  const parts = clean.split(/[\s-]+/);
-  const mStr = parts[0];
-  let yStr = parts[1] || '2024';
-  if (yStr.length === 2) yStr = `20${yStr}`;
-  let y = parseInt(yStr, 10) || 2024;
-  let mIdx = months.findIndex(m => mStr.toLowerCase().startsWith(m.toLowerCase()));
-  if (mIdx === -1) mIdx = 8; // Sep default
+  const normalizedRef = refLabel.trim().replace(/['’`]+/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  const parsedRef = parseMonthKey(normalizedRef);
+
+  let y = parsedRef ? parsedRef.year : 2024;
+  let mIdx = parsedRef ? parsedRef.monthIndex : -1;
+
+  if (mIdx === -1) {
+    const clean = refLabel.trim().replace(/['’]/g, '');
+    const parts = clean.split(/[\s-]+/);
+    const mStr = parts[0];
+    let yStr = parts[1] || '2024';
+    if (yStr.length === 2) yStr = `20${yStr}`;
+    y = parseInt(yStr, 10) || 2024;
+    mIdx = months.findIndex(m => mStr.toLowerCase().startsWith(m.toLowerCase()));
+    if (mIdx === -1) mIdx = 8; // Sep default
+  }
 
   // Step back 1 month
   mIdx -= 1;
@@ -88,35 +102,6 @@ export const getPreviousPeriodSuggestion = (
     quarterLabel: activeQuarter,
     efyLabel: activeEfy
   };
-};
-
-export const sortProgressPlanHistoryWithOrder = (items: ProgressPlanHistoryItem[], order: 'desc' | 'asc' = 'desc'): ProgressPlanHistoryItem[] => {
-  return [...(items || [])].sort((a, b) => {
-    const parseM = (lbl?: string) => {
-      if (!lbl) return 0;
-      const clean = lbl.trim().replace(/['’]/g, '');
-      const parts = clean.split(/[\s-]+/);
-      const monthStr = parts[0];
-      let yearStr = parts[1] || '2026';
-      if (yearStr.length === 2) {
-        yearStr = `20${yearStr}`;
-      }
-      const monthsMap: Record<string, number> = {
-        Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
-        Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12
-      };
-      const m = monthsMap[monthStr] || 1;
-      const y = parseInt(yearStr, 10) || 2026;
-      return y * 12 + m;
-    };
-    const valA = parseM(a.monthLabel);
-    const valB = parseM(b.monthLabel);
-    return order === 'desc' ? valB - valA : valA - valB;
-  });
-};
-
-export const sortProgressPlanHistoryDescending = (items: ProgressPlanHistoryItem[]): ProgressPlanHistoryItem[] => {
-  return sortProgressPlanHistoryWithOrder(items, 'desc');
 };
 
 interface ProgressPlanViewProps {
@@ -200,10 +185,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
 
   const [activePlan, setActivePlan] = useState<ProgressPlan>(initialPlan);
 
-  // Sort order state for elapsed months & history list
-  const [historySortOrder, setHistorySortOrder] = useState<'desc' | 'asc'>('desc');
-
-  // Milestone History resolution - returns actual saved history or empty list, with robust persistent backup fallback
+  // Milestone History resolution - always ordered with latest month on top, with persistent backup fallback
   const historyList: ProgressPlanHistoryItem[] = useMemo(() => {
     let raw = project.progressPlanHistory && project.progressPlanHistory.length > 0 ? project.progressPlanHistory : [];
     if (raw.length === 0) {
@@ -217,8 +199,8 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
         }
       } catch {}
     }
-    return sortProgressPlanHistoryWithOrder(raw, historySortOrder);
-  }, [project.progressPlanHistory, project.id, historySortOrder]);
+    return sortProgressPlanHistoryDescending(raw);
+  }, [project.progressPlanHistory, project.id]);
 
   // Auto-heal project if history exists in persistent backup but was missing from current project instance
   const hasRestoredHistoryRef = useRef<string | null>(null);
@@ -461,7 +443,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
       return;
     }
     if (!window.confirm('Are you sure you want to delete this archived snapshot?')) return;
-    const updatedHistory = existing.filter(h => h.id !== id);
+    const updatedHistory = sortProgressPlanHistoryDescending(existing.filter(h => h.id !== id));
     try {
       localStorage.setItem(`era_hist_backup_${project.id}`, JSON.stringify(updatedHistory));
     } catch {}
@@ -1318,7 +1300,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Archived milestone snapshots recorded for this project. Click on any card to view details or edit.
+                Archived milestone snapshots recorded for this project (latest month always on top). Click on any card to view details or edit.
               </p>
             </div>
 
@@ -1357,17 +1339,6 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               >
                 <ChevronsUpDown className="w-3.5 h-3.5" />
                 <span>Vertical Scroll: {isVerticalScroll ? 'ON' : 'OFF'}</span>
-              </button>
-
-              {/* Sort by Month Toggle */}
-              <button
-                type="button"
-                onClick={() => setHistorySortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
-                className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
-                title="Sort elapsed months list by month (Newest First vs Oldest First)"
-              >
-                <ArrowUpDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span>Sort: {historySortOrder === 'desc' ? 'Newest First' : 'Oldest First'}</span>
               </button>
 
               {/* Layout Switch (Grid / Compact List) */}

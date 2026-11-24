@@ -8,6 +8,7 @@ import {
   enforceArchivedProjectDataSource
 } from './pdfReportEngine';
 import { formatPdfDate } from './dateUtils';
+import { sortProgressPlanHistoryDescending } from './monthlySync';
 
 export interface ProgressComparisonPdfOptions {
   project: Project;
@@ -29,7 +30,7 @@ export function generateProgressComparisonPdf(options: ProgressComparisonPdfOpti
   const monthLabel = options.monthLabel;
   const quarterLabel = options.quarterLabel;
   const efyLabel = options.efyLabel;
-  const historyList = options.historyList;
+  const historyList = sortProgressPlanHistoryDescending(options.historyList);
   const includeHistoryTable = options.includeHistoryTable ?? true;
   const includeVerificationStamps = options.includeVerificationStamps ?? true;
   // Landscape A4 orientation: 841.89 pt width x 595.28 pt height
