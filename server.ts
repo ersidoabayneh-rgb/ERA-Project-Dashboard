@@ -3,6 +3,8 @@ import type { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import http from 'http';
+import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { requireAuth, checkRole } from './src/middleware/auth.ts';
 import { GoogleGenAI } from '@google/genai';
@@ -452,6 +454,33 @@ app.post('/api/projects/:projectId/supervision-consultant-contracts/:contractId/
   }
 });
 async function startServer() {
+  const server = http.createServer(app);
+  const wss = new WebSocketServer({ server, path: '/ws' });
+  const connectedClients = new Set<WebSocket>();
+
+  wss.on('connection', (ws: WebSocket) => {
+    connectedClients.add(ws);
+    console.log('[ERA ERP WS] Client connected. Active clients:', connectedClients.size);
+
+    ws.on('message', (message: string) => {
+      try {
+        const parsed = JSON.parse(message.toString());
+        for (const client of connectedClients) {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(parsed));
+          }
+        }
+      } catch (err) {
+        console.error('[ERA ERP WS] Error handling message:', err);
+      }
+    });
+
+    ws.on('close', () => {
+      connectedClients.delete(ws);
+      console.log('[ERA ERP WS] Client disconnected. Active clients:', connectedClients.size);
+    });
+  });
+
   if (!isProd) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -466,8 +495,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[ERA ERP] Server running on http://0.0.0.0:${PORT}`);
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`[ERA ERP] Server and WebSocket running on http://0.0.0.0:${PORT}`);
   });
 }
 

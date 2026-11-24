@@ -2010,7 +2010,7 @@ let isBatchSyncRunning = false;
         globalWsRef.current = wsSocket;
 
         wsSocket.onopen = () => {
-          console.log('[Real-Time WS] Open-ended WebSocket connected!');
+          console.log('[Real-Time WS] Open-ended WebSocket connected successfully!');
         };
 
         wsSocket.onmessage = (event) => {
@@ -2021,17 +2021,16 @@ let isBatchSyncRunning = false;
         };
 
         wsSocket.onerror = () => {
-          /* reconnect in onclose */
+          /* reconnect handled in onclose */
         };
 
         wsSocket.onclose = () => {
-          console.log('[Real-Time WS] WebSocket disconnected, reconnecting in 2s...');
           globalWsRef.current = null;
           clearTimeout(wsReconnectTimeout);
-          wsReconnectTimeout = setTimeout(initWebSocket, 2000);
+          wsReconnectTimeout = setTimeout(initWebSocket, 3000);
         };
       } catch (err) {
-        console.warn('[Real-Time WS] WebSocket failed, relying on SSE:', err);
+        console.warn('[Real-Time WS] WebSocket initialization warning:', err);
       }
     };
 
@@ -2129,6 +2128,10 @@ let isBatchSyncRunning = false;
     };
 
     try {
+      // 0. Initialize real-time WebSocket and SSE event streams
+      initWebSocket();
+      initSSE();
+
       // 1. Listen for real-time deletions across all users and devices
       unsubscribeDeletedProjectsListener = onSnapshot(collection(db, 'deleted_projects'), (snapshot) => {
         if (snapshot && !snapshot.empty) {
