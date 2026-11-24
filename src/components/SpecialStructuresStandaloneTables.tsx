@@ -572,7 +572,19 @@ export const SpecialStructuresStandaloneTables: React.FC<SpecialStructuresStanda
 
   // Apply Pipe Stage Update: Equal weightage (20% each) summing to 1.000 No. Total
   const handleApplyPipeStageUpdate = () => {
-    const loc = customPipeLocation.trim() || selectedPipeLocation || '200+313';
+    const loc = customPipeLocation.trim() || selectedPipeLocation || '';
+    if (!loc) {
+      alert('Validation Error: Please select or enter a valid Pipe Location / Station before recording stage progress.');
+      return;
+    }
+    if (!selectedPipeStage) {
+      alert('Validation Error: Please select a valid Construction Stage.');
+      return;
+    }
+    if (selectedPipeStagePct < 0 || selectedPipeStagePct > 100 || isNaN(selectedPipeStagePct)) {
+      alert('Validation Error: Progress percentage must be between 0% and 100%.');
+      return;
+    }
     const prior = getPreviousRecordForLocation(activities, 'pipe', loc, selectedDate);
     const existingIdx = activities.findIndex(a =>
       a.date === selectedDate && a.activityType === '14' && (a.pipeLocation === loc || a.startStationKm === loc)
@@ -769,7 +781,19 @@ export const SpecialStructuresStandaloneTables: React.FC<SpecialStructuresStanda
 
   // Box Culvert Handlers: Equal weightage (16.67% / (1/6) each) summing to 1.000 No. Total
   const handleApplyBoxStageUpdate = () => {
-    const loc = customBoxLocation.trim() || selectedBoxLocation || 'Box Culvert @ Km 195+600 (2x2m)';
+    const loc = customBoxLocation.trim() || selectedBoxLocation || '';
+    if (!loc) {
+      alert('Validation Error: Please select or enter a valid Box Culvert Location before recording stage progress.');
+      return;
+    }
+    if (!selectedBoxStage) {
+      alert('Validation Error: Please select a valid Box Culvert Construction Stage.');
+      return;
+    }
+    if (selectedBoxStagePct < 0 || selectedBoxStagePct > 100 || isNaN(selectedBoxStagePct)) {
+      alert('Validation Error: Progress percentage must be between 0% and 100%.');
+      return;
+    }
     const prior = getPreviousRecordForLocation(activities, 'box', loc, selectedDate);
     const existingIdx = activities.findIndex(a =>
       a.date === selectedDate && (a.activityType === '15' || a.activityType === '14.1') && (a.boxCulvertLocation === loc || a.startStationKm === loc)
@@ -974,7 +998,19 @@ export const SpecialStructuresStandaloneTables: React.FC<SpecialStructuresStanda
 
   // Slab Culvert Handlers: Equal weightage (16.67% / (1/6) each) summing to 1.000 No. Total
   const handleApplySlabStageUpdate = () => {
-    const loc = customSlabLocation.trim() || selectedSlabLocation || 'Slab Culvert @ Km 197+200 (Span 4m)';
+    const loc = customSlabLocation.trim() || selectedSlabLocation || '';
+    if (!loc) {
+      alert('Validation Error: Please select or enter a valid Slab Culvert Location before recording stage progress.');
+      return;
+    }
+    if (!selectedSlabStage) {
+      alert('Validation Error: Please select a valid Slab Culvert Construction Stage.');
+      return;
+    }
+    if (selectedSlabStagePct < 0 || selectedSlabStagePct > 100 || isNaN(selectedSlabStagePct)) {
+      alert('Validation Error: Progress percentage must be between 0% and 100%.');
+      return;
+    }
     const prior = getPreviousRecordForLocation(activities, 'slab', loc, selectedDate);
     const existingIdx = activities.findIndex(a =>
       a.date === selectedDate && (a.activityType === '16' || a.activityType === '14.2') && (a.slabCulvertLocation === loc || a.startStationKm === loc)
@@ -1179,7 +1215,19 @@ export const SpecialStructuresStandaloneTables: React.FC<SpecialStructuresStanda
 
   // Bridge Handlers: Equal weightage (16.67% / (1/6) each) summing to 1.000 No. Total
   const handleApplyBridgeStageUpdate = () => {
-    const loc = customBridgeLocation.trim() || selectedBridgeLocation || 'Dermi River Bridge (Km 196+400, 3-Span)';
+    const loc = customBridgeLocation.trim() || selectedBridgeLocation || '';
+    if (!loc) {
+      alert('Validation Error: Please select or enter a valid Bridge Location before recording stage progress.');
+      return;
+    }
+    if (!selectedBridgeStage) {
+      alert('Validation Error: Please select a valid Bridge Construction Stage.');
+      return;
+    }
+    if (selectedBridgeStagePct < 0 || selectedBridgeStagePct > 100 || isNaN(selectedBridgeStagePct)) {
+      alert('Validation Error: Progress percentage must be between 0% and 100%.');
+      return;
+    }
     const prior = getPreviousRecordForLocation(activities, 'bridge', loc, selectedDate);
     const existingIdx = activities.findIndex(a =>
       a.date === selectedDate && (a.activityType === '17' || (a.activityType === '15' && Boolean(a.bridgeLocation || a.bridgeSelectedStage))) && (a.bridgeLocation === loc || a.startStationKm === loc)

@@ -30,7 +30,8 @@ import {
 
   Timer,
   Settings,
-  Plus
+  Plus,
+  Printer
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -57,6 +58,7 @@ import { calculateProjectEvm } from '../lib/evmCalculations';
 import { getProjectDlpInfo, calculateCappedElapsedTimePct } from '../lib/dlpUtils';
 import { getRevisedCompletionDate } from '../lib/dateUtils';
 import { resolveCurrentMonthKey, getLastActualProgress, isSameMonth } from '../lib/monthlySync';
+import { downloadMonthlyActivitiesSummaryPdf, resolveTargetMonthYYYYMM, formatMonthDisplayLabel } from '../lib/monthlyActivitiesPdfGenerator';
 
 export const sortProgressPlanHistoryDescending = (items: ProgressPlanHistoryItem[]): ProgressPlanHistoryItem[] => {
   return [...(items || [])].sort((a, b) => {
@@ -1026,6 +1028,24 @@ export default function DashboardView({
           </div>
 
 
+
+          {/* Print Monthly Summary PDF button */}
+          <button
+            type="button"
+            onClick={() => {
+              const targetMonth = resolveTargetMonthYYYYMM(project);
+              downloadMonthlyActivitiesSummaryPdf({
+                project,
+                targetMonthYYYYMM: targetMonth,
+                currentUser: currentUserObj
+              });
+            }}
+            className="flex items-center gap-1.5 px-3 py-1 bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white rounded-xl text-[12px] font-semibold transition cursor-pointer whitespace-nowrap shrink-0"
+            title={`Download Printable Monthly Activities Summary PDF (${formatMonthDisplayLabel(resolveTargetMonthYYYYMM(project))})`}
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print Monthly Summary</span>
+          </button>
 
           {/* Delete project option for CPM Admins and Master Admins only */}
           {(() => {

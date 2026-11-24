@@ -35,6 +35,7 @@ import {
 } from '../lib/dailyActivitiesSync';
 import eraLogo from '../assets/logo.png';
 import { SpecialStructuresStandaloneTables } from './SpecialStructuresStandaloneTables';
+import { DailyActivitiesSummaryDashboard } from './DailyActivitiesSummaryDashboard';
 
 interface DailyActivitiesViewProps {
   project: Project;
@@ -2719,6 +2720,16 @@ export default function DailyActivitiesView({
             </div>
           </div>
         </div>
+
+        {/* AGGREGATED DAILY & END-OF-MONTH ACTIVITIES SUMMARY DASHBOARD */}
+        <DailyActivitiesSummaryDashboard
+          project={project}
+          activities={activities}
+          selectedDate={selectedDate}
+          sections={sections}
+          getDefaultUnit={getDefaultUnit}
+          currentUserObj={currentUserObj}
+        />
 
         {/* INLINE FEEDBACK NOTICE (REPLACES BLOCKING ALERTS) */}
         {feedbackNotice && (
