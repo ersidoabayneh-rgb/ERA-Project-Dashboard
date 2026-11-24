@@ -643,6 +643,8 @@ export default function DailyActivitiesView({
   const [activeTab, setActiveTab] = useState<'register' | 'production' | 'resources' | 'challenges' | 'all'>('all');
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [workRegisterActivityFilter, setWorkRegisterActivityFilter] = useState<string>('ALL');
+  const [workRegisterStatusFilter, setWorkRegisterStatusFilter] = useState<string>('ALL');
   const [showPartyEditor, setShowPartyEditor] = useState(false);
   const [feedbackNotice, setFeedbackNotice] = useState<{ type: 'success' | 'warning'; text: string } | null>(null);
 
@@ -3285,6 +3287,35 @@ export default function DailyActivitiesView({
               </div>
 
               <div className="flex flex-wrap items-center gap-2 print:hidden">
+                {/* Filter by Activity */}
+                <select
+                  value={workRegisterActivityFilter}
+                  onChange={e => setWorkRegisterActivityFilter(e.target.value)}
+                  className="py-1 px-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
+                  aria-label="Filter by Work Activity"
+                >
+                  <option value="ALL">All Activities</option>
+                  {sections.map(s => (
+                    <option key={`act-filter-${s.id}`} value={s.id}>
+                      {s.customLabel || s.id}. {s.name}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Filter by Status */}
+                <select
+                  value={workRegisterStatusFilter}
+                  onChange={e => setWorkRegisterStatusFilter(e.target.value)}
+                  className="py-1 px-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
+                  aria-label="Filter by Status"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="Draft">Draft</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Submitted">Submitted</option>
+                  <option value="Pending">Pending</option>
+                </select>
+
                 {/* Search Work Register */}
                 <div className="relative">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -3293,7 +3324,7 @@ export default function DailyActivitiesView({
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     placeholder="Filter section, station, work..."
-                    className="pl-8 pr-7 py-1 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500 w-52"
+                    className="pl-8 pr-7 py-1 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500 w-44"
                   />
                   {searchQuery && (
                     <button
@@ -3586,7 +3617,11 @@ export default function DailyActivitiesView({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {sections.length > 0 ? sections.map((sec, secIdx) => {
-                    const secActivities = currentActivities.filter(a => {
+                    if (workRegisterActivityFilter !== 'ALL' && sec.id !== workRegisterActivityFilter) {
+                      return null;
+                    }
+
+                    const rawSecActivities = currentActivities.filter(a => {
                       if (sec.id === '14') {
                         return a.activityType === '14' || Boolean(a.pipeLocation && !a.boxCulvertLocation && !a.slabCulvertLocation && !a.bridgeLocation);
                       }
@@ -3603,6 +3638,12 @@ export default function DailyActivitiesView({
                         return a.activityType === '18' || (a.activityType === '16' && !a.slabCulvertLocation);
                       }
                       return a.activityType === sec.id;
+                    });
+
+                    const secActivities = rawSecActivities.filter(a => {
+                      if (workRegisterStatusFilter === 'ALL') return true;
+                      const st = a.status || a.qcStatus || 'Draft';
+                      return st === workRegisterStatusFilter;
                     });
                     const totals = getSectionCumulativeTotals(sec.id);
                     const defaultUnit = getDefaultUnit(sec.id);
