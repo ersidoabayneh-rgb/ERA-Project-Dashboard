@@ -55,6 +55,7 @@ import {
   syncProjectReportExclusionFlag,
   syncProjectsReportExclusionFlags
 } from './lib/reportExclusionUtils';
+import { sortProgressPlanHistoryDescending } from './lib/monthlySync';
 
 export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
@@ -614,9 +615,11 @@ export default function App() {
               if (b) {
                 const parsedB = JSON.parse(b);
                 if (Array.isArray(parsedB) && parsedB.length > 0) {
-                  found.progressPlanHistory = parsedB;
+                  found.progressPlanHistory = sortProgressPlanHistoryDescending(parsedB);
                 }
               }
+            } else {
+              found.progressPlanHistory = sortProgressPlanHistoryDescending(found.progressPlanHistory);
             }
             return found;
           }
@@ -948,12 +951,14 @@ export default function App() {
       const newHist = integrated.progressPlanHistory || [];
       let combinedHist = newHist;
       if (prevHist.length > 0 && newHist.length === 0) {
-        combinedHist = prevHist;
+        combinedHist = sortProgressPlanHistoryDescending(prevHist);
       } else if (prevHist.length > 0 && newHist.length > 0) {
         const hMap = new Map<string, any>();
         prevHist.forEach(h => { if (h?.id) hMap.set(h.id, h); });
         newHist.forEach(h => { if (h?.id) hMap.set(h.id, h); });
-        combinedHist = Array.from(hMap.values());
+        combinedHist = sortProgressPlanHistoryDescending(Array.from(hMap.values()));
+      } else {
+        combinedHist = sortProgressPlanHistoryDescending(newHist);
       }
 
       const nextProject: Project = {
@@ -2716,7 +2721,7 @@ let isBatchSyncRunning = false;
           }
         } catch {}
       }
-      return { ...p, progressPlanHistory: history };
+      return { ...p, progressPlanHistory: sortProgressPlanHistoryDescending(history) };
     }).map(syncProjectPayment);
     setProjects(normalizedLocal);
 
@@ -2768,7 +2773,7 @@ let isBatchSyncRunning = false;
                 }
               } catch {}
             }
-            return { ...p, progressPlanHistory: history };
+            return { ...p, progressPlanHistory: sortProgressPlanHistoryDescending(history) };
           }).map(syncProjectPayment);
           
           // Merge local and cloud projects ensuring conflict resolution with newer modification timestamp and zero history loss
@@ -2786,12 +2791,12 @@ let isBatchSyncRunning = false;
               const historyMap = new Map<string, any>();
               (existing.progressPlanHistory || []).forEach(h => { if (h?.id) historyMap.set(h.id, h); });
               (cloudProj.progressPlanHistory || []).forEach(h => { if (h?.id) historyMap.set(h.id, h); });
-              const mergedHistory = Array.from(historyMap.values());
+              const mergedHistory = sortProgressPlanHistoryDescending(Array.from(historyMap.values()));
 
               const base = cloudTime >= existingTime ? cloudProj : existing;
               merged[idx] = {
                 ...base,
-                progressPlanHistory: mergedHistory.length > 0 ? mergedHistory : (base.progressPlanHistory || [])
+                progressPlanHistory: mergedHistory.length > 0 ? mergedHistory : sortProgressPlanHistoryDescending(base.progressPlanHistory || [])
               };
             }
           });
@@ -3274,10 +3279,12 @@ let isBatchSyncRunning = false;
         }
       }
     } else if (Array.isArray(fields.progressPlanHistory) && fields.progressPlanHistory.length > 0) {
+      const sortedFieldsHistory = sortProgressPlanHistoryDescending(fields.progressPlanHistory);
+      updatedProject.progressPlanHistory = sortedFieldsHistory;
       try {
-        localStorage.setItem(`era_hist_backup_${currentProject.id}`, JSON.stringify(fields.progressPlanHistory));
+        localStorage.setItem(`era_hist_backup_${currentProject.id}`, JSON.stringify(sortedFieldsHistory));
         // Persist to multi-tier persistent storage (Disk, Firestore, and IndexedDB)
-        syncProgressPlanHistoryToPersistentStorage(currentProject.id, currentProject.name, fields.progressPlanHistory);
+        syncProgressPlanHistoryToPersistentStorage(currentProject.id, currentProject.name, sortedFieldsHistory);
       } catch {}
     } else if (Array.isArray(fields.progressPlanHistory) && fields.progressPlanHistory.length === 0) {
       // Explicit deletion by authorized admin

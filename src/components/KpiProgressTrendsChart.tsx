@@ -31,6 +31,7 @@ import {
 } from 'recharts';
 import { Project, MonthlyProgress, ProgressPlanHistoryItem } from '../types';
 import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultProject';
+import { sortProgressPlanHistoryDescending } from '../lib/monthlySync';
 
 interface KpiProgressTrendsChartProps {
   project: Project;
@@ -124,7 +125,7 @@ export default function KpiProgressTrendsChart({
     if (needsUpdate) {
       hasArchivedRef.current = project.id;
       onProjectUpdate(
-        { progressPlanHistory: updatedHistory },
+        { progressPlanHistory: sortProgressPlanHistoryDescending(updatedHistory) },
         'Auto-archived 12-month KPI progress records into history logs (locked after 1-week window)'
       );
     } else {

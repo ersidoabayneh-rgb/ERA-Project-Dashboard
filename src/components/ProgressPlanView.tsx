@@ -212,10 +212,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     }
   }, [project.id, project.progressPlanHistory?.length, historyList.length]);
 
-  // Selected Archived Item for Left Panel
+  // Selected Archived Item for Left Panel (always defaults to latest month at index 0)
   const [selectedArchivedKey, setSelectedArchivedKey] = useState<string>(
     historyList.length > 0 ? historyList[0].id : 'live'
   );
+
+  useEffect(() => {
+    setSelectedArchivedKey(historyList.length > 0 ? historyList[0].id : 'live');
+  }, [project.id]);
 
   const selectedArchivedItem = useMemo<ProgressPlanHistoryItem | null>(() => {
     return historyList.find(h => h.id === selectedArchivedKey) || historyList[0] || null;

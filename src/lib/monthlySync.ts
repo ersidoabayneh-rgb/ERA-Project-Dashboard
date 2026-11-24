@@ -672,45 +672,243 @@ export function updateMonthlyWithProgress(
   };
 }
 
-/**
- * Parses a ProgressPlanHistoryItem monthLabel (e.g. "Sep '24", "Aug-26", "November 2026", "2026-11")
- * into a monotonic chronological integer rank (year * 12 + monthIndex + 1), or 0 if unparseable.
- */
-export function parseProgressPlanMonthRank(monthLabel?: string | null): number {
-  if (!monthLabel || typeof monthLabel !== 'string') return 0;
-  const normalized = monthLabel
-    .trim()
-    .replace(/['’`]+/g, ' ')
-    .replace(/,/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!normalized) return 0;
+const ETHIOPIAN_MONTH_OFFSET_MAP: Record<string, { monthIndex: number; yearOffset: number; dayBias?: number }> = {
+  meskerem: { monthIndex: 8, yearOffset: 7 },
+  maskaram: { monthIndex: 8, yearOffset: 7 },
+  tikimt: { monthIndex: 9, yearOffset: 7 },
+  teqemt: { monthIndex: 9, yearOffset: 7 },
+  tiqimt: { monthIndex: 9, yearOffset: 7 },
+  hidar: { monthIndex: 10, yearOffset: 7 },
+  hedar: { monthIndex: 10, yearOffset: 7 },
+  tahsas: { monthIndex: 11, yearOffset: 7 },
+  tahisas: { monthIndex: 11, yearOffset: 7 },
+  tir: { monthIndex: 0, yearOffset: 8 },
+  ter: { monthIndex: 0, yearOffset: 8 },
+  yakatit: { monthIndex: 1, yearOffset: 8 },
+  yekatit: { monthIndex: 1, yearOffset: 8 },
+  megabit: { monthIndex: 2, yearOffset: 8 },
+  miazia: { monthIndex: 3, yearOffset: 8 },
+  miyazya: { monthIndex: 3, yearOffset: 8 },
+  ginbot: { monthIndex: 4, yearOffset: 8 },
+  genbot: { monthIndex: 4, yearOffset: 8 },
+  sene: { monthIndex: 5, yearOffset: 8 },
+  sane: { monthIndex: 5, yearOffset: 8 },
+  hamle: { monthIndex: 6, yearOffset: 8 },
+  hamile: { monthIndex: 6, yearOffset: 8 },
+  nehase: { monthIndex: 7, yearOffset: 8 },
+  nahase: { monthIndex: 7, yearOffset: 8 },
+  pagume: { monthIndex: 7, yearOffset: 8, dayBias: 50 },
+  pagumen: { monthIndex: 7, yearOffset: 8, dayBias: 50 },
+};
 
-  const parsed = parseMonthKey(normalized);
-  if (parsed) {
-    return parsed.year * 12 + parsed.monthIndex + 1;
-  }
-  return 0;
+const GREGORIAN_MONTH_TOKEN_MAP: Record<string, number> = {
+  jan: 0, january: 0,
+  feb: 1, february: 1,
+  mar: 2, march: 2,
+  apr: 3, april: 3,
+  may: 4,
+  jun: 5, june: 5,
+  jul: 6, july: 6,
+  aug: 7, august: 7,
+  sep: 8, sept: 8, september: 8,
+  oct: 9, october: 9,
+  nov: 10, november: 10,
+  dec: 11, december: 11,
+};
+
+function extractEfyYear(text?: string | null): number | null {
+  if (!text) return null;
+  const fourDigit = text.match(/\b(20\d{2}|19\d{2})\b/);
+  if (fourDigit) return parseInt(fourDigit[1], 10);
+  const twoDigit = text.match(/\b(\d{2})\b/);
+  if (twoDigit) return 2000 + parseInt(twoDigit[1], 10);
+  return null;
 }
 
 /**
- * Sorts elapsed month history items strictly in descending chronological order (latest month on top).
+ * Parses a ProgressPlanHistoryItem monthLabel (e.g. "Sep '24", "Aug-26", "Nov26", "November 2026",
+ * "2026-11", "11/26", "Meskerem 2018", "Jul" with efyLabel "EFY 2018")
+ * into a monotonic chronological integer rank (Gregorian year * 12 + monthIndex + 1) * 100 + dayBias, or 0 if unparseable.
+ */
+export function parseProgressPlanMonthRank(
+  monthLabel?: string | null,
+  efyLabel?: string | null
+): number {
+  if (!monthLabel || typeof monthLabel !== 'string') {
+    const efyOnly = extractEfyYear(efyLabel);
+    return efyOnly ? ((efyOnly + 7) * 12 + 6 + 1) * 100 - 1 : 0;
+  }
+
+  const raw = monthLabel.trim();
+  if (!raw) return 0;
+
+  const efyInLabel = raw.match(/\befy\s*[-:]?\s*(\d{2,4})\b/i);
+  const resolvedEfyYear = efyInLabel
+    ? (parseInt(efyInLabel[1], 10) < 100 ? 2000 + parseInt(efyInLabel[1], 10) : parseInt(efyInLabel[1], 10))
+    : extractEfyYear(efyLabel);
+
+  // Strip explicit "EFY xxxx" tokens before looking for Gregorian calendar date/year
+  const withoutEfy = raw.replace(/\befy\s*[-:]?\s*\d{2,4}\b/gi, ' ').trim();
+
+  // 1. Numeric ISO: YYYY-MM, YYYY/M, YYYY-MM-DD
+  const isoMatch = withoutEfy.match(/^((?:19|20)\d{2})[-/](\d{1,2})(?:[-/](\d{1,2}))?$/);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1], 10);
+    const mNum = parseInt(isoMatch[2], 10);
+    if (mNum >= 1 && mNum <= 12) {
+      return (year * 12 + (mNum - 1) + 1) * 100;
+    }
+  }
+
+  // 2. Numeric MM/YYYY or MM-YYYY
+  const mmyyyyMatch = withoutEfy.match(/^(\d{1,2})[-/]((?:19|20)\d{2})$/);
+  if (mmyyyyMatch) {
+    const mNum = parseInt(mmyyyyMatch[1], 10);
+    const year = parseInt(mmyyyyMatch[2], 10);
+    if (mNum >= 1 && mNum <= 12) {
+      return (year * 12 + (mNum - 1) + 1) * 100;
+    }
+  }
+
+  // 3. Numeric MM/YY or MM-YY (e.g. "11/26", "08-25")
+  const mmyyMatch = withoutEfy.match(/^(\d{1,2})[-/](\d{2})$/);
+  if (mmyyMatch) {
+    const mNum = parseInt(mmyyMatch[1], 10);
+    const year = 2000 + parseInt(mmyyMatch[2], 10);
+    if (mNum >= 1 && mNum <= 12) {
+      return (year * 12 + (mNum - 1) + 1) * 100;
+    }
+  }
+
+  // Normalize punctuation/separators while keeping spaces clean
+  const clean = withoutEfy
+    .replace(/['’`.,_/]+/g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // 4. Ethiopian month names (e.g. "Meskerem 2018", "Hamle '17", "Tikimt")
+  const ethRegex = new RegExp(
+    `\\b(${Object.keys(ETHIOPIAN_MONTH_OFFSET_MAP).join('|')})(?=\\b|\\d)`,
+    'gi'
+  );
+  const ethMatches = Array.from(clean.matchAll(ethRegex));
+  if (ethMatches.length > 0) {
+    const lastEth = ethMatches[ethMatches.length - 1];
+    const ethKey = lastEth[1].toLowerCase();
+    const mapping = ETHIOPIAN_MONTH_OFFSET_MAP[ethKey];
+    const afterEth = clean.slice((lastEth.index || 0) + lastEth[0].length);
+    const yearAfter = afterEth.match(/^\s*((?:19|20)\d{2}|\d{2})\b/);
+    const anyFourDigit = clean.match(/\b((?:19|20)\d{2})\b/);
+    const anyTwoDigit = clean.match(/\b(\d{2})\b/);
+
+    let ethYear = resolvedEfyYear || 2018;
+    if (yearAfter) {
+      const parsedY = parseInt(yearAfter[1], 10);
+      ethYear = parsedY < 100 ? 2000 + parsedY : parsedY;
+    } else if (anyFourDigit) {
+      ethYear = parseInt(anyFourDigit[1], 10);
+    } else if (anyTwoDigit) {
+      ethYear = 2000 + parseInt(anyTwoDigit[1], 10);
+    }
+
+    const gregYear = ethYear + mapping.yearOffset;
+    return (gregYear * 12 + mapping.monthIndex + 1) * 100 + (mapping.dayBias || 0);
+  }
+
+  // 5. Gregorian month tokens (supports "Nov '26", "Aug-26", "Nov26", "November 2026", "26 Nov", "EFY 2018 - Oct 2025")
+  const gregRegex = /\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)(?=\b|\d)/gi;
+  const gregMatches = Array.from(clean.matchAll(gregRegex));
+  if (gregMatches.length > 0) {
+    const lastMatch = gregMatches[gregMatches.length - 1];
+    const monthIndex = GREGORIAN_MONTH_TOKEN_MAP[lastMatch[1].toLowerCase()];
+    const matchStart = lastMatch.index || 0;
+    const afterMatch = clean.slice(matchStart + lastMatch[0].length);
+    const beforeMatch = clean.slice(0, matchStart);
+
+    let year: number | null = null;
+    const afterYear = afterMatch.match(/^\s*((?:19|20)\d{2}|\d{2})\b/);
+    const beforeYear = beforeMatch.match(/\b((?:19|20)\d{2}|\d{2})\s*$/);
+    const allFourDigit = Array.from(clean.matchAll(/\b((?:19|20)\d{2})\b/g));
+    const allTwoDigit = Array.from(clean.matchAll(/\b(\d{2})\b/g));
+
+    if (afterYear) {
+      const y = parseInt(afterYear[1], 10);
+      year = y < 100 ? 2000 + y : y;
+    } else if (beforeYear) {
+      const y = parseInt(beforeYear[1], 10);
+      year = y < 100 ? 2000 + y : y;
+    } else if (allFourDigit.length > 0) {
+      year = parseInt(allFourDigit[allFourDigit.length - 1][1], 10);
+    } else if (allTwoDigit.length > 0) {
+      year = 2000 + parseInt(allTwoDigit[allTwoDigit.length - 1][1], 10);
+    } else if (resolvedEfyYear !== null) {
+      // Month without explicit year in EFY: Jul..Dec -> EFY + 7, Jan..Jun -> EFY + 8
+      year = monthIndex >= 6 ? resolvedEfyYear + 7 : resolvedEfyYear + 8;
+    } else {
+      year = new Date().getFullYear();
+    }
+
+    return (year * 12 + monthIndex + 1) * 100;
+  }
+
+  // 6. Standard parseMonthKey fallback
+  const fallbackParsed = parseMonthKey(clean);
+  if (fallbackParsed) {
+    return (fallbackParsed.year * 12 + fallbackParsed.monthIndex + 1) * 100;
+  }
+
+  // 7. EFY-only or Gregorian year-only label fallback (e.g. "EFY 2018 Baseline Plan")
+  if (resolvedEfyYear !== null) {
+    return ((resolvedEfyYear + 7) * 12 + 6 + 1) * 100 - 1;
+  }
+
+  const standaloneYear = clean.match(/\b((?:19|20)\d{2})\b/);
+  if (standaloneYear) {
+    return (parseInt(standaloneYear[1], 10) * 12 + 1) * 100 - 1;
+  }
+
+  return 0;
+}
+
+function extractIdTimestamp(id?: string): number {
+  if (!id) return 0;
+  const m = id.match(/(\d{10,13})/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/**
+ * Sorts elapsed month history items strictly in chronological order (latest month on top by default).
  */
 export function sortProgressPlanHistoryWithOrder(
   items: ProgressPlanHistoryItem[],
   order: 'desc' | 'asc' = 'desc'
 ): ProgressPlanHistoryItem[] {
   return [...(items || [])].sort((a, b) => {
-    const valA = parseProgressPlanMonthRank(a.monthLabel);
-    const valB = parseProgressPlanMonthRank(b.monthLabel);
+    const valA = parseProgressPlanMonthRank(a.monthLabel, a.efyLabel);
+    const valB = parseProgressPlanMonthRank(b.monthLabel, b.efyLabel);
     if (valA !== valB) {
       return order === 'desc' ? valB - valA : valA - valB;
     }
+
     const timeA = Date.parse(a.approvedAt || a.lockedAt || '') || 0;
     const timeB = Date.parse(b.approvedAt || b.lockedAt || '') || 0;
     if (timeA !== timeB) {
       return order === 'desc' ? timeB - timeA : timeA - timeB;
     }
+
+    const idTsA = extractIdTimestamp(a.id);
+    const idTsB = extractIdTimestamp(b.id);
+    if (idTsA !== idTsB) {
+      return order === 'desc' ? idTsB - idTsA : idTsA - idTsB;
+    }
+
+    const actA = Number(a.actualTodate || 0);
+    const actB = Number(b.actualTodate || 0);
+    if (actA !== actB) {
+      return order === 'desc' ? actB - actA : actA - actB;
+    }
+
     return 0;
   });
 }

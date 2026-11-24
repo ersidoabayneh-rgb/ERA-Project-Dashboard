@@ -73,6 +73,10 @@ import {
   parseJvEntities,
   ParsedJvEntities
 } from '../data/consultantEvaluationMatrix';
+import {
+  downloadSection2EvaluationPdf,
+  Section2PaperPrintMode
+} from '../lib/consultantEvaluationPdfGenerator';
 
 export interface ComprehensiveConsultantEvaluationMatrixViewProps {
   project: Project;
@@ -158,6 +162,15 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
 
   // Custom Criteria Management State
   const [editingCriterion, setEditingCriterion] = useState<ConsultantEvaluationCriterion | null>(null);
+
+  // Section 2 Printable Paper Evaluation PDF State
+  const [showPaperPdfModal, setShowPaperPdfModal] = useState(false);
+  const [paperPrintMode, setPaperPrintMode] = useState<Section2PaperPrintMode>('blank_paper');
+  const [pdfContractScope, setPdfContractScope] = useState<'CURRENT' | 'ALL' | 'DBB' | 'DB'>('ALL');
+  const [pdfIncludeRubrics, setPdfIncludeRubrics] = useState(true);
+  const [pdfIncludeSummary, setPdfIncludeSummary] = useState(true);
+  const [pdfEvaluationPeriod, setPdfEvaluationPeriod] = useState('');
+  const [pdfDownloadNotice, setPdfDownloadNotice] = useState<string | null>(null);
   const [showCriterionModal, setShowCriterionModal] = useState(false);
   const [criterionForm, setCriterionForm] = useState<Partial<ConsultantEvaluationCriterion>>({});
 
@@ -1474,8 +1487,8 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
         )}
       </AnimatePresence>
 
-      {/* TOP: Master Overall Formula Executive Scorecard (Collapsible) */}
-      <div className="mb-3">
+      {/* TOP: Master Overall Formula Executive Scorecard + Printable Section 2 Paper PDF Trigger */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => setShowExecutiveCard(!showExecutiveCard)}
@@ -1484,6 +1497,24 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
           <ShieldCheck className="w-4 h-4 text-indigo-400" />
           <span>{showExecutiveCard ? "Hide Master Evaluation Executive Scorecard" : `📊 Master Evaluation Summary (Overall Score: ${evaluationResult.overallScore.toFixed(1)}% - Grade ${evaluationResult.officialGrade}) — Click to View`}</span>
         </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {pdfDownloadNotice && (
+            <span className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              {pdfDownloadNotice}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowPaperPdfModal(true)}
+            className="px-4 py-2 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/40 transition flex items-center gap-2 cursor-pointer shadow-xs"
+            title="Download all Section 2 Supervision Consultant Performance Evaluation Criteria as a printable PDF for paper evaluation"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Print Section 2 Paper Evaluation PDF</span>
+          </button>
+        </div>
       </div>
 
       {showExecutiveCard && (
@@ -2352,6 +2383,16 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                   Save & Record Official Score
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => setShowPaperPdfModal(true)}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                title="Generate printable PDF of all Section 2 criteria for paper evaluation"
+              >
+                <Printer className="w-3.5 h-3.5 text-emerald-100" />
+                Print Paper Evaluation PDF
+              </button>
             </div>
           </div>
         </div>
@@ -2942,15 +2983,27 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
               )}
             </div>
 
-            {!isReadonly && isAdmin && (
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={handleSaveEvaluation}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+                type="button"
+                onClick={() => setShowPaperPdfModal(true)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+                title="Download all Section 2 criteria formatted for pen-and-paper evaluation"
               >
-                <Save className="w-3.5 h-3.5 text-indigo-200" />
-                Save & Record Official Score
+                <Printer className="w-3.5 h-3.5 text-emerald-100" />
+                Print All Section 2 PDF
               </button>
-            )}
+
+              {!isReadonly && isAdmin && (
+                <button
+                  onClick={handleSaveEvaluation}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Save className="w-3.5 h-3.5 text-indigo-200" />
+                  Save & Record Official Score
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -3241,6 +3294,198 @@ export default function ComprehensiveConsultantEvaluationMatrixView({
                 className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition cursor-pointer"
               >
                 Save Criterion
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Printable Section 2 Paper Evaluation PDF Configuration Modal */}
+      {showPaperPdfModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <Printer className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                    Print Section 2 Paper Evaluation PDF
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Generates a multi-page Landscape A4 evaluation instrument covering Dimensions A–E.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPaperPdfModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Format Selection */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                  1. Paper Form Format
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setPaperPrintMode('blank_paper')}
+                    className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
+                      paperPrintMode === 'blank_paper'
+                        ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-500 ring-1 ring-emerald-500'
+                        : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="text-xs font-black text-slate-900 dark:text-white flex items-center justify-between">
+                      <span>Blank Paper Form</span>
+                      {paperPrintMode === 'blank_paper' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      Empty [1–5] rating checkboxes &amp; ruled remark lines for pen-and-paper committee scoring.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaperPrintMode('with_current_scores')}
+                    className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
+                      paperPrintMode === 'with_current_scores'
+                        ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-500 ring-1 ring-indigo-500'
+                        : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="text-xs font-black text-slate-900 dark:text-white flex items-center justify-between">
+                      <span>With Current Scores</span>
+                      {paperPrintMode === 'with_current_scores' && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      Pre-checks active system/evaluator scores &amp; includes saved justification comments for audit.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Contract Type Scope */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                  2. Criteria Coverage (All 5 Dimensions A–E)
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'ALL' as const, label: `All (${dynamicCriteriaList.length})` },
+                    { id: 'CURRENT' as const, label: `Active (${contractTypeFilter})` },
+                    {
+                      id: 'DBB' as const,
+                      label: `DBB (${dynamicCriteriaList.filter(c => !c.contractType || c.contractType === 'ALL' || c.contractType === 'DBB').length})`
+                    },
+                    {
+                      id: 'DB' as const,
+                      label: `DB (${dynamicCriteriaList.filter(c => !c.contractType || c.contractType === 'ALL' || c.contractType === 'DB').length})`
+                    }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setPdfContractScope(opt.id)}
+                      className={`px-2.5 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                        pdfContractScope === opt.id
+                          ? 'bg-slate-900 dark:bg-indigo-600 text-white border-slate-900 dark:border-indigo-500'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Evaluation Period Input */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                  3. Evaluation Period / Cycle (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={pdfEvaluationPeriod}
+                  onChange={(e) => setPdfEvaluationPeriod(e.target.value)}
+                  placeholder="e.g., Q4 2026 / November 2026 Monthly Assessment"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Layout Toggles */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-2.5">
+                <label className="flex items-center gap-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={pdfIncludeRubrics}
+                    onChange={(e) => setPdfIncludeRubrics(e.target.checked)}
+                    className="w-4 h-4 rounded accent-emerald-600"
+                  />
+                  <span>Include full 1–5 Scoring Benchmarks (Rubric Guide) on every row</span>
+                </label>
+                <label className="flex items-center gap-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={pdfIncludeSummary}
+                    onChange={(e) => setPdfIncludeSummary(e.target.checked)}
+                    className="w-4 h-4 rounded accent-emerald-600"
+                  />
+                  <span>Include Dimension A–E Consolidation Sheet &amp; Official Sign-Off Block</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowPaperPdfModal(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const resolvedContractMode = pdfContractScope === 'CURRENT' ? contractTypeFilter : pdfContractScope;
+                  const entityLabel = isSoleConsultant
+                    ? `Sole Consultant (${consultant.firmName || 'Primary Firm'})`
+                    : activeEvaluationEntity === 'jv_lead'
+                      ? `JV Lead Partner: ${parsedJv.leadName} (${leadSharePct}%)`
+                      : activeEvaluationEntity === 'jv_partner'
+                        ? `JV Associate Partner: ${parsedJv.partnerName} (${partnerSharePct}%)`
+                        : `Consolidated JV (${parsedJv.leadName} ${leadSharePct}% + ${parsedJv.partnerName} ${partnerSharePct}%)`;
+
+                  const fname = downloadSection2EvaluationPdf({
+                    project,
+                    consultant,
+                    criteriaList: dynamicCriteriaList,
+                    evaluations,
+                    customCriterionWeights,
+                    customThresholds,
+                    contractTypeMode: resolvedContractMode,
+                    entityScopeLabel: entityLabel,
+                    paperMode: paperPrintMode,
+                    includeRubrics: pdfIncludeRubrics,
+                    includeSummarySheet: pdfIncludeSummary,
+                    evaluationPeriodLabel: pdfEvaluationPeriod.trim() || undefined,
+                    currentUser
+                  });
+                  setShowPaperPdfModal(false);
+                  setPdfDownloadNotice(`Downloaded ${fname}`);
+                  setTimeout(() => setPdfDownloadNotice(null), 5000);
+                }}
+                className="px-5 py-2 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Download Printable PDF
               </button>
             </div>
           </div>
