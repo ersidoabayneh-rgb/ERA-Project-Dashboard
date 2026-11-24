@@ -90,9 +90,71 @@ export function resolveActivityLocation(act: DailyActivityRecord): string {
   );
 }
 
+export type ActivityCategoryId =
+  | 'all'
+  | 'earthwork'
+  | 'pavement'
+  | 'drainage'
+  | 'bridges'
+  | 'custom';
+
+export interface ActivityCategoryDef {
+  id: ActivityCategoryId;
+  label: string;
+}
+
+export const ACTIVITY_CATEGORIES: ActivityCategoryDef[] = [
+  { id: 'all', label: 'All Types' },
+  { id: 'earthwork', label: 'Earthworks & Clearing' },
+  { id: 'pavement', label: 'Pavement & Surfacing' },
+  { id: 'drainage', label: 'Culverts & Drainage' },
+  { id: 'bridges', label: 'Bridges' },
+  { id: 'custom', label: 'Custom / Other' }
+];
+
+export function getActivityCategory(
+  sectionId: string,
+  isCustom?: boolean,
+  sectionName?: string
+): { categoryId: Exclude<ActivityCategoryId, 'all'>; categoryLabel: string } {
+  const id = (sectionId || '').trim();
+  const nameLower = (sectionName || '').toLowerCase();
+
+  if (['1', '2', '3.1', '3.2', '4', '5'].includes(id)) {
+    return { categoryId: 'earthwork', categoryLabel: 'Earthworks & Clearing' };
+  }
+  if (['6', '7', '8', '9', '10', '11', '12'].includes(id)) {
+    return { categoryId: 'pavement', categoryLabel: 'Pavement & Surfacing' };
+  }
+  if (['13', '14', '14.1', '14.2', '15', '16', '18'].includes(id)) {
+    return { categoryId: 'drainage', categoryLabel: 'Culverts & Drainage' };
+  }
+  if (id === '17') {
+    return { categoryId: 'bridges', categoryLabel: 'Bridges' };
+  }
+  if (!isCustom) {
+    if (nameLower.includes('bridge')) {
+      return { categoryId: 'bridges', categoryLabel: 'Bridges' };
+    }
+    if (nameLower.includes('culvert') || nameLower.includes('pipe') || nameLower.includes('ditch') || nameLower.includes('drain')) {
+      return { categoryId: 'drainage', categoryLabel: 'Culverts & Drainage' };
+    }
+    if (nameLower.includes('asphalt') || nameLower.includes('base') || nameLower.includes('subgrade') || nameLower.includes('capping') || nameLower.includes('prime') || nameLower.includes('dbst')) {
+      return { categoryId: 'pavement', categoryLabel: 'Pavement & Surfacing' };
+    }
+    if (nameLower.includes('clearing') || nameLower.includes('excavat') || nameLower.includes('embankment') || nameLower.includes('fill') || nameLower.includes('road bed')) {
+      return { categoryId: 'earthwork', categoryLabel: 'Earthworks & Clearing' };
+    }
+  }
+  return { categoryId: 'custom', categoryLabel: 'Custom / Other' };
+}
+
 export interface ActivityAggregateRow {
+  rawSectionId: string;
   sectionId: string;
   sectionName: string;
+  categoryId: Exclude<ActivityCategoryId, 'all'>;
+  categoryLabel: string;
   unit: string;
   entryCount: number;
   completedCount: number;
@@ -101,6 +163,7 @@ export interface ActivityAggregateRow {
   priorCumulative: number;
   cumulativeToDate: number;
   isSpecial: boolean;
+  searchableLogText: string;
 }
 
 export interface UnitTotalSummary {
@@ -192,7 +255,7 @@ function buildSectionCatalog(
   return Array.from(map.values());
 }
 
-function computeUnitTotals(rows: ActivityAggregateRow[]): UnitTotalSummary[] {
+export function computeUnitTotals(rows: ActivityAggregateRow[]): UnitTotalSummary[] {
   const unitMap = new Map<string, UnitTotalSummary>();
   rows.forEach(r => {
     if (r.entryCount === 0 && r.periodExecuted === 0) return;
@@ -248,9 +311,18 @@ export function computeDailyActivitySummary(
       completedEntries += completedCount;
     }
 
+    const cat = getActivityCategory(sec.id, sec.isCustom, sec.name);
+    const searchableLogText = todayActs
+      .map(a => `${a.description || ''} ${resolveActivityLocation(a)} ${a.remarks || ''} ${a.side || ''}`)
+      .join(' ')
+      .toLowerCase();
+
     rows.push({
+      rawSectionId: sec.id,
       sectionId: sec.customLabel || sec.id,
       sectionName: sec.name,
+      categoryId: cat.categoryId,
+      categoryLabel: cat.categoryLabel,
       unit: sec.isSpecial ? 'No.' : firstUnit,
       entryCount: todayActs.length,
       completedCount,
@@ -258,7 +330,8 @@ export function computeDailyActivitySummary(
       periodExecuted,
       priorCumulative,
       cumulativeToDate: priorCumulative + periodExecuted,
-      isSpecial: Boolean(sec.isSpecial)
+      isSpecial: Boolean(sec.isSpecial),
+      searchableLogText
     });
   });
 
@@ -332,9 +405,18 @@ export function computeMonthlyActivitySummary(
       completedEntries += completedCount;
     }
 
+    const cat = getActivityCategory(sec.id, sec.isCustom, sec.name);
+    const searchableLogText = secMonthActs
+      .map(a => `${a.description || ''} ${resolveActivityLocation(a)} ${a.remarks || ''} ${a.side || ''}`)
+      .join(' ')
+      .toLowerCase();
+
     rows.push({
+      rawSectionId: sec.id,
       sectionId: sec.customLabel || sec.id,
       sectionName: sec.name,
+      categoryId: cat.categoryId,
+      categoryLabel: cat.categoryLabel,
       unit: sec.isSpecial ? 'No.' : resolvedUnit,
       entryCount: secMonthActs.length,
       completedCount,
@@ -342,7 +424,8 @@ export function computeMonthlyActivitySummary(
       periodExecuted,
       priorCumulative,
       cumulativeToDate: priorCumulative + periodExecuted,
-      isSpecial: Boolean(sec.isSpecial)
+      isSpecial: Boolean(sec.isSpecial),
+      searchableLogText
     });
   });
 
