@@ -2006,6 +2006,7 @@ let isBatchSyncRunning = false;
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws`;
+        console.log(`[Real-Time WS] Connecting to WebSocket at ${wsUrl}...`);
         wsSocket = new WebSocket(wsUrl);
         globalWsRef.current = wsSocket;
 
@@ -2016,15 +2017,19 @@ let isBatchSyncRunning = false;
         wsSocket.onmessage = (event) => {
           try {
             const payload = JSON.parse(event.data);
+            console.log('[Real-Time WS] Message received:', payload?.type);
             handleRealtimePayload(payload);
-          } catch (e) {}
+          } catch (e) {
+            console.warn('[Real-Time WS] Failed to parse message event data:', e);
+          }
         };
 
-        wsSocket.onerror = () => {
-          /* reconnect handled in onclose */
+        wsSocket.onerror = (err) => {
+          console.warn('[Real-Time WS] WebSocket connection error encountered:', err);
         };
 
-        wsSocket.onclose = () => {
+        wsSocket.onclose = (event) => {
+          console.log(`[Real-Time WS] WebSocket disconnected (code: ${event.code}, reason: ${event.reason || 'None'}). Triggering 3-second wsReconnectTimeout...`);
           globalWsRef.current = null;
           clearTimeout(wsReconnectTimeout);
           wsReconnectTimeout = setTimeout(initWebSocket, 3000);
@@ -2470,7 +2475,9 @@ let isBatchSyncRunning = false;
       }
       if (wsSocket) {
         try { wsSocket.close(); } catch (e) {}
+        wsSocket = null;
       }
+      globalWsRef.current = null;
       if (unsubscribeDeletedProjectsListener) {
         try { unsubscribeDeletedProjectsListener(); } catch (e) {}
       }
