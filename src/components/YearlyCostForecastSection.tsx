@@ -304,8 +304,8 @@ const CustomForecastTooltip: React.FC<CustomForecastTooltipProps> = ({
             <span>{formatBr(data.cumulativeEscalated)}</span>
           </div>
           <div className="flex justify-between items-center text-amber-300 text-[10px] pt-1 border-t border-slate-800">
-            <span>Share of Remaining Works:</span>
-            <span>{data.sharePct.toFixed(1)}% ({data.planBasisNote})</span>
+            <span>Remaining Plan (EFY):</span>
+            <span>{data.remainingPlanPct.toFixed(1)}%</span>
           </div>
         </div>
       </div>
@@ -333,13 +333,9 @@ export interface ForecastYearRow {
   isCurrent: boolean;
   isFinish: boolean;
   basisType: 'plan' | 'efy_pace';
-  sharePct: number;
-  fyProgressIncrement: number;
+  remainingPlanPct: number;
+  weightSharePct: number;
   activeMonthsInEfy: number;
-  startRefLabel: string;
-  startRefVal: number;
-  endRefLabel: string;
-  endRefVal: number;
   baseCost: number;
   pnFactor: number;
   paAdder: number;
@@ -578,8 +574,12 @@ export default function YearlyCostForecastSection({
     return effectiveFuturePlans.map((planData, idx) => {
       const startGreg = getEfyStartGregYear(planData.efyYear);
       const endGreg = getEfyEndGregYear(planData.efyYear);
-      const sharePct = normalizedWeights[idx];
-      const baseCost = remainingBalance * (sharePct / 100);
+      const weightSharePct = normalizedWeights[idx];
+      const remainingPlanPct =
+        effectivePlanSum > 0
+          ? planData.planInc
+          : remainingPct * (weightSharePct / 100);
+      const baseCost = remainingBalance * (weightSharePct / 100);
 
       // Forecasted Pn using Baseline P0 & Annual PA Increment Rate derived from Financial Data page
       const pnFactor = basePaFactor * Math.pow(1 + annualInflation, idx);
@@ -598,13 +598,9 @@ export default function YearlyCostForecastSection({
         isCurrent: planData.efyYear === currentEfy,
         isFinish: idx === effectiveFuturePlans.length - 1,
         basisType: planData.planInc > 0 ? 'plan' : 'efy_pace',
-        sharePct,
-        fyProgressIncrement: planData.planInc,
+        remainingPlanPct,
+        weightSharePct,
         activeMonthsInEfy: planData.activeMonths,
-        startRefLabel: planData.startPlan.matched,
-        startRefVal: planData.startPlan.value,
-        endRefLabel: planData.endPlan.matched,
-        endRefVal: planData.endPlan.value,
         baseCost,
         pnFactor,
         paAdder,
@@ -631,12 +627,12 @@ export default function YearlyCostForecastSection({
       cumulativeEscalated: p.cumulativeEscalated,
       cumulativeEscalatedM: p.cumulativeEscalated / 1_000_000,
       pnFactor: p.pnFactor,
-      sharePct: p.sharePct,
-      planBasisNote: p.basisType === 'plan' ? `+${p.fyProgressIncrement.toFixed(1)}% Plan` : `${p.activeMonthsInEfy} mos EFY pace`
+      remainingPlanPct: p.remainingPlanPct
     };
   });
 
   // Summary aggregates (strictly Remaining Works)
+  const totalRemainingPlanPct = futureProjections.reduce((sum, r) => sum + r.remainingPlanPct, 0);
   const totalBaseForecast = futureProjections.reduce((sum, r) => sum + r.baseCost, 0);
   const totalFuturePaAdder = futureProjections.reduce((sum, r) => sum + r.paAdder, 0);
   const totalProjectedEscalated = futureProjections.reduce((sum, r) => sum + r.escalatedCost, 0);
@@ -663,9 +659,10 @@ Financial Data PA Baseline P0: ${basePaFactor.toFixed(4)} (${((basePaFactor - 1)
 Financial Data Annual PA Increment (r): ${(annualInflation * 100).toFixed(2)}% p.a. (${financialPa.methodologySummary})
 -----------------------------------------------------
 REMAINING WORKS FORECAST BY EFY (PLAN & EFY BASIS):
-${futureProjections.map(r => `• ${r.efy} [${r.periodLabel}] ${r.isCurrent ? '[CURRENT]' : '[UPCOMING]'} | Share: ${r.sharePct.toFixed(1)}% (${r.basisType === 'plan' ? `+${r.fyProgressIncrement.toFixed(1)}% Plan` : `${r.activeMonthsInEfy} mos EFY pace`}) | Base: ${formatBr(r.baseCost)} | Pn: ${r.pnFactor.toFixed(4)} | PA: +${formatBr(r.paAdder)} | Est. Outlay: ${formatBr(r.escalatedCost)} | Cum.: ${formatBr(r.cumulativeEscalated)}`).join('\n')}
+${futureProjections.map(r => `• ${r.efy} [${r.periodLabel}] ${r.isCurrent ? '[CURRENT]' : '[UPCOMING]'} | Remaining Plan: ${r.remainingPlanPct.toFixed(1)}% | Base: ${formatBr(r.baseCost)} | Pn: ${r.pnFactor.toFixed(4)} | PA: +${formatBr(r.paAdder)} | Est. Outlay: ${formatBr(r.escalatedCost)} | Cum.: ${formatBr(r.cumulativeEscalated)}`).join('\n')}
 -----------------------------------------------------
 TOTAL FORECAST FOR REMAINING WORKS:
+Total Remaining Plan (%): ${totalRemainingPlanPct.toFixed(1)}%
 Base Remaining Works: ${formatBr(totalBaseForecast)}
 Forecasted Price Adjustment: +${formatBr(totalFuturePaAdder)}
 Total Estimated Outlay to Completion: ${formatBr(totalProjectedEscalated)}
@@ -696,8 +693,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
         'Gregorian Calendar Period',
         'Period Stage',
         'Plan / EFY Basis',
-        'Monthly Cum. Plan Δ (%)',
-        'Remaining Work Share (%)',
+        'Remaining Plan (%)',
         'Remaining Base Cost (ETB)',
         'Escalation Factor (Pn)',
         'Forecasted PA (ETB)',
@@ -714,8 +710,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
         r.periodLabel,
         r.isCurrent ? 'Current Operating EFY' : r.isFinish ? 'Completion & Handover EFY' : 'Upcoming EFY',
         r.basisType === 'plan' ? 'Monthly Cumulative Plan' : `EFY Horizon (${r.activeMonthsInEfy} mos)`,
-        r.fyProgressIncrement.toFixed(2),
-        r.sharePct.toFixed(2),
+        r.remainingPlanPct.toFixed(2),
         r.baseCost.toFixed(2),
         r.pnFactor.toFixed(4),
         r.paAdder.toFixed(2),
@@ -732,8 +727,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
       `${firstForecastEfy} - ${lastForecastEfy}`,
       'Current + Upcoming EFYs',
       'Plan & EFY Basis',
-      '-',
-      '100.00%',
+      `${totalRemainingPlanPct.toFixed(2)}%`,
       totalBaseForecast.toFixed(2),
       avgFuturePn.toFixed(4),
       totalFuturePaAdder.toFixed(2),
@@ -768,12 +762,12 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
               <h3 className="text-sm sm:text-base font-black uppercase text-slate-900 dark:text-white tracking-tight">
                 Yearly Estimated Cost Forecast Table
               </h3>
-              <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50">
-                Remaining Works Only · Plan &amp; EFY Basis
+              <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                · Remaining Works Only · Plan &amp; EFY Basis
               </span>
             </div>
             <p className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Forecasts strictly the remaining unexecuted works ({formatBr(remainingBalance)} / {remainingPct.toFixed(1)}%) across Current (EFY {currentEfy}) &amp; Upcoming EFYs based on the Monthly Cumulative Plan and EFY schedule, with Price Adjustment escalated from Financial Data PA increment.
+              Forecasts strictly the remaining unexecuted works ({formatBr(remainingBalance)}) across Current (EFY {currentEfy}) &amp; Upcoming EFYs based on the Monthly Cumulative Plan and EFY schedule, with Price Adjustment escalated from Financial Data PA increment.
             </p>
           </div>
         </div>
@@ -1354,13 +1348,13 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                 />
               </th>
 
-              {/* Header 3: Plan Increment & Remaining Work Share */}
+              {/* Header 3: Remaining Plan (%) */}
               <th className="p-3 text-center">
                 <HeaderTooltip
-                  title="Rem. Share & Plan Δ (%)"
-                  tooltipTitle="EFY Weight of Remaining Works"
-                  formula="Share% = (EFY ΔPlan / Total Future ΔPlan) × 100"
-                  explanation="Percentage of the remaining unexecuted contract works scheduled inside each EFY based on Monthly Cumulative Plan increments and active EFY months."
+                  title="Remaining Plan (%)"
+                  tooltipTitle="Remaining Plan Percentage per EFY"
+                  formula="Remaining % = ΔPlan(EFY)"
+                  explanation="Displays strictly the remaining planned percentage scheduled within each Ethiopian Fiscal Year based on the Monthly Cumulative Plan."
                   align="center"
                 />
               </th>
@@ -1370,7 +1364,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                 <HeaderTooltip
                   title="Remaining Base Cost (ETB)"
                   tooltipTitle="Base Remaining Planned Allocation"
-                  formula="Base = Rem. Balance × EFY Share%"
+                  formula="Base = Rem. Balance × EFY Share"
                   explanation="Portion of the remaining unexecuted BOQ balance allocated to this EFY prior to Price Adjustment escalation."
                   align="right"
                 />
@@ -1432,39 +1426,28 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 font-medium text-slate-700 dark:text-slate-200">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 font-medium text-slate-700 dark:text-slate-200 tabular-nums">
             {futureProjections.map((row, rIdx) => {
               const isCurrent = row.isCurrent;
               const isFinish = row.isFinish;
 
               const rowClass = isCurrent
-                ? 'bg-amber-50/80 dark:bg-amber-950/25 border-l-4 border-amber-500 font-bold text-slate-900 dark:text-slate-100'
+                ? 'bg-amber-50/60 dark:bg-amber-950/20 font-semibold text-slate-900 dark:text-slate-100'
                 : isFinish
-                ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-l-4 border-emerald-500 font-semibold text-slate-900 dark:text-slate-100'
-                : 'hover:bg-slate-50/80 dark:hover:bg-slate-750/50 border-l-4 border-indigo-400 transition text-slate-800 dark:text-slate-200';
+                ? 'bg-emerald-50/50 dark:bg-emerald-950/15 font-semibold text-slate-900 dark:text-slate-100'
+                : 'hover:bg-slate-50/80 dark:hover:bg-slate-750/50 transition text-slate-800 dark:text-slate-200';
 
               return (
                 <tr key={`rem-efy-${row.efyYear}-${rIdx}`} className={rowClass}>
                   {/* 1. Operating Period */}
                   <td className="p-3 font-bold text-slate-900 dark:text-white">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                          isCurrent
-                            ? 'bg-amber-500 animate-pulse'
-                            : isFinish
-                            ? 'bg-emerald-500'
-                            : 'bg-indigo-500'
-                        }`}
-                      />
-                      <div>
-                        <span className="block text-xs font-bold text-slate-900 dark:text-white">
-                          {calendarView === 'EFY' ? row.efy : row.periodLabel}
-                        </span>
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono font-normal">
-                          {calendarView === 'EFY' ? row.periodLabel : row.efy}
-                        </span>
-                      </div>
+                    <div>
+                      <span className="block text-xs font-bold text-slate-900 dark:text-white">
+                        {calendarView === 'EFY' ? row.efy : row.periodLabel}
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono tabular-nums font-normal">
+                        {calendarView === 'EFY' ? row.periodLabel : row.efy}
+                      </span>
                     </div>
                   </td>
 
@@ -1472,103 +1455,83 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                   <td className="p-3 text-center">
                     {isCurrent ? (
                       <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700 font-bold flex items-center justify-center gap-1 mx-auto w-fit">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                        <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300">
                           Current EFY
                         </span>
-                        <span className="text-[8.5px] text-amber-600 dark:text-amber-400 font-normal">
+                        <span className="text-[9px] text-slate-500 dark:text-slate-400 font-normal">
                           {row.basisType === 'plan' ? 'Monthly Cum. Plan' : `${row.activeMonthsInEfy} mos EFY Horizon`}
                         </span>
                       </div>
                     ) : isFinish ? (
                       <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 font-bold">
+                        <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
                           Completion EFY
                         </span>
-                        <span className="text-[8.5px] text-emerald-600 dark:text-emerald-400 font-normal">
+                        <span className="text-[9px] text-slate-500 dark:text-slate-400 font-normal">
                           {row.basisType === 'plan' ? 'Monthly Cum. Plan' : `${row.activeMonthsInEfy} mos EFY Horizon`}
                         </span>
                       </div>
                     ) : (
                       <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold">
+                        <span className="text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
                           Upcoming EFY
                         </span>
-                        <span className="text-[8.5px] text-indigo-500 dark:text-indigo-400 font-normal">
+                        <span className="text-[9px] text-slate-500 dark:text-slate-400 font-normal">
                           {row.basisType === 'plan' ? 'Monthly Cum. Plan' : `${row.activeMonthsInEfy} mos EFY Horizon`}
                         </span>
                       </div>
                     )}
                   </td>
 
-                  {/* 3. Share % & Plan Increment */}
-                  <td className="p-3 text-center font-mono">
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                        <span className="text-amber-700 dark:text-amber-400 font-bold text-xs">
-                          {row.sharePct.toFixed(1)}%
-                        </span>
-                        <span
-                          className="text-[10px] px-1.5 py-0.2 rounded border text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-700/50"
-                          title={
-                            row.basisType === 'plan'
-                              ? `Plan increment: ${row.startRefLabel} (${row.startRefVal.toFixed(1)}%) -> ${row.endRefLabel} (${row.endRefVal.toFixed(1)}%)`
-                              : `Distributed across ${row.activeMonthsInEfy} active months in ${row.efy}`
-                          }
-                        >
-                          {row.basisType === 'plan'
-                            ? `+${row.fyProgressIncrement.toFixed(1)}% Plan`
-                            : `${row.activeMonthsInEfy}m Pace`}
-                        </span>
-                      </div>
-                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block font-sans">
-                        {row.basisType === 'plan'
-                          ? `${row.startRefLabel} (${row.startRefVal.toFixed(1)}%) \u2192 ${row.endRefLabel} (${row.endRefVal.toFixed(1)}%)`
-                          : `${row.periodLabel} (${row.activeMonthsInEfy} active mos)`}
+                  {/* 3. Remaining Plan (%) only */}
+                  <td className="p-3 text-center font-mono tabular-nums">
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="text-amber-700 dark:text-amber-400 font-bold text-xs">
+                        {row.remainingPlanPct.toFixed(1)}%
                       </span>
                       <div className="w-20 bg-slate-200 dark:bg-slate-700 rounded-full h-1 mx-auto overflow-hidden">
                         <div
                           className={`h-full rounded-full ${isCurrent ? 'bg-amber-500' : isFinish ? 'bg-emerald-500' : 'bg-indigo-500'}`}
-                          style={{ width: `${Math.min(100, Math.max(0, row.sharePct))}%` }}
+                          style={{ width: `${Math.min(100, Math.max(0, row.weightSharePct))}%` }}
                         />
                       </div>
                     </div>
                   </td>
 
                   {/* 4. Remaining Base Cost */}
-                  <td className="p-3 text-right font-mono text-slate-700 dark:text-slate-300 font-medium">
+                  <td className="p-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 font-medium">
                     {formatBr(row.baseCost)}
                   </td>
 
                   {/* 5. Factor (Pn) */}
-                  <td className="p-3 text-center font-mono font-bold">
+                  <td className="p-3 text-center font-mono tabular-nums font-bold">
                     <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-750 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600">
+                      <span className="text-slate-700 dark:text-slate-200">
                         {row.pnFactor.toFixed(4)}
                       </span>
-                      <span className="text-[8.5px] font-sans font-normal text-slate-400">
+                      <span className="text-[9px] font-sans font-normal text-slate-400">
                         {row.paSourceTag}
                       </span>
                     </div>
                   </td>
 
                   {/* 6. Forecasted Price Adjustment */}
-                  <td className="p-3 text-right font-mono font-semibold text-rose-600 dark:text-rose-400">
+                  <td className="p-3 text-right font-mono tabular-nums font-semibold text-rose-600 dark:text-rose-400">
                     +{formatBr(row.paAdder)}
                   </td>
 
                   {/* 7. Total Estimated Outlay incl. PA */}
-                  <td className="p-3 text-right font-mono font-black text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm">
+                  <td className="p-3 text-right font-mono tabular-nums font-black text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm">
                     {formatBr(row.escalatedCost)}
                   </td>
 
                   {/* 8. Cumulative Remaining Outlay */}
-                  <td className="p-3 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                  <td className="p-3 text-right font-mono tabular-nums font-bold text-indigo-600 dark:text-indigo-400">
                     {formatBr(row.cumulativeEscalated)}
                   </td>
 
                   {/* 9. Remaining Balance Liability */}
-                  <td className="p-3 text-right font-mono font-semibold text-slate-500 dark:text-slate-400">
+                  <td className="p-3 text-right font-mono tabular-nums font-semibold text-slate-500 dark:text-slate-400">
                     {formatBr(row.balanceRemaining)}
                   </td>
                 </tr>
@@ -1577,20 +1540,22 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
           </tbody>
 
           {/* Summary Footer */}
-          <tfoot className="bg-slate-100 dark:bg-slate-850 font-black text-xs border-t-2 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white">
+          <tfoot className="bg-slate-100 dark:bg-slate-850 font-black text-xs border-t-2 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white tabular-nums">
             <tr className="bg-indigo-50/70 dark:bg-indigo-950/30">
               <td className="p-3 uppercase text-indigo-900 dark:text-indigo-200" colSpan={2}>
                 Total Forecast — Remaining Works ({firstForecastEfy} &ndash; {lastForecastEfy})
               </td>
-              <td className="p-3 text-center font-mono text-amber-700 dark:text-amber-400">100.0%</td>
-              <td className="p-3 text-right font-mono text-slate-800 dark:text-slate-100">{formatBr(totalBaseForecast)}</td>
-              <td className="p-3 text-center font-mono text-indigo-700 dark:text-indigo-300">
+              <td className="p-3 text-center font-mono tabular-nums text-amber-700 dark:text-amber-400">
+                {totalRemainingPlanPct.toFixed(1)}%
+              </td>
+              <td className="p-3 text-right font-mono tabular-nums text-slate-800 dark:text-slate-100">{formatBr(totalBaseForecast)}</td>
+              <td className="p-3 text-center font-mono tabular-nums text-indigo-700 dark:text-indigo-300">
                 Avg {avgFuturePn.toFixed(4)}
               </td>
-              <td className="p-3 text-right font-mono text-rose-600 dark:text-rose-400">+{formatBr(totalFuturePaAdder)}</td>
-              <td className="p-3 text-right font-mono text-emerald-600 dark:text-emerald-400 text-sm">{formatBr(totalProjectedEscalated)}</td>
-              <td className="p-3 text-right font-mono text-indigo-600 dark:text-indigo-400 text-sm">{formatBr(totalProjectedEscalated)}</td>
-              <td className="p-3 text-right font-mono text-emerald-600 dark:text-emerald-400">Br. 0.00</td>
+              <td className="p-3 text-right font-mono tabular-nums text-rose-600 dark:text-rose-400">+{formatBr(totalFuturePaAdder)}</td>
+              <td className="p-3 text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400 text-sm">{formatBr(totalProjectedEscalated)}</td>
+              <td className="p-3 text-right font-mono tabular-nums text-indigo-600 dark:text-indigo-400 text-sm">{formatBr(totalProjectedEscalated)}</td>
+              <td className="p-3 text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400">Br. 0.00</td>
             </tr>
           </tfoot>
         </table>
