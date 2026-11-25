@@ -87,7 +87,7 @@ export default function CPMChart({ project, activities, activeFileName, isHighli
     else if (totalDuration > 40) interval = 10;
     else if (totalDuration < 15) interval = 2;
 
-    const ticks = [];
+    const ticks: number[] = [];
     for (let i = 0; i <= totalDuration + 5; i += interval) {
       ticks.push(i);
     }

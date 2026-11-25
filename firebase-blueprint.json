@@ -141,6 +141,19 @@
         "details": { "type": "string", "maxLength": 1000 }
       },
       "required": ["id", "timestamp", "action", "actor"]
+    },
+    "ProgressPlanHistoryBackup": {
+      "title": "ProgressPlanHistoryBackup",
+      "description": "Daily persistent backup of project progressPlanHistory snapshots",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string", "maxLength": 128 },
+        "projectName": { "type": "string", "maxLength": 255 },
+        "progressPlanHistory": { "type": "array", "description": "Snapshot array of monthly and EFY progress history" },
+        "backedUpAt": { "type": "string", "maxLength": 100 },
+        "recordCount": { "type": "number" }
+      },
+      "required": ["projectId", "progressPlanHistory"]
     }
   },
   "firestore": {
@@ -171,6 +184,10 @@
     "/config/{configId}": {
       "schema": { "$ref": "#/entities/Config" },
       "description": "Collection of global app taxonomy config"
+    },
+    "/progress_plan_history_backups/{projectId}": {
+      "schema": { "$ref": "#/entities/ProgressPlanHistoryBackup" },
+      "description": "Collection of daily progress plan history backups per project"
     },
     "/projects/{projectId}/supervision_consultant_contracts/{contractId}": {
       "schema": { "$ref": "#/entities/SupervisionConsultantContract" },

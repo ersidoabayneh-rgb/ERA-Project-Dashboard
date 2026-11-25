@@ -1445,6 +1445,7 @@ export default function GroupReportGenerator({
     } catch (e) {
       console.warn('Scoring weights listener notice:', e);
     }
+    return undefined;
   }, []);
 
   const isDirAdmin = currentUserObj?.role === 'directorate_admin' && !isMasterAdmin;
@@ -1912,7 +1913,7 @@ export default function GroupReportGenerator({
         });
         (rec.materialProduction || []).forEach(m => {
           if ((m.monthlyTarget || 0) > 0) {
-            prodPlan += m.monthlyTarget;
+            prodPlan += m.monthlyTarget || 0;
             prodAct += m.thisMonth || 0;
           }
         });
@@ -2422,8 +2423,8 @@ export default function GroupReportGenerator({
     const submittalsList = rawSubmittals.map(s => {
       const targetDays = targetOverrides[s.type] || s.targetDays || 7;
       const isResolved = s.actualDays !== undefined && s.actualDays !== null;
-      const isOverdue = isResolved ? s.actualDays > targetDays : s.status === 'Overdue';
-      const isOnTime = isResolved ? s.actualDays <= targetDays : (s.status === 'Approved / Closed' || s.status === 'Approved with Comments' || s.status === 'Under Review');
+      const isOverdue = isResolved ? (s.actualDays ?? 0) > targetDays : s.status === 'Overdue';
+      const isOnTime = isResolved ? (s.actualDays ?? 0) <= targetDays : (s.status === 'Approved / Closed' || s.status === 'Approved with Comments' || s.status === 'Under Review');
       return {
         ...s,
         targetDays,
@@ -5252,10 +5253,11 @@ export default function GroupReportGenerator({
       // 1.5 Contract Details Lines
       doc.setFont('times', 'normal');
       doc.setFontSize(12);
-      const contractorLines = doc.splitTextToSize(`Contractor: ${p.contractor || 'N/A'}`, colWidths.contract_details - 12);
-      const consultantLines = doc.splitTextToSize(`Consultant: ${p.consultant || 'N/A'}`, colWidths.contract_details - 12);
-      const commencedLines = doc.splitTextToSize(`Commenced: ${p.startDate || 'N/A'}`, colWidths.contract_details - 12);
-      const origCostLines = doc.splitTextToSize(`Orig. Cost: ${formatAccounting(p.origAmount || 0, 'Br.')} M`, colWidths.contract_details - 12);
+      const contractDetailsW = (colWidths.contract_details ?? 120) - 12;
+      const contractorLines = doc.splitTextToSize(`Contractor: ${p.contractor || 'N/A'}`, contractDetailsW);
+      const consultantLines = doc.splitTextToSize(`Consultant: ${p.consultant || 'N/A'}`, contractDetailsW);
+      const commencedLines = doc.splitTextToSize(`Commenced: ${p.startDate || 'N/A'}`, contractDetailsW);
+      const origCostLines = doc.splitTextToSize(`Orig. Cost: ${formatAccounting(p.origAmount || 0, 'Br.')} M`, contractDetailsW);
       const cDetailsLines = [
         ...contractorLines,
         ...consultantLines,
@@ -5266,37 +5268,41 @@ export default function GroupReportGenerator({
       // 2. Schedule (Original Plan vs Accomplished) Lines
       doc.setFont('times', 'normal');
       doc.setFontSize(12);
-      const sLine1 = doc.splitTextToSize(`Orig. Plan: ${audit.plannedProgressPct.toFixed(1)}%`, colWidths.schedule - 12);
-      const sLine2 = doc.splitTextToSize(`Acc: ${(p.physicalProgress || 0).toFixed(1)}%`, colWidths.schedule - 12);
-      const sLine3 = doc.splitTextToSize(`Var: ${audit.progressVariancePct >= 0 ? '+' : ''}${audit.progressVariancePct.toFixed(1)}%`, colWidths.schedule - 12);
-      const sLine4 = doc.splitTextToSize(`Status: ${audit.scheduleStatusText}`, colWidths.schedule - 12);
+      const scheduleW = (colWidths.schedule ?? 120) - 12;
+      const sLine1 = doc.splitTextToSize(`Orig. Plan: ${audit.plannedProgressPct.toFixed(1)}%`, scheduleW);
+      const sLine2 = doc.splitTextToSize(`Acc: ${(p.physicalProgress || 0).toFixed(1)}%`, scheduleW);
+      const sLine3 = doc.splitTextToSize(`Var: ${audit.progressVariancePct >= 0 ? '+' : ''}${audit.progressVariancePct.toFixed(1)}%`, scheduleW);
+      const sLine4 = doc.splitTextToSize(`Status: ${audit.scheduleStatusText}`, scheduleW);
 
       // 3. EVM Lines
       doc.setFont('times', 'normal');
       doc.setFontSize(12);
-      const evmLine1 = doc.splitTextToSize(`CPI Index: ${audit.CPI.toFixed(3)}`, colWidths.evm - 12);
-      const evmLine2 = doc.splitTextToSize(`SPI Index: ${audit.SPI.toFixed(3)}`, colWidths.evm - 12);
-      const evmLine3 = doc.splitTextToSize(audit.CPI >= 1.0 ? 'Under Budget' : 'Overspending', colWidths.evm - 12);
-      const evmLine4 = doc.splitTextToSize(audit.SPI >= 1.0 ? 'Ahead Sched.' : 'Behind Sched.', colWidths.evm - 12);
+      const evmW = (colWidths.evm ?? 100) - 12;
+      const evmLine1 = doc.splitTextToSize(`CPI Index: ${audit.CPI.toFixed(3)}`, evmW);
+      const evmLine2 = doc.splitTextToSize(`SPI Index: ${audit.SPI.toFixed(3)}`, evmW);
+      const evmLine3 = doc.splitTextToSize(audit.CPI >= 1.0 ? 'Under Budget' : 'Overspending', evmW);
+      const evmLine4 = doc.splitTextToSize(audit.SPI >= 1.0 ? 'Ahead Sched.' : 'Behind Sched.', evmW);
 
       // 4. Specific Pavement Layers Lines
       doc.setFont('times', 'normal');
       doc.setFontSize(11);
-      const linLine1 = doc.splitTextToSize(`Subgrade: ${audit.origSubgradeTotal.toFixed(1)}k (Plan: ${audit.planSubgradeKm}k [M:${audit.mainPlanSubgrade}k+S:${audit.spurPlanSubgrade}k], ${Math.round(audit.sgRatio)}%)`, colWidths.linear - 12);
-      const linLine2 = doc.splitTextToSize(`Capping: ${audit.origCappingTotal.toFixed(1)}k (Plan: ${audit.planCappingKm}k [M:${audit.mainPlanCapping}k+S:${audit.spurPlanCapping}k], ${Math.round(audit.capRatio)}%)`, colWidths.linear - 12);
-      const linLine3 = doc.splitTextToSize(`Subbase: ${audit.origSubbaseTotal.toFixed(1)}k (Plan: ${audit.planSubbaseKm}k [M:${audit.mainPlanSubbase}k+S:${audit.spurPlanSubbase}k], ${Math.round(audit.sbRatio)}%)`, colWidths.linear - 12);
-      const linLine4 = doc.splitTextToSize(`Basecourse: ${audit.origBasecourseTotal.toFixed(1)}k (Plan: ${audit.planBasecourseKm}k [M:${audit.mainPlanBasecourse}k+S:${audit.spurPlanBasecourse}k], ${Math.round(audit.bcRatio)}%)`, colWidths.linear - 12);
-      const linLine5 = doc.splitTextToSize(`Asphalt: ${audit.origAsphaltTotal.toFixed(1)}k (Plan: ${audit.planAsphaltKm}k [M:${audit.mainPlanAsphalt}k+S:${audit.spurPlanAsphalt}k], ${Math.round(audit.acRatio)}%)`, colWidths.linear - 12);
+      const linearW = (colWidths.linear ?? 150) - 12;
+      const linLine1 = doc.splitTextToSize(`Subgrade: ${audit.origSubgradeTotal.toFixed(1)}k (Plan: ${audit.planSubgradeKm}k [M:${audit.mainPlanSubgrade}k+S:${audit.spurPlanSubgrade}k], ${Math.round(audit.sgRatio)}%)`, linearW);
+      const linLine2 = doc.splitTextToSize(`Capping: ${audit.origCappingTotal.toFixed(1)}k (Plan: ${audit.planCappingKm}k [M:${audit.mainPlanCapping}k+S:${audit.spurPlanCapping}k], ${Math.round(audit.capRatio)}%)`, linearW);
+      const linLine3 = doc.splitTextToSize(`Subbase: ${audit.origSubbaseTotal.toFixed(1)}k (Plan: ${audit.planSubbaseKm}k [M:${audit.mainPlanSubbase}k+S:${audit.spurPlanSubbase}k], ${Math.round(audit.sbRatio)}%)`, linearW);
+      const linLine4 = doc.splitTextToSize(`Basecourse: ${audit.origBasecourseTotal.toFixed(1)}k (Plan: ${audit.planBasecourseKm}k [M:${audit.mainPlanBasecourse}k+S:${audit.spurPlanBasecourse}k], ${Math.round(audit.bcRatio)}%)`, linearW);
+      const linLine5 = doc.splitTextToSize(`Asphalt: ${audit.origAsphaltTotal.toFixed(1)}k (Plan: ${audit.planAsphaltKm}k [M:${audit.mainPlanAsphalt}k+S:${audit.spurPlanAsphalt}k], ${Math.round(audit.acRatio)}%)`, linearW);
 
       // 5. Guarantees, QA, RFIs & Mobilization Lines
       doc.setFont('times', 'normal');
       doc.setFontSize(11);
-      const grLine1 = doc.splitTextToSize(`Guarantees: ${audit.totalBonds - audit.expiredBondsCount}/${audit.totalBonds} Valid`, colWidths.bonds_risks - 12);
-      const grLine2 = doc.splitTextToSize(`Risks: ${audit.activeRisksCount} (${audit.criticalRisksCount} Crit.)`, colWidths.bonds_risks - 12);
-      const grLine3 = doc.splitTextToSize(`RFIs: ${audit.approvedRfiCount}/${audit.totalRfiCount} (${audit.rfiScorePct}%)`, colWidths.bonds_risks - 12);
-      const grLine4 = doc.splitTextToSize(`Materials: ${audit.approvedMatCount}/${audit.totalMatCount} (${audit.materialScorePct}%)`, colWidths.bonds_risks - 12);
-      const grLine5 = doc.splitTextToSize(`Quality/WIR: ${audit.wirScorePct}% Pass`, colWidths.bonds_risks - 12);
-      const grLine6 = doc.splitTextToSize(`Mobil.: ${audit.resourceScorePct}% Site`, colWidths.bonds_risks - 12);
+      const bondsRisksW = (colWidths.bonds_risks ?? 120) - 12;
+      const grLine1 = doc.splitTextToSize(`Guarantees: ${audit.totalBonds - audit.expiredBondsCount}/${audit.totalBonds} Valid`, bondsRisksW);
+      const grLine2 = doc.splitTextToSize(`Risks: ${audit.activeRisksCount} (${audit.criticalRisksCount} Crit.)`, bondsRisksW);
+      const grLine3 = doc.splitTextToSize(`RFIs: ${audit.approvedRfiCount}/${audit.totalRfiCount} (${audit.rfiScorePct}%)`, bondsRisksW);
+      const grLine4 = doc.splitTextToSize(`Materials: ${audit.approvedMatCount}/${audit.totalMatCount} (${audit.materialScorePct}%)`, bondsRisksW);
+      const grLine5 = doc.splitTextToSize(`Quality/WIR: ${audit.wirScorePct}% Pass`, bondsRisksW);
+      const grLine6 = doc.splitTextToSize(`Mobil.: ${audit.resourceScorePct}% Site`, bondsRisksW);
 
       // 6. Compliance Score & Grade Lines
       doc.setFont('times', 'bold');

@@ -9,27 +9,31 @@ import { createServer as createViteServer } from 'vite';
 import { requireAuth, checkRole } from './src/middleware/auth.ts';
 import { GoogleGenAI } from '@google/genai';
 
-import { initializeApp, getApps } from 'firebase-admin/app';
+import { initializeApp, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+let configuredProjectId: string | undefined;
 let configuredDbId: string | undefined;
 try {
   const cfgPath = path.resolve(__dirname, 'firebase-applet-config.json');
   if (fs.existsSync(cfgPath)) {
     const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
-    if (cfg?.firestoreDatabaseId && cfg.firestoreDatabaseId !== '(default)') {
+    if (cfg?.projectId && cfg.projectId !== 'remixed-project-id') {
+      configuredProjectId = cfg.projectId;
+    }
+    if (cfg?.firestoreDatabaseId && cfg.firestoreDatabaseId !== '(default)' && cfg.firestoreDatabaseId !== 'remixed-firestore-database-id') {
       configuredDbId = cfg.firestoreDatabaseId;
     }
   }
 } catch {}
 
-if (!getApps().length) {
-  initializeApp();
-}
-const db = configuredDbId ? getFirestore(configuredDbId) : getFirestore();
+const adminApp = getApps().length
+  ? getApp()
+  : initializeApp(configuredProjectId ? { projectId: configuredProjectId } : undefined);
+const db = configuredDbId ? getFirestore(adminApp, configuredDbId) : getFirestore(adminApp);
 
 const BACKUP_DIR = path.resolve(__dirname, '.data', 'progress_plan_backups');
 if (!fs.existsSync(BACKUP_DIR)) {
@@ -298,10 +302,11 @@ Status: ${projectContext.status || 'Active'}
 let firestoreAdminDisabled = false;
 
 // Automated Daily Backup API for project progressPlanHistory records (Persistent File & Cloud Storage)
-app.post('/api/backup/progress-plan-history', async (req: Request, res: Response) => {
+app.post('/api/backup/progress-plan-history', async (req: Request, res: Response): Promise<void> => {
   const { projectId, progressPlanHistory, timestamp, projectName } = req.body;
   if (!projectId || !Array.isArray(progressPlanHistory)) {
-    return res.status(400).json({ error: 'Invalid payload. projectId and progressPlanHistory array required.' });
+    res.status(400).json({ error: 'Invalid payload. projectId and progressPlanHistory array required.' });
+    return;
   }
   
   const backupPayload = {
@@ -317,7 +322,8 @@ app.post('/api/backup/progress-plan-history', async (req: Request, res: Response
     const safeId = path.basename(String(projectId)).replace(/[^a-zA-Z0-9._-]/g, '_');
     const filePath = path.resolve(BACKUP_DIR, `${safeId}.json`);
     if (!filePath.startsWith(BACKUP_DIR + path.sep)) {
-      return res.status(400).json({ error: 'Invalid projectId.' });
+      res.status(400).json({ error: 'Invalid projectId.' });
+      return;
     }
     fs.writeFileSync(filePath, JSON.stringify(backupPayload, null, 2), 'utf-8');
 
@@ -349,7 +355,7 @@ app.post('/api/backup/progress-plan-history', async (req: Request, res: Response
   }
 });
 
-app.get('/api/backup/progress-plan-history/:projectId', async (req: Request, res: Response) => {
+app.get('/api/backup/progress-plan-history/:projectId', async (req: Request, res: Response): Promise<void> => {
   const { projectId } = req.params;
   
   // 1. Try local disk backup first
@@ -358,7 +364,8 @@ app.get('/api/backup/progress-plan-history/:projectId', async (req: Request, res
   if (filePath.startsWith(BACKUP_DIR + path.sep) && fs.existsSync(filePath)) {
     try {
       const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      return res.json({ success: true, source: 'disk', ...data });
+      res.json({ success: true, source: 'disk', ...data });
+      return;
     } catch (e) {}
   }
 
@@ -367,7 +374,8 @@ app.get('/api/backup/progress-plan-history/:projectId', async (req: Request, res
     try {
       const docSnap = await db.collection('progress_plan_history_backups').doc(projectId).get();
       if (docSnap.exists) {
-        return res.json({ success: true, source: 'firestore', ...docSnap.data() });
+        res.json({ success: true, source: 'firestore', ...docSnap.data() });
+        return;
       }
     } catch (e: any) {
       const msg = e?.message || String(e || '');
@@ -380,14 +388,15 @@ app.get('/api/backup/progress-plan-history/:projectId', async (req: Request, res
   res.status(404).json({ error: 'No persistent backup found for project' });
 });
 
-app.post('/api/projects/:projectId/contract-amount', requireAuth, checkRole(['director_general', 'master_admin', 'cpm_admin']), async (req: any, res: Response) => {
+app.post('/api/projects/:projectId/contract-amount', requireAuth, checkRole(['director_general', 'master_admin', 'cpm_admin']), async (req: any, res: Response): Promise<void> => {
   const { projectId } = req.params;
   const { contractAmountEtb } = req.body;
   
   try {
     const projDoc = await db.collection('projects').doc(projectId).get();
     if (projDoc.exists && projDoc.data()?.contractAmountStatus === 'Validated') {
-      return res.status(403).json({ error: 'Contract amount is validated and locked against modifications.' });
+      res.status(403).json({ error: 'Contract amount is validated and locked against modifications.' });
+      return;
     }
     await db.collection('projects').doc(projectId).update({
       contractAmountEtb,

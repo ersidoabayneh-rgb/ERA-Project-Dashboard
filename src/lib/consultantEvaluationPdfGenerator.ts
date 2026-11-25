@@ -895,7 +895,7 @@ export function generateSection2EvaluationPdf(options: Section2PdfOptions): jsPD
 
     let gx = frameX + 225;
     thresholds.slice(0, 5).forEach(t => {
-      const isSelected = paperMode === 'with_current_scores' && hasAllEarned && grandTotalEarned >= t.minScore && grandTotalEarned <= t.maxScore;
+      const isSelected = paperMode === 'with_current_scores' && hasAllEarned && grandTotalEarned >= t.minScore && grandTotalEarned <= (t.maxScore ?? 100);
       if (isSelected) {
         doc.setFillColor(30, 64, 175);
         doc.setDrawColor(30, 64, 175);

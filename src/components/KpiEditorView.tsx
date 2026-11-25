@@ -107,7 +107,7 @@ interface KpiEditorViewProps {
 
 export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, onProjectUpdate }: KpiEditorViewProps) {
   // Access control guard: Only ERA approver, ERA editor, PMO admin, Directorate admin, CPM admin, and Master Admin
-  const isAuthorized = isKpiAuthorizedRole(currentUserObj);
+  const isAuthorized = isKpiAuthorizedRole(currentUserObj ?? null);
 
   const [selectedGroupId, setSelectedGroupId] = React.useState<string>('all');
   const [selectedMonth, setSelectedMonth] = React.useState<string>(() => project.kpiActiveMonth || 'Oct-26');

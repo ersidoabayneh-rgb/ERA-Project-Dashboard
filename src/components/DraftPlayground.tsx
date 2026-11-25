@@ -99,6 +99,7 @@ export default function DraftPlayground({ onClose, currentUser }: DraftPlaygroun
       case 'risk':
         return riskDraft;
       case 'broadcast':
+      default:
         return broadcastDraft;
     }
   };
@@ -121,6 +122,7 @@ export default function DraftPlayground({ onClose, currentUser }: DraftPlaygroun
         window.fetch = originalFetch;
       };
     }
+    return undefined;
   }, [networkSimulation]);
 
   // Simulate remote server modification to trigger conflict resolution dialog

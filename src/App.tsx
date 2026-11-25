@@ -1989,8 +1989,8 @@ let isBatchSyncRunning = false;
       });
     };
 
-    // Handle real-time Open-Ended WebSocket connection and fallback SSE stream
-    let eventSource: EventSource | null = null;
+    // Handle real-time Open-Ended WebSocket connection
+    let isDisposed = false;
     let wsSocket: WebSocket | null = null;
     let wsReconnectTimeout: any = null;
 
@@ -2026,11 +2026,10 @@ let isBatchSyncRunning = false;
     };
 
     const initWebSocket = () => {
-      if (typeof window === 'undefined' || typeof window.WebSocket !== 'function') return;
+      if (isDisposed || typeof window === 'undefined' || typeof window.WebSocket !== 'function') return;
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws`;
-        console.log(`[Real-Time WS] Connecting to WebSocket at ${wsUrl}...`);
         wsSocket = new WebSocket(wsUrl);
         globalWsRef.current = wsSocket;
 
@@ -2041,7 +2040,6 @@ let isBatchSyncRunning = false;
         wsSocket.onmessage = (event) => {
           try {
             const payload = JSON.parse(event.data);
-            console.log('[Real-Time WS] Message received:', payload?.type);
             handleRealtimePayload(payload);
           } catch (e) {
             console.warn('[Real-Time WS] Failed to parse message event data:', e);
@@ -2052,54 +2050,14 @@ let isBatchSyncRunning = false;
           console.warn('[Real-Time WS] WebSocket connection error encountered:', err);
         };
 
-        wsSocket.onclose = (event) => {
-          console.log(`[Real-Time WS] WebSocket disconnected (code: ${event.code}, reason: ${event.reason || 'None'}). Triggering 3-second wsReconnectTimeout...`);
+        wsSocket.onclose = () => {
           globalWsRef.current = null;
+          if (isDisposed) return;
           clearTimeout(wsReconnectTimeout);
           wsReconnectTimeout = setTimeout(initWebSocket, 3000);
         };
       } catch (err) {
         console.warn('[Real-Time WS] WebSocket initialization warning:', err);
-      }
-    };
-
-    let sseReconnectTimeout: any = null;
-
-    const initSSE = () => {
-      if (typeof window === 'undefined' || typeof window.EventSource !== 'function') return;
-      try {
-        if (eventSource) {
-          try { eventSource.close(); } catch (e) {}
-          eventSource = null;
-        }
-
-        eventSource = new EventSource('/api/events');
-
-        eventSource.onopen = () => {
-          console.log('[Real-Time SSE] SSE event stream connected successfully.');
-        };
-
-        eventSource.onmessage = (event) => {
-          try {
-            if (!event.data) return;
-            const payload = JSON.parse(event.data);
-            handleRealtimePayload(payload);
-          } catch (err) {}
-        };
-
-        eventSource.onerror = () => {
-          if (eventSource && eventSource.readyState === EventSource.CLOSED) {
-            console.log('[Real-Time SSE] SSE connection closed. Retrying stream in 3s...');
-            try { eventSource.close(); } catch (e) {}
-            eventSource = null;
-            clearTimeout(sseReconnectTimeout);
-            sseReconnectTimeout = setTimeout(() => {
-              if (navigator.onLine) initSSE();
-            }, 3000);
-          }
-        };
-      } catch (e) {
-        console.warn('[Real-Time SSE] SSE initialization fallback error:', e);
       }
     };
 
@@ -2157,9 +2115,8 @@ let isBatchSyncRunning = false;
     };
 
     try {
-      // 0. Initialize real-time WebSocket and SSE event streams
+      // 0. Initialize real-time WebSocket stream
       initWebSocket();
-      initSSE();
 
       // 1. Listen for real-time deletions across all users and devices
       unsubscribeDeletedProjectsListener = onSnapshot(collection(db, 'deleted_projects'), (snapshot) => {
@@ -2488,14 +2445,12 @@ let isBatchSyncRunning = false;
       window.removeEventListener('project_globally_deleted', handleProjectGloballyDeleted);
       window.removeEventListener('new_user_registered', handleNewUserRegisteredEvent);
       window.removeEventListener('user_requested_signin_approval', handleNewUserRegisteredEvent);
+      isDisposed = true;
       if (broadcastChannel) {
         try { broadcastChannel.close(); } catch (e) {}
       }
       if (eraChannel) {
         try { eraChannel.close(); } catch (e) {}
-      }
-      if (eventSource) {
-        try { eventSource.close(); } catch (e) {}
       }
       if (wsSocket) {
         try { wsSocket.close(); } catch (e) {}
@@ -2521,7 +2476,6 @@ let isBatchSyncRunning = false;
         try { unsubscribeScoringWeightsListener(); } catch (e) {}
       }
       clearTimeout(wsReconnectTimeout);
-      clearTimeout(sseReconnectTimeout);
       clearInterval(interval);
     };
   }, []);
@@ -2886,6 +2840,7 @@ let isBatchSyncRunning = false;
       }, 30 * 60 * 1000);
       return () => clearInterval(backupInterval);
     }
+    return undefined;
   }, [projects]);
 
 
@@ -6080,7 +6035,7 @@ let isBatchSyncRunning = false;
               {activeTab === 'evm' && (
                 <EvmView
                   project={currentProject}
-                  onUpdateProject={(updProj, actionDesc) => handleProjectUpdate(updProj, actionDesc)}
+                  onUpdateProject={(updProj, actionDesc) => handleProjectUpdate(updProj, actionDesc || 'Updated EVM configuration')}
                   isReadonly={!canUserEditPage(currentUserObj, 'evm')}
                   tcpiAlertThreshold={tcpiAlertThreshold}
                 />
@@ -6089,7 +6044,7 @@ let isBatchSyncRunning = false;
               {activeTab === 'analysis' && (
                 <ComprehensiveAnalysisView 
                   project={currentProject} 
-                  onUpdateProject={(updProj, actionDesc) => handleProjectUpdate(updProj, actionDesc)}
+                  onUpdateProject={(updProj, actionDesc) => handleProjectUpdate(updProj, actionDesc || 'Updated Comprehensive Analysis')}
                   isReadonly={!canUserEditPage(currentUserObj, 'analysis')}
                 />
               )}

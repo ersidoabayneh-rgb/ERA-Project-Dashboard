@@ -311,6 +311,7 @@ export default function SupervisionConsultantView({
       const timer = setTimeout(() => setInAppNotification(null), 5000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [inAppNotification]);
 
   const isConsultantUser = currentUser?.role === 'consultant_approver' || currentUser?.role === 'consultant_editor';
@@ -5292,7 +5293,7 @@ export default function SupervisionConsultantView({
                       <div className="space-y-1.5">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[10px] font-bold font-mono">
-                            Term #{consultant.previousConsultants.length - idx}
+                            Term #{(consultant.previousConsultants?.length ?? 0) - idx}
                           </span>
                           <h4 className="text-base font-black text-slate-900 dark:text-white">
                             {hist.firmName}

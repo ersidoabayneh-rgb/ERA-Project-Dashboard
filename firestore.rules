@@ -2,14 +2,163 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
     }
 
-    // Allow read and write for all documents to support app-level authentication and offline/local sync
-    match /{document=**} {
-      allow read, write: if true;
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.@]+$');
+    }
+
+    function isValidProject(data) {
+      return data is map
+        && data.keys().hasAll(['id', 'name'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 300;
+    }
+
+    function isValidDeletedProject(data) {
+      return data is map
+        && data.keys().hasAll(['id'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && (!('projectName' in data) || (data.projectName is string && data.projectName.size() <= 300))
+        && (!('deletedBy' in data) || (data.deletedBy is string && data.deletedBy.size() <= 255));
+    }
+
+    function isValidUser(data) {
+      return data is map
+        && data.keys().hasAll(['username'])
+        && data.username is string && data.username.size() > 0 && data.username.size() <= 128
+        && (!('email' in data) || (data.email is string && data.email.size() <= 255))
+        && (!('fullName' in data) || (data.fullName is string && data.fullName.size() <= 255))
+        && (!('role' in data) || (data.role is string && data.role.size() <= 50));
+    }
+
+    function isValidApproval(data) {
+      return data is map
+        && data.keys().hasAll(['id', 'projectId'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.projectId is string && data.projectId.size() > 0 && data.projectId.size() <= 128
+        && (!('status' in data) || (data.status is string && data.status.size() <= 50));
+    }
+
+    function isValidPrivateDraft(data) {
+      return data is map
+        && data.keys().hasAll(['id', 'projectId', 'author'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.projectId is string && data.projectId.size() > 0 && data.projectId.size() <= 128
+        && data.author is string && data.author.size() > 0 && data.author.size() <= 128;
+    }
+
+    function isValidAuditLog(data) {
+      return data is map
+        && data.keys().hasAll(['id', 'timestamp', 'action', 'actor'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.timestamp is string && data.timestamp.size() <= 100
+        && data.action is string && data.action.size() <= 100
+        && data.actor is string && data.actor.size() <= 128;
+    }
+
+    function isValidConfig(data) {
+      return data is map && data.keys().size() > 0 && data.keys().size() <= 20;
+    }
+
+    function isValidBackup(data) {
+      return data is map
+        && data.keys().hasAll(['projectId', 'progressPlanHistory'])
+        && data.projectId is string && data.projectId.size() > 0 && data.projectId.size() <= 128
+        && data.progressPlanHistory is list;
+    }
+
+    function isValidSupervisionContract(data) {
+      return data is map
+        && data.keys().hasAll(['id', 'position', 'rate', 'unit', 'total'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.position is string && data.position.size() <= 255
+        && data.rate is number
+        && data.unit is string && data.unit.size() <= 50
+        && data.total is number;
+    }
+
+    // Connection health probe document
+    match /test/connection {
+      allow get: if resource == null || resource.data is map;
+    }
+
+    // Road construction projects
+    match /projects/{projectId} {
+      allow get: if isValidId(projectId);
+      allow list: if resource.data is map;
+      allow create, update: if isValidId(projectId) && isValidProject(incoming());
+      allow delete: if isValidId(projectId);
+
+      match /supervision_consultant_contracts/{contractId} {
+        allow get: if isValidId(projectId) && isValidId(contractId);
+        allow list: if resource.data is map;
+        allow create, update: if isValidId(projectId) && isValidId(contractId) && isValidSupervisionContract(incoming());
+        allow delete: if isValidId(projectId) && isValidId(contractId);
+      }
+    }
+
+    // Tombstoned project deletions
+    match /deleted_projects/{deletedProjectId} {
+      allow get: if isValidId(deletedProjectId);
+      allow list: if resource.data is map;
+      allow create, update: if isValidId(deletedProjectId) && isValidDeletedProject(incoming());
+      allow delete: if isValidId(deletedProjectId);
+    }
+
+    // System user profile accounts
+    match /users/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if resource.data is map;
+      allow create, update: if isValidId(userId) && isValidUser(incoming());
+      allow delete: if isValidId(userId);
+    }
+
+    // Variance approval requests
+    match /approvals/{approvalId} {
+      allow get: if isValidId(approvalId);
+      allow list: if resource.data is map;
+      allow create, update: if isValidId(approvalId) && isValidApproval(incoming());
+      allow delete: if isValidId(approvalId);
+    }
+
+    // Isolated editor private drafts
+    match /private_drafts/{draftId} {
+      allow get: if isValidId(draftId);
+      allow list: if resource.data is map;
+      allow create, update: if isValidId(draftId) && isValidPrivateDraft(incoming());
+      allow delete: if isValidId(draftId);
+    }
+
+    // Tamper-evident workflow audit trail logs
+    match /workflow_audit_logs/{logId} {
+      allow get: if isValidId(logId);
+      allow list: if resource.data is map;
+      allow create: if isValidId(logId) && isValidAuditLog(incoming());
+      allow update, delete: if false;
+    }
+
+    // Global taxonomy & scoring weights config
+    match /config/{configId} {
+      allow get: if isValidId(configId);
+      allow list: if resource.data is map;
+      allow create, update: if isValidId(configId) && isValidConfig(incoming());
+      allow delete: if false;
+    }
+
+    // Progress plan history backups
+    match /progress_plan_history_backups/{projectId} {
+      allow get: if isValidId(projectId);
+      allow list: if resource.data is map;
+      allow create, update: if isValidId(projectId) && isValidBackup(incoming());
+      allow delete: if isValidId(projectId);
     }
   }
 }
-

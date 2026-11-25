@@ -339,7 +339,7 @@ export default function ProjectsPage({
     
     // Evaluate project's S-curve data (proj.monthly) considering lastModifiedAt
     if (proj.monthly && proj.monthly.length > 0) {
-      let matchedPlan = null;
+      let matchedPlan: number | null = null;
       for (const m of proj.monthly) {
         const planVal = m.revisedPlan ?? m.originalPlan;
         if (planVal !== null && planVal !== undefined && planVal !== '' && !isNaN(Number(planVal))) {

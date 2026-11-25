@@ -38,12 +38,12 @@ interface SecurityAuditLogViewProps {
   onClearLogs?: () => void;
 }
 
-export const SecurityAuditLogView: React.FC<SecurityAuditLogViewProps> = ({
+export const SecurityAuditLogView = ({
   auditLogs = [],
   projects = [],
   currentUser,
   onClearLogs
-}) => {
+}: SecurityAuditLogViewProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [actionFilter, setActionFilter] = useState<string>('ALL');
   const [actorFilter, setActorFilter] = useState<string>('ALL');

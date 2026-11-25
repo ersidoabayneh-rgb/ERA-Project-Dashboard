@@ -4752,7 +4752,7 @@ export default function IssueLogView({ project, onProjectUpdate, isAdmin, curren
                         className="relative z-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl shadow-xs text-xs space-y-1.5 ml-7"
                       >
                         <div className="absolute -left-[31px] top-3.5 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[9px] font-bold shadow-xs">
-                          {selectedIssue.history.length - hIdx}
+                          {(selectedIssue.history?.length ?? 0) - hIdx}
                         </div>
 
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-100 dark:border-slate-800 pb-1.5">

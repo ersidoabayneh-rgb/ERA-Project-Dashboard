@@ -214,6 +214,7 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
       const timer = setTimeout(() => setTableError(null), 6000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [tableError]);
 
   const convertToInputMonthFormat = (monthStr: string): string => {
