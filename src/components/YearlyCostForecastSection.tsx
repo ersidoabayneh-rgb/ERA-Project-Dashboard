@@ -17,7 +17,7 @@ import {
   Legend
 } from 'recharts';
 import { Project } from '../types';
-import { parseMonthKey, isProjectActiveLifecycle } from '../lib/monthlySync';
+import { parseMonthKey, isProjectActiveLifecycle, resolveCurrentMonthKey, isSameMonth } from '../lib/monthlySync';
 import { parseLocalDate, getRevisedCompletionDate } from '../lib/dateUtils';
 
 // ==========================================
@@ -384,15 +384,7 @@ export default function YearlyCostForecastSection({
   const [chartType, setChartType] = useState<'line' | 'area'>('line');
   const [copied, setCopied] = useState<boolean>(false);
 
-  // 2. Remaining Works (Unexecuted BOQ Balance)
-  const seriesList = project.series || [];
-  const totalSeriesContract = seriesList.reduce((sum, s) => sum + (s.contractAmt || 0), 0) || BAC;
-  const totalSeriesExec = seriesList.reduce((sum, s) => sum + (s.execAmt || 0), 0) || EV;
-  const remainingBalance = Math.max(0, totalSeriesContract - totalSeriesExec);
-  const executedPct = totalSeriesContract > 0 ? (totalSeriesExec / totalSeriesContract) * 100 : 0;
-  const remainingPct = Math.max(0, 100 - executedPct);
-
-  // 3. Parse Monthly Cumulative Entries (`project.monthly`) sorted chronologically
+  // 2. Parse Monthly Cumulative Entries (`project.monthly`) sorted chronologically
   const parsedMonthly: ParsedMonthlyPoint[] = useMemo(() => {
     return (project.monthly || [])
       .map(m => {
@@ -416,7 +408,78 @@ export default function YearlyCostForecastSection({
       .sort((a, b) => a.serial - b.serial);
   }, [project.monthly]);
 
-  // Average Monthly Plan pace (% per month) derived from Monthly Cumulative Plan curve
+  // 3. Resolve Current Month & Actual on Monthly Cumulative page -> Remaining % = 100% - Actual(current month)
+  const currentMonthResolution = useMemo(() => {
+    const currentMonthKey = resolveCurrentMonthKey(project);
+    const parsedCurrent = parseMonthKey(currentMonthKey);
+    const now = new Date();
+    const currentMonthSerial = parsedCurrent
+      ? parsedCurrent.year * 12 + parsedCurrent.monthIndex
+      : now.getFullYear() * 12 + now.getMonth();
+
+    const exactRow = parsedMonthly.find(
+      pt => (pt.serial === currentMonthSerial || isSameMonth(pt.raw, currentMonthKey)) && pt.actual !== null
+    );
+
+    let actualAtCurrentMonth = 0;
+    let actualRefMonthLabel = parsedCurrent?.key || currentMonthKey;
+    let hasExactCurrentMonthActual = false;
+
+    if (exactRow && exactRow.actual !== null) {
+      actualAtCurrentMonth = exactRow.actual;
+      actualRefMonthLabel = exactRow.key;
+      hasExactCurrentMonthActual = true;
+    } else {
+      const priorWithActual = parsedMonthly.filter(pt => pt.serial <= currentMonthSerial && pt.actual !== null);
+      if (priorWithActual.length > 0) {
+        const latestPrior = priorWithActual[priorWithActual.length - 1];
+        actualAtCurrentMonth = latestPrior.actual!;
+        actualRefMonthLabel = latestPrior.key;
+      } else {
+        const anyWithActual = parsedMonthly.filter(pt => pt.actual !== null);
+        if (anyWithActual.length > 0) {
+          const latestAny = anyWithActual[anyWithActual.length - 1];
+          actualAtCurrentMonth = latestAny.actual!;
+          actualRefMonthLabel = latestAny.key;
+        } else {
+          actualAtCurrentMonth = Number(project.physicalProgress) || 0;
+        }
+      }
+    }
+
+    const clampedActual = Math.max(0, Math.min(100, actualAtCurrentMonth));
+    const remainingPct = Math.max(0, Math.min(100, 100 - clampedActual));
+
+    return {
+      currentMonthKey: parsedCurrent?.key || currentMonthKey,
+      currentMonthSerial,
+      actualAtCurrentMonth: clampedActual,
+      remainingPct,
+      actualRefMonthLabel,
+      hasExactCurrentMonthActual
+    };
+  }, [project, parsedMonthly]);
+
+  const {
+    currentMonthSerial,
+    actualAtCurrentMonth,
+    remainingPct,
+    actualRefMonthLabel,
+    hasExactCurrentMonthActual
+  } = currentMonthResolution;
+
+  // Contract Base & Remaining Works Value derived directly from Remaining % (100% - Actual at current month)
+  const seriesList = project.series || [];
+  const totalSeriesContract = seriesList.reduce((sum, s) => sum + (s.contractAmt || 0), 0) || BAC;
+  const totalSeriesExec = seriesList.reduce((sum, s) => sum + (s.execAmt || 0), 0) || EV;
+  const boqExecutedPct = totalSeriesContract > 0 ? (totalSeriesExec / totalSeriesContract) * 100 : 0;
+  const boqRemainingBalance = Math.max(0, totalSeriesContract - totalSeriesExec);
+
+  const contractBase = totalSeriesContract || BAC;
+  const executedAmtMonthly = contractBase * (actualAtCurrentMonth / 100);
+  const remainingBalance = Math.max(0, contractBase * (remainingPct / 100));
+
+  // Average Monthly Plan pace (% per month) derived from Monthly Cumulative Plan active curve
   const avgMonthlyPlanPace = useMemo(() => {
     const juneEntry = (project.monthly || []).find(m => m.month && (m.month.toLowerCase().includes('jun') || m.month.includes('-06')));
     const julyEntry = (project.monthly || []).find(m => m.month && (m.month.toLowerCase().includes('jul') || m.month.includes('-07')));
@@ -424,23 +487,21 @@ export default function YearlyCostForecastSection({
     const jlPlan = Number(julyEntry?.revisedPlan ?? julyEntry?.originalPlan ?? 0);
 
     if (parsedMonthly.length >= 2) {
-      const first = parsedMonthly[0].plan;
-      const last = parsedMonthly[parsedMonthly.length - 1].plan;
-      const span = Math.max(1, parsedMonthly[parsedMonthly.length - 1].serial - parsedMonthly[0].serial);
-      const avg = (last - first) / span;
+      const firstPt = parsedMonthly[0];
+      const maxPlan = Math.max(...parsedMonthly.map(p => p.plan));
+      const peakPt = parsedMonthly.find(p => p.plan >= maxPlan - 0.001) || parsedMonthly[parsedMonthly.length - 1];
+      const span = Math.max(1, peakPt.serial - firstPt.serial);
+      const avg = (peakPt.plan - firstPt.plan) / span;
       if (avg > 0.1) return avg;
     }
     if (jlPlan > jPlan) return jlPlan - jPlan;
     return 1.5;
   }, [project.monthly, parsedMonthly]);
 
-  // 4. Determine Current EFY & Forecast Remaining Works across Current + Upcoming EFYs based on Plan & EFY
+  // 4. Determine Current EFY & Forecast Remaining Works across Current + Upcoming EFYs based on Monthly Cumulative Plan & EFY
   const currentEfy = getCurrentEfy(project);
 
   const futureProjections: ForecastYearRow[] = useMemo(() => {
-    const now = new Date();
-    const currentMonthSerial = now.getFullYear() * 12 + now.getMonth();
-
     const getPlanAtSerial = (targetSerial: number): { value: number; matched: string } => {
       if (parsedMonthly.length === 0) return { value: 0, matched: 'N/A' };
       const onOrBefore = parsedMonthly.filter(pt => pt.serial <= targetSerial);
@@ -454,9 +515,10 @@ export default function YearlyCostForecastSection({
     const getEfyStartSerial = (efy: number) => getEfyStartGregYear(efy) * 12 + 6; // July
     const getEfyEndSerial = (efy: number) => getEfyEndGregYear(efy) * 12 + 5; // June
 
-    // Remaining active months inside an EFY relative to current calendar month
+    // Remaining active months inside an EFY relative to current reporting month
     const getRemainingMonthsInEfy = (efy: number): number => {
-      const startSerial = Math.max(getEfyStartSerial(efy), currentMonthSerial);
+      const firstRemainingSerial = hasExactCurrentMonthActual ? currentMonthSerial + 1 : currentMonthSerial;
+      const startSerial = Math.max(getEfyStartSerial(efy), firstRemainingSerial);
       const endSerial = getEfyEndSerial(efy);
       return Math.max(0, endSerial - startSerial + 1);
     };
@@ -477,108 +539,134 @@ export default function YearlyCostForecastSection({
       ? getEfyFromGregorian(revCompDate.getFullYear(), revCompDate.getMonth())
       : currentEfy;
 
-    if (revCompEfy > currentEfy && remainingBalance > 0) {
+    if (revCompEfy > currentEfy && remainingPct > 0) {
       const cappedRevEfy = Math.min(revCompEfy, currentEfy + 6);
       for (let e = currentEfy; e <= cappedRevEfy; e++) {
         efySet.add(e);
       }
     }
 
-    let candidateEfys = Array.from(efySet).sort((a, b) => a - b);
+    const candidateEfys = Array.from(efySet).sort((a, b) => a - b);
 
     // Evaluate explicit Monthly Cumulative Plan increments for each EFY >= currentEfy
-    // For Current EFY: measures remaining planned work inside Current EFY (from prior closed month or EFY start through June of Current EFY)
     const evalPlanRows = (efys: number[]) =>
       efys.map(efy => {
         const prevEfyEndSerial = getEfyEndSerial(efy - 1);
+        const currCutoffSerial = hasExactCurrentMonthActual ? currentMonthSerial : currentMonthSerial - 1;
         const startBaselineSerial =
           efy === currentEfy
-            ? Math.max(prevEfyEndSerial, currentMonthSerial - 1)
+            ? Math.max(prevEfyEndSerial, currCutoffSerial)
             : prevEfyEndSerial;
 
         const endSerial = getEfyEndSerial(efy);
         const startPlan = getPlanAtSerial(startBaselineSerial);
         const endPlan = getPlanAtSerial(endSerial);
-        let planInc = Math.max(0, endPlan.value - startPlan.value);
-
-        // If mid-EFY current month already exceeded monthly plan entries, also check full current-EFY plan delta before falling back
-        if (efy === currentEfy && planInc === 0) {
-          const fullEfyStartPlan = getPlanAtSerial(prevEfyEndSerial);
-          const fullEfyDelta = Math.max(0, endPlan.value - fullEfyStartPlan.value);
-          if (fullEfyDelta > 0) {
-            return {
-              efyYear: efy,
-              startPlan: fullEfyStartPlan,
-              endPlan,
-              planInc: fullEfyDelta,
-              activeMonths: getRemainingMonthsInEfy(efy)
-            };
-          }
-        }
+        const planInc = Math.max(0, endPlan.value - startPlan.value);
 
         return {
           efyYear: efy,
-          startPlan,
-          endPlan,
           planInc,
           activeMonths: getRemainingMonthsInEfy(efy)
         };
       });
 
-    let futurePlansRaw = evalPlanRows(candidateEfys);
-    let totalExplicitPlanInc = futurePlansRaw.reduce((sum, item) => sum + item.planInc, 0);
+    const explicitRows = evalPlanRows(candidateEfys);
+    const totalExplicitPlanInc = explicitRows.reduce((sum, item) => sum + item.planInc, 0);
 
-    // If Monthly Cumulative Plan has no remaining plan increments >= currentEfy while unexecuted work remains,
-    // determine EFY horizon from revised completion EFY or Monthly Cumulative Plan burn pace
-    if (totalExplicitPlanInc <= 0 && remainingBalance > 0) {
-      if (candidateEfys.length < 2) {
-        const monthsNeeded = Math.max(12, Math.ceil(remainingPct / Math.max(0.5, avgMonthlyPlanPace)));
-        const remCurrMonths = getRemainingMonthsInEfy(currentEfy);
-        let coveredMonths = remCurrMonths;
-        let nextEfy = currentEfy;
-        while (coveredMonths < monthsNeeded && candidateEfys.length < 4) {
-          nextEfy += 1;
-          candidateEfys.push(nextEfy);
-          coveredMonths += 12;
-        }
-        if (candidateEfys.length === 1) {
-          candidateEfys.push(currentEfy + 1);
-        }
-        futurePlansRaw = evalPlanRows(candidateEfys);
-        totalExplicitPlanInc = futurePlansRaw.reduce((sum, item) => sum + item.planInc, 0);
-      }
+    interface EfyAllocationRow {
+      efyYear: number;
+      basisType: 'plan' | 'efy_pace';
+      remainingPlanPct: number;
+      weightSharePct: number;
+      activeMonths: number;
     }
 
-    const hasExplicitMonthlyPlans = totalExplicitPlanInc > 0;
-    const effectiveFuturePlans = hasExplicitMonthlyPlans
-      ? futurePlansRaw.filter(item => item.efyYear === currentEfy || item.planInc > 0)
-      : futurePlansRaw;
+    let allocatedEfys: EfyAllocationRow[] = [];
 
-    const effectivePlanSum = effectiveFuturePlans.reduce((sum, item) => sum + item.planInc, 0);
-    const totalActiveMonths = effectiveFuturePlans.reduce((sum, item) => sum + item.activeMonths, 0) || 1;
+    if (remainingPct <= 0) {
+      allocatedEfys = [
+        {
+          efyYear: currentEfy,
+          basisType: 'plan',
+          remainingPlanPct: 0,
+          weightSharePct: 0,
+          activeMonths: getRemainingMonthsInEfy(currentEfy)
+        }
+      ];
+    } else if (totalExplicitPlanInc > 0) {
+      // Case A: Future Monthly Cumulative Plan increments exist -> apportion remainingPct (100% - Actual) by Monthly Cumulative Plan EFY shares
+      const activePlanRows = explicitRows.filter(item => item.efyYear === currentEfy || item.planInc > 0);
+      const effectivePlanSum = activePlanRows.reduce((sum, item) => sum + item.planInc, 0) || 1;
 
-    const futureWeights = effectiveFuturePlans.map(item => {
-      if (effectivePlanSum > 0) {
-        return (item.planInc / effectivePlanSum) * 100;
+      allocatedEfys = activePlanRows.map(item => {
+        const weightSharePct = (item.planInc / effectivePlanSum) * 100;
+        const efyRemainingPlanPct = remainingPct * (weightSharePct / 100);
+        return {
+          efyYear: item.efyYear,
+          basisType: 'plan',
+          remainingPlanPct: efyRemainingPlanPct,
+          weightSharePct,
+          activeMonths: item.activeMonths
+        };
+      });
+    } else if (revCompEfy > currentEfy) {
+      // Case B1: Monthly plan completed earlier, revised contract completion EFY extends into future EFYs -> distribute remainingPct by active EFY months
+      const horizonRows = candidateEfys.map(efy => ({
+        efyYear: efy,
+        activeMonths: getRemainingMonthsInEfy(efy)
+      }));
+      const totalActiveMonths = horizonRows.reduce((s, r) => s + r.activeMonths, 0) || 1;
+      allocatedEfys = horizonRows.map(item => {
+        const weightSharePct = (item.activeMonths / totalActiveMonths) * 100;
+        return {
+          efyYear: item.efyYear,
+          basisType: 'efy_pace',
+          remainingPlanPct: remainingPct * (weightSharePct / 100),
+          weightSharePct,
+          activeMonths: item.activeMonths
+        };
+      });
+    } else {
+      // Case B2: Monthly plan reached 100% earlier & contract date elapsed -> walk EFYs from currentEfy using Monthly Cumulative Plan pace (%/mo)
+      const pace = Math.max(0.5, avgMonthlyPlanPace);
+      let remLeft = remainingPct;
+      const paceRows: { efyYear: number; alloc: number; activeMonths: number }[] = [];
+
+      for (let step = 0; step < 6 && remLeft > 0.0001; step++) {
+        const efy = currentEfy + step;
+        const activeMonths = getRemainingMonthsInEfy(efy);
+        if (activeMonths <= 0 && step === 0) {
+          paceRows.push({ efyYear: efy, alloc: 0, activeMonths: 0 });
+          continue;
+        }
+        const effectiveMonths = Math.max(1, activeMonths);
+        const capacity = effectiveMonths * pace;
+        const alloc = step === 5 ? remLeft : Math.min(remLeft, capacity);
+        paceRows.push({ efyYear: efy, alloc, activeMonths });
+        remLeft = Math.max(0, remLeft - alloc);
       }
-      // Distribute remaining works across EFYs proportionally by remaining active calendar months & plan pace
-      return (item.activeMonths / totalActiveMonths) * 100;
-    });
 
-    const sumWeights = futureWeights.reduce((a, b) => a + b, 0) || 100;
-    const normalizedWeights = futureWeights.map(w => (w / sumWeights) * 100);
+      if (paceRows.length === 0) {
+        paceRows.push({ efyYear: currentEfy, alloc: remainingPct, activeMonths: getRemainingMonthsInEfy(currentEfy) });
+      }
+
+      allocatedEfys = paceRows.map(item => ({
+        efyYear: item.efyYear,
+        basisType: 'efy_pace',
+        remainingPlanPct: item.alloc,
+        weightSharePct: remainingPct > 0 ? (item.alloc / remainingPct) * 100 : 0,
+        activeMonths: item.activeMonths
+      }));
+    }
 
     let runningRemainingEscalated = 0;
     let remBalanceTrack = remainingBalance;
 
-    return effectiveFuturePlans.map((planData, idx) => {
+    return allocatedEfys.map((planData, idx) => {
       const startGreg = getEfyStartGregYear(planData.efyYear);
       const endGreg = getEfyEndGregYear(planData.efyYear);
-      const weightSharePct = normalizedWeights[idx];
-      const remainingPlanPct =
-        effectivePlanSum > 0
-          ? planData.planInc
-          : remainingPct * (weightSharePct / 100);
+      const weightSharePct = planData.weightSharePct;
+      const remainingPlanPct = planData.remainingPlanPct;
       const baseCost = remainingBalance * (weightSharePct / 100);
 
       // Forecasted Pn using Baseline P0 & Annual PA Increment Rate derived from Financial Data page
@@ -596,8 +684,8 @@ export default function YearlyCostForecastSection({
         periodLabel: `${startGreg}/${endGreg} G.C.`,
         efyLabel: `EFY ${planData.efyYear} (${startGreg}/${endGreg})`,
         isCurrent: planData.efyYear === currentEfy,
-        isFinish: idx === effectiveFuturePlans.length - 1,
-        basisType: planData.planInc > 0 ? 'plan' : 'efy_pace',
+        isFinish: idx === allocatedEfys.length - 1,
+        basisType: planData.basisType,
         remainingPlanPct,
         weightSharePct,
         activeMonthsInEfy: planData.activeMonths,
@@ -607,10 +695,10 @@ export default function YearlyCostForecastSection({
         paSourceTag: idx === 0 ? 'Current Forecast (P0)' : `Forecast (P0 × (1+r)^${idx})`,
         escalatedCost,
         cumulativeEscalated: runningRemainingEscalated,
-        balanceRemaining: idx === effectiveFuturePlans.length - 1 ? 0 : remBalanceTrack
+        balanceRemaining: idx === allocatedEfys.length - 1 ? 0 : remBalanceTrack
       };
     });
-  }, [parsedMonthly, project.startDate, project.origDays, project.eotDays, project.interimEotDays, currentEfy, remainingBalance, remainingPct, avgMonthlyPlanPace, basePaFactor, annualInflation]);
+  }, [parsedMonthly, currentMonthSerial, hasExactCurrentMonthActual, project.startDate, project.origDays, project.eotDays, project.interimEotDays, currentEfy, remainingBalance, remainingPct, avgMonthlyPlanPace, basePaFactor, annualInflation]);
 
   // Recharts dataset strictly represents Remaining Works Forecast across Current & Upcoming EFYs
   const chartData = futureProjections.map((p) => {
@@ -652,13 +740,13 @@ YEARLY ESTIMATED COST FORECAST (REMAINING WORKS ONLY)
 Project: ${project.name} (ID: ${project.id || 'N/A'})
 Evaluation Date: ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
 Forecast Horizon: ${firstForecastEfy} – ${lastForecastEfy} (Current & Upcoming EFYs)
-Total Contract Price (BAC): ${formatBr(BAC)}
-Executed To-Date: ${formatBr(totalSeriesExec)} (${executedPct.toFixed(1)}%)
-Remaining Works (Forecast Base): ${formatBr(remainingBalance)} (${remainingPct.toFixed(1)}%)
+Total Contract Price (Contract Base): ${formatBr(contractBase)}
+Actual Progress at Current Month (${actualRefMonthLabel}): ${actualAtCurrentMonth.toFixed(1)}% (${formatBr(executedAmtMonthly)})
+Remaining Works (100% − Actual): ${remainingPct.toFixed(1)}% (${formatBr(remainingBalance)})
 Financial Data PA Baseline P0: ${basePaFactor.toFixed(4)} (${((basePaFactor - 1) * 100).toFixed(2)}% PA/Gross)
 Financial Data Annual PA Increment (r): ${(annualInflation * 100).toFixed(2)}% p.a. (${financialPa.methodologySummary})
 -----------------------------------------------------
-REMAINING WORKS FORECAST BY EFY (PLAN & EFY BASIS):
+REMAINING WORKS FORECAST BY EFY (MONTHLY CUMULATIVE PLAN & EFY BASIS):
 ${futureProjections.map(r => `• ${r.efy} [${r.periodLabel}] ${r.isCurrent ? '[CURRENT]' : '[UPCOMING]'} | Remaining Plan: ${r.remainingPlanPct.toFixed(1)}% | Base: ${formatBr(r.baseCost)} | Pn: ${r.pnFactor.toFixed(4)} | PA: +${formatBr(r.paAdder)} | Est. Outlay: ${formatBr(r.escalatedCost)} | Cum.: ${formatBr(r.cumulativeEscalated)}`).join('\n')}
 -----------------------------------------------------
 TOTAL FORECAST FOR REMAINING WORKS:
@@ -680,9 +768,9 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
       ['Project Name', project.name],
       ['Project ID', project.id || 'N/A'],
       ['Current Operating EFY', `EFY ${currentEfy}`],
-      ['Contract Price (BAC)', formatBr(BAC)],
-      ['Executed To-Date', formatBr(totalSeriesExec)],
-      ['Remaining Works (Forecast Base)', formatBr(remainingBalance)],
+      ['Contract Base (ETB)', formatBr(contractBase)],
+      [`Monthly Cumulative Actual (${actualRefMonthLabel})`, `${actualAtCurrentMonth.toFixed(2)}% (${formatBr(executedAmtMonthly)})`],
+      ['Remaining Works (100% - Actual)', `${remainingPct.toFixed(2)}% (${formatBr(remainingBalance)})`],
       ['Financial Data Baseline Factor (P0)', basePaFactor.toFixed(4)],
       ['Forecasted PA Increment Rate (r p.a.)', `${(annualInflation * 100).toFixed(2)}%`],
       ['Financial Data PA Derivation', financialPa.methodologySummary],
@@ -767,7 +855,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
               </span>
             </div>
             <p className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Forecasts strictly the remaining unexecuted works ({formatBr(remainingBalance)}) across Current (EFY {currentEfy}) &amp; Upcoming EFYs based on the Monthly Cumulative Plan and EFY schedule, with Price Adjustment escalated from Financial Data PA increment.
+              Remaining % is {remainingPct.toFixed(1)}% (100% &minus; {actualAtCurrentMonth.toFixed(1)}% Actual at {actualRefMonthLabel} on Monthly Cumulative) = {formatBr(remainingBalance)}, planned across Current (EFY {currentEfy}) &amp; Upcoming EFYs from the Monthly Cumulative Plan.
             </p>
           </div>
         </div>
@@ -831,7 +919,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
             {formatBr(remainingBalance)}
           </div>
           <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight font-mono">
-            {remainingPct.toFixed(1)}% of Contract ({formatBr(totalSeriesContract)} &minus; {formatBr(totalSeriesExec)} Exec.)
+            {remainingPct.toFixed(1)}% remaining (100% &minus; {actualAtCurrentMonth.toFixed(1)}% Actual @ {actualRefMonthLabel})
           </div>
         </div>
 
@@ -1080,7 +1168,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
               </h4>
             </div>
             <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-              Remaining unexecuted BOQ feeding forecast: <strong className="text-amber-600 dark:text-amber-400">{formatBr(remainingBalance)}</strong>
+              BOQ unexecuted balance: <strong className="text-amber-600 dark:text-amber-400">{formatBr(boqRemainingBalance)}</strong> (Forecast uses Monthly Cum. 100% &minus; Actual = {formatBr(remainingBalance)})
             </span>
           </div>
 
@@ -1131,8 +1219,8 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                   <td className="p-2.5 uppercase" colSpan={2}>Total BOQ Division Quantities</td>
                   <td className="p-2.5 text-right font-mono">{formatBr(totalSeriesContract)}</td>
                   <td className="p-2.5 text-right font-mono text-emerald-600 dark:text-emerald-400">{formatBr(totalSeriesExec)}</td>
-                  <td className="p-2.5 text-center font-mono text-indigo-600 dark:text-indigo-400">{executedPct.toFixed(1)}%</td>
-                  <td className="p-2.5 text-right font-mono text-amber-600 dark:text-amber-400 font-black">{formatBr(remainingBalance)}</td>
+                  <td className="p-2.5 text-center font-mono text-indigo-600 dark:text-indigo-400">{boqExecutedPct.toFixed(1)}%</td>
+                  <td className="p-2.5 text-right font-mono text-amber-600 dark:text-amber-400 font-black">{formatBr(boqRemainingBalance)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -1213,7 +1301,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
             </span>
           </div>
           <span className="font-mono text-[10px] font-bold text-indigo-700 dark:text-indigo-300 shrink-0">
-            Scope: Remaining Works Only ({remainingPct.toFixed(1)}% Balance · Plan &amp; EFY)
+            Scope: {remainingPct.toFixed(1)}% Remaining (100% &minus; {actualAtCurrentMonth.toFixed(1)}% Actual @ {actualRefMonthLabel})
           </span>
         </div>
 
@@ -1353,8 +1441,8 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                 <HeaderTooltip
                   title="Remaining Plan (%)"
                   tooltipTitle="Remaining Plan Percentage per EFY"
-                  formula="Remaining % = ΔPlan(EFY)"
-                  explanation="Displays strictly the remaining planned percentage scheduled within each Ethiopian Fiscal Year based on the Monthly Cumulative Plan."
+                  formula={`Total = 100% − Actual (${actualRefMonthLabel})`}
+                  explanation={`Total remaining % is always 100% minus Monthly Cumulative Actual at ${actualRefMonthLabel} (${actualAtCurrentMonth.toFixed(1)}% -> ${remainingPct.toFixed(1)}% remaining), distributed across each EFY based on the Monthly Cumulative Plan.`}
                   align="center"
                 />
               </th>
@@ -1364,8 +1452,8 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                 <HeaderTooltip
                   title="Remaining Base Cost (ETB)"
                   tooltipTitle="Base Remaining Planned Allocation"
-                  formula="Base = Rem. Balance × EFY Share"
-                  explanation="Portion of the remaining unexecuted BOQ balance allocated to this EFY prior to Price Adjustment escalation."
+                  formula="Base = Contract × Remaining Plan (%)"
+                  explanation="Portion of the contract remaining balance allocated to this EFY prior to Price Adjustment escalation."
                   align="right"
                 />
               </th>
@@ -1570,7 +1658,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
             <span>Remaining Works Plan &amp; EFY Methodology:</span>
           </div>
           <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-            Forecast covers strictly the remaining unexecuted BOQ balance (<strong>{formatBr(remainingBalance)}</strong>) from <strong>{firstForecastEfy}</strong> through <strong>{lastForecastEfy}</strong> using Monthly Cumulative Plan increments and active EFY windows. Price Adjustment is compounded via <strong>Pn = P0 &times; (1 + r)^t</strong> using Financial Data baseline <strong>P0 = {basePaFactor.toFixed(4)}</strong> and increment rate <strong>r = {(annualInflation * 100).toFixed(2)}% p.a.</strong> (Plan pace ~{avgMonthlyPlanPace.toFixed(2)}%/mo).
+            Remaining % is always <strong>100% &minus; Monthly Cumulative Actual at {actualRefMonthLabel} ({actualAtCurrentMonth.toFixed(1)}%) = {remainingPct.toFixed(1)}%</strong> (<strong>{formatBr(remainingBalance)}</strong>), planned across <strong>{firstForecastEfy}</strong> through <strong>{lastForecastEfy}</strong> from the Monthly Cumulative Plan (~{avgMonthlyPlanPace.toFixed(2)}%/mo pace). Price Adjustment is compounded via <strong>Pn = P0 &times; (1 + r)^t</strong> using Financial Data baseline <strong>P0 = {basePaFactor.toFixed(4)}</strong> and increment rate <strong>r = {(annualInflation * 100).toFixed(2)}% p.a.</strong>
           </p>
         </div>
 
