@@ -947,14 +947,27 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
     const s = st.toLowerCase();
     return s === 'valid' || s === 'recovered' || s === 'returned' || s === 'amortized' || s === 'fully amortized';
   };
-  const hasPerfBound = (project.bonds || []).some(b => b.type.toLowerCase().includes('performance') && isBondValidStatus(b.status)) ? 1 : 0;
-  const hasAdvBound = (project.bonds || []).some(b => b.type.toLowerCase().includes('advance') && isBondValidStatus(b.status)) ? 1 : 0;
-  const hasRetBound = (project.bonds || []).some(b => b.type.toLowerCase().includes('retention') && isBondValidStatus(b.status)) ? 1 : 0;
-  
-  // Others defaults
-  const hasCarBound = (project.bonds || []).some(b => b.type.toLowerCase().includes('car') && isBondValidStatus(b.status)) ? 1 : 0;
-  const hasProfBound = (project.bonds || []).some(b => (b.type.toLowerCase().includes('indemnity') || b.type.toLowerCase().includes('professional')) && isBondValidStatus(b.status)) ? 1 : 0;
-  const hasPlantBound = (project.bonds || []).some(b => (b.type.toLowerCase().includes('plant') || b.type.toLowerCase().includes('equipment')) && isBondValidStatus(b.status)) ? 1 : 0;
+  const isBondExpiredStatus = (st?: string) => {
+    if (!st) return false;
+    const s = st.toLowerCase();
+    return s === 'expired';
+  };
+
+  const evaluateBondItem = (bonds: any[], predicate: (b: any) => boolean) => {
+    const matched = bonds.filter(predicate);
+    if (matched.length === 0) {
+      return { naActive: true, alloc: 0 };
+    }
+    const hasExpired = matched.some(b => isBondExpiredStatus(b.status));
+    if (hasExpired) {
+      return { naActive: false, alloc: 0 };
+    }
+    const hasValidOrRecovered = matched.some(b => isBondValidStatus(b.status));
+    if (hasValidOrRecovered) {
+      return { naActive: false, alloc: 1 };
+    }
+    return { naActive: false, alloc: isBondValidStatus(matched[0].status) ? 1 : 0 };
+  };
 
   // 4. EVM Calculations for SC4.2 (Schedule Variance) via unified engine
   const evm = calculateProjectEvm(project);
@@ -1101,7 +1114,7 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
 
   return allKpis.map(k => {
     let computedAlloc = k.alloc;
-    const naActive = k.naActive || false;
+    let computedNaActive = k.naActive || false;
 
     if (k.itemId === 'PP-1') {
       if (k.isOverridden && k.alloc !== undefined) {
@@ -1155,17 +1168,29 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
     } else if (k.itemId === 'CC-1F' && autoCc1fScore !== null) {
       computedAlloc = autoCc1fScore;
     } else if (k.itemId === 'CC-3A') {
-      computedAlloc = hasPerfBound;
+      const res = evaluateBondItem(project.bonds || [], b => b.type.toLowerCase().includes('performance'));
+      computedAlloc = res.alloc;
+      computedNaActive = res.naActive;
     } else if (k.itemId === 'CC-3B') {
-      computedAlloc = hasAdvBound;
+      const res = evaluateBondItem(project.bonds || [], b => b.type.toLowerCase().includes('advance'));
+      computedAlloc = res.alloc;
+      computedNaActive = res.naActive;
     } else if (k.itemId === 'CC-3C') {
-      computedAlloc = hasRetBound;
+      const res = evaluateBondItem(project.bonds || [], b => b.type.toLowerCase().includes('retention'));
+      computedAlloc = res.alloc;
+      computedNaActive = res.naActive;
     } else if (k.itemId === 'CC-3D') {
-      computedAlloc = hasCarBound;
+      const res = evaluateBondItem(project.bonds || [], b => b.type.toLowerCase().includes('car') || b.type.toLowerCase().includes('all risk') || b.type.toLowerCase().includes('all-risk'));
+      computedAlloc = res.alloc;
+      computedNaActive = res.naActive;
     } else if (k.itemId === 'CC-3E') {
-      computedAlloc = hasProfBound;
+      const res = evaluateBondItem(project.bonds || [], b => b.type.toLowerCase().includes('indemnity') || b.type.toLowerCase().includes('professional'));
+      computedAlloc = res.alloc;
+      computedNaActive = res.naActive;
     } else if (k.itemId === 'CC-3F') {
-      computedAlloc = hasPlantBound;
+      const res = evaluateBondItem(project.bonds || [], b => b.type.toLowerCase().includes('plant') || b.type.toLowerCase().includes('equipment') || b.type.toLowerCase().includes('machinery'));
+      computedAlloc = res.alloc;
+      computedNaActive = res.naActive;
     } else if (k.itemId === 'RK-1' || k.itemId === 'RK-2' || k.itemId === 'RK-3' || k.itemId === 'RK-4') {
       const roadRisks = project.risks || [];
       const activeRisks = roadRisks.filter(r => r.status === 'Active');
@@ -1208,6 +1233,7 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
     }
 
     let alloc = k.isOverridden ? k.alloc : computedAlloc;
+    let naActive = k.isOverridden ? (k.naActive || false) : computedNaActive;
 
     if (isRk1No && (k.itemId === 'RK-1' || k.itemId === 'RK-2' || k.itemId === 'RK-3' || k.itemId === 'RK-4')) {
       alloc = k.itemId === 'RK-1' ? 1 : 100;
