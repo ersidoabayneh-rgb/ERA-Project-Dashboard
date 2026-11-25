@@ -734,6 +734,7 @@ export default function App() {
   const [editClient, setEditClient] = useState('');
   const [editConsultant, setEditConsultant] = useState('');
   const [editContractor, setEditContractor] = useState('');
+  const [costDisplayMode, setCostDisplayMode] = useState<'birr' | 'million'>('birr');
   const [editSignDate, setEditSignDate] = useState('');
   const [editStartDate, setEditStartDate] = useState('');
   const [editOrigDays, setEditOrigDays] = useState(0);
@@ -810,7 +811,7 @@ export default function App() {
       setEditInterimEotDays(currentProject.interimEotDays || 0);
       setEditDlpDays(currentProject.dlpDays !== undefined ? currentProject.dlpDays : 365);
       setEditDlpStartDate(currentProject.dlpStartDate || '');
-      setEditOrigAmount(currentProject.origAmount || 0);
+      setEditOrigAmount((currentProject.origAmount || 0) * 1_000_000);
       setEditProvisionalSum(currentProject.provisionalSum || 0);
       const vVal = currentProject.variation || 0;
       setEditVariation(vVal);
@@ -3821,7 +3822,7 @@ let isBatchSyncRunning = false;
       interimEotDays: editInterimEotDays,
       dlpDays: editDlpDays,
       dlpStartDate: editDlpStartDate.trim() ? editDlpStartDate.trim() : undefined,
-      origAmount: editOrigAmount,
+      origAmount: editOrigAmount / 1_000_000,
       provisionalSum: editProvisionalSum,
       variation: editVariation,
       enableUsdPayments: editEnableUsdPayments,
@@ -4814,7 +4815,7 @@ let isBatchSyncRunning = false;
                               setEditOrigDays(currentProject.origDays);
                               setEditEotDays(currentProject.eotDays);
                               setEditInterimEotDays(currentProject.interimEotDays || 0);
-                              setEditOrigAmount(currentProject.origAmount);
+                              setEditOrigAmount((currentProject.origAmount || 0) * 1_000_000);
                               setEditProvisionalSum(currentProject.provisionalSum);
                               const vVal = currentProject.variation || 0;
                               setEditVariation(vVal);
@@ -5029,13 +5030,32 @@ let isBatchSyncRunning = false;
 
                         {/* Section 3: Value Outlay Structure */}
                         <div className="bg-slate-50/50 dark:bg-slate-900/10 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-805 space-y-2.5">
-                          <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Financial Cost Outlay</h4>
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Financial Cost Outlay</h4>
+                            <button
+                              type="button"
+                              onClick={() => setCostDisplayMode(prev => prev === 'birr' ? 'million' : 'birr')}
+                              className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800 cursor-pointer"
+                              title="Toggle between Full Birr (Br) and Millions (M. Birr)"
+                            >
+                              {costDisplayMode === 'birr' ? 'View M. Birr' : 'View Full Br'}
+                            </button>
+                          </div>
                           
                           <div className="space-y-1">
-                            <span className="text-[9px] text-slate-400 block font-sans font-bold">Original Contract Amount</span>
-                            <span className="text-slate-850 dark:text-white block font-mono font-black text-2xs">
-                              <AnimatedCounter value={currentProject.origAmount * 1_000_000} prefix="Br. " />
+                            <span className="text-[9px] text-slate-400 block font-sans font-bold">
+                              {costDisplayMode === 'million' ? 'ORIGINAL COST (M. Birr)' : 'Original Contract Amount (Br)'}
                             </span>
+                            <span className="text-slate-850 dark:text-white block font-mono font-black text-2xs">
+                              {costDisplayMode === 'million' ? (
+                                <span>{currentProject.origAmount || 0} <span className="text-[9px] font-normal text-slate-500">M. Birr</span></span>
+                              ) : (
+                                <AnimatedCounter value={currentProject.origAmount * 1_000_000} prefix="Br. " />
+                              )}
+                            </span>
+                            {costDisplayMode === 'million' && (
+                              <span className="text-[8px] text-slate-400 block font-sans">Total Millions ETB</span>
+                            )}
                           </div>
 
                           <div className="space-y-1">
@@ -5439,8 +5459,8 @@ let isBatchSyncRunning = false;
                           
                           <div className="space-y-1 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800" title="Original contract cost in Millions ETB">
                             <div className="flex items-center justify-between">
-                              <label className="text-[9px] text-slate-400 block font-mono">ORIGINAL COST (M. Birr)</label>
-                              <span className="text-[8px] text-slate-400 font-mono">Total Millions ETB</span>
+                              <label className="text-[9px] text-slate-400 block font-mono font-bold">Original Contract Amount (Br)</label>
+                              <span className="text-[8px] text-slate-400 font-mono">Insert value in full Birr</span>
                             </div>
                             <input
                               type="number"
