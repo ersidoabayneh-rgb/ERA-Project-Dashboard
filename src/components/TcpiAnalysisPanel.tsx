@@ -29,7 +29,6 @@ function evaluateTcpiTarget(
   targetAmount: number,
   EV: number,
   AC: number,
-  CPI: number,
   BAC: number
 ): TcpiEvaluation {
   const remainingWork = Math.max(0, BAC - EV);
@@ -81,34 +80,30 @@ function evaluateTcpiTarget(
     thresholdText = 'TCPI < 1.0: Lower cost efficiency is needed; there is budget breathing room.';
   }
 
-  const efficiencyGap = tcpi - CPI;
-  const efficiencyChangePct = CPI > 0 ? ((tcpi - CPI) / CPI) * 100 : null;
-  const pctGapStr = efficiencyChangePct !== null ? `${Math.abs(efficiencyChangePct).toFixed(1)}%` : 'N/A';
+  const efficiencyGap = tcpi - 1.0;
+  const efficiencyChangePct = (tcpi - 1.0) * 100;
+  const pctGapStr = `${Math.abs(efficiencyChangePct).toFixed(1)}%`;
 
   let judgmentLabel: string;
   let judgmentTone: TcpiEvaluation['judgmentTone'];
   let judgmentDetail: string;
 
-  if (tcpi < 1.0 && CPI >= tcpi) {
+  if (tcpi < 0.995) {
     judgmentLabel = 'Achievable · Budget Breathing Room';
     judgmentTone = 'favorable';
-    judgmentDetail = `Required future efficiency (${tcpi.toFixed(3)}) is below historical CPI (${CPI.toFixed(3)}) and below 1.000. The project carries budget breathing room and can realistically hit ${targetName} at current or slightly relaxed cost efficiency.`;
-  } else if (Math.abs(efficiencyGap) <= 0.03 && tcpi <= 1.05) {
-    judgmentLabel = 'Realistic · Maintain Current Pace';
+    judgmentDetail = `Required future efficiency (${tcpi.toFixed(3)}) is below the 1.000 planned baseline. The project carries budget breathing room and can realistically hit ${targetName} at or slightly below planned cost efficiency.`;
+  } else if (tcpi <= 1.03) {
+    judgmentLabel = 'Realistic · Maintain Planned Pace';
     judgmentTone = 'realistic';
-    judgmentDetail = `Required efficiency (${tcpi.toFixed(3)}) aligns closely with cumulative CPI (${CPI.toFixed(3)}). Hitting ${targetName} is realistic provided existing cost controls and certification discipline are sustained.`;
-  } else if (tcpi <= CPI) {
-    judgmentLabel = 'Achievable · Within Historical CPI';
-    judgmentTone = 'favorable';
-    judgmentDetail = `Required efficiency (${tcpi.toFixed(3)}) is at or below cumulative CPI (${CPI.toFixed(3)}), indicating historical cost performance supports achieving ${targetName}.`;
-  } else if (efficiencyGap <= 0.12 && tcpi <= 1.15) {
+    judgmentDetail = `Required efficiency (${tcpi.toFixed(3)}) aligns closely with the 1.000 planned baseline. Hitting ${targetName} is realistic provided existing cost controls and certification discipline are sustained.`;
+  } else if (tcpi <= 1.15) {
     judgmentLabel = 'Challenging · Recovery Needed';
     judgmentTone = 'caution';
-    judgmentDetail = `To hit ${targetName}, remaining work requires ${tcpi.toFixed(3)} efficiency—${pctGapStr} higher than cumulative CPI (${CPI.toFixed(3)}). Recoverable only with active cost containment, strict variation control, and tighter IPC scrutiny.`;
+    judgmentDetail = `To hit ${targetName}, remaining work requires ${tcpi.toFixed(3)} efficiency—${pctGapStr} higher than the 1.000 planned baseline. Recoverable only with active cost containment, strict variation control, and tighter IPC scrutiny.`;
   } else {
     judgmentLabel = 'Unrealistic · High Overrun Risk';
     judgmentTone = 'critical';
-    judgmentDetail = `Requires ${tcpi.toFixed(3)} efficiency on remaining work—a ${pctGapStr} jump above cumulative CPI (${CPI.toFixed(3)}). Per PMI EVM guidance, sustaining such a sharp reversal late in delivery is typically unrealistic without scope adjustment or formal EAC re-baselining.`;
+    judgmentDetail = `Requires ${tcpi.toFixed(3)} efficiency on remaining work—a ${pctGapStr} jump above the 1.000 planned baseline. Per PMI EVM guidance, sustaining such a sharp reversal late in delivery is typically unrealistic without scope adjustment or formal EAC re-baselining.`;
   }
 
   return {
@@ -131,21 +126,21 @@ export default function TcpiAnalysisPanel({
   onSelectScenario,
   formatBr,
 }: TcpiAnalysisPanelProps) {
-  const { BAC, EV, AC, CPI, EAC, eacScenarios } = evm;
+  const { BAC, EV, AC, EAC, eacScenarios } = evm;
   const activeScenarioObj = eacScenarios.find(s => s.id === activeScenario) || eacScenarios[0];
   const activeEac = EAC;
 
   const bacEval = useMemo(
-    () => evaluateTcpiTarget('BAC (Original Budget)', BAC, EV, AC, CPI, BAC),
-    [BAC, EV, AC, CPI]
+    () => evaluateTcpiTarget('BAC (Original Budget)', BAC, EV, AC, BAC),
+    [BAC, EV, AC]
   );
 
   const eacEval = useMemo(
-    () => evaluateTcpiTarget('EAC (Revised Forecast)', activeEac, EV, AC, CPI, BAC),
-    [activeEac, EV, AC, CPI, BAC]
+    () => evaluateTcpiTarget('EAC (Revised Forecast)', activeEac, EV, AC, BAC),
+    [activeEac, EV, AC, BAC]
   );
 
-  // Executive consolidated judgment comparing TCPI (BAC), TCPI (EAC), and Cumulative CPI
+  // Executive consolidated judgment comparing TCPI (BAC) and TCPI (EAC) against the 1.000 baseline
   const executiveSummary = useMemo(() => {
     if (bacEval.thresholdRule === 'complete') {
       return {
@@ -159,36 +154,36 @@ export default function TcpiAnalysisPanel({
       return {
         headline: 'Original BAC Exhausted — Shift Cost Control Target to Revised EAC',
         tone: 'critical' as const,
-        narrative: `Actual Cost (${formatBr(AC)}) already exceeds Original BAC (${formatBr(BAC)}), making TCPI to BAC unattainable. Management should govern remaining work using the revised EAC (${formatBr(activeEac)}), which requires TCPI = ${eacEval.value !== null ? eacEval.value.toFixed(3) : 'N/A'} against cumulative CPI ${CPI.toFixed(3)}.`,
+        narrative: `Actual Cost (${formatBr(AC)}) already exceeds Original BAC (${formatBr(BAC)}), making TCPI to BAC unattainable. Management should govern remaining work using the revised EAC (${formatBr(activeEac)}), which requires TCPI = ${eacEval.value !== null ? eacEval.value.toFixed(3) : 'N/A'}.`,
       };
     }
-    if (bacEval.value <= CPI && bacEval.value <= 1.0) {
+    if (bacEval.value <= 1.0) {
       return {
-        headline: 'On Track — Current Cost Efficiency Supports Original Budget (BAC)',
+        headline: 'On Track — Remaining Efficiency Supports Original Budget (BAC)',
         tone: 'favorable' as const,
-        narrative: `Cumulative CPI (${CPI.toFixed(3)}) outperforms TCPI to BAC (${bacEval.value.toFixed(3)}). Remaining work enjoys budget breathing room and can meet the approved BAC without extraordinary cost cuts.`,
+        narrative: `TCPI to BAC (${bacEval.value.toFixed(3)}) is at or below the 1.000 planned baseline. Remaining work enjoys budget breathing room and can meet the approved BAC without extraordinary cost cuts.`,
       };
     }
     if (bacEval.judgmentTone === 'realistic') {
       return {
-        headline: 'Realistic Target — Sustain Historical Cost Discipline to Hold BAC',
+        headline: 'Realistic Target — Sustain Cost Discipline to Hold BAC',
         tone: 'realistic' as const,
-        narrative: `TCPI to BAC (${bacEval.value.toFixed(3)}) closely tracks cumulative CPI (${CPI.toFixed(3)}). Holding current productivity and preventing unapproved variations keeps BAC achievable.`,
+        narrative: `TCPI to BAC (${bacEval.value.toFixed(3)}) closely tracks the 1.000 planned baseline. Holding current productivity and preventing unapproved variations keeps BAC achievable.`,
       };
     }
     if (bacEval.judgmentTone === 'caution') {
       return {
         headline: 'Efficiency Recovery Required — Tighten Cost Control or Track EAC',
         tone: 'caution' as const,
-        narrative: `Meeting BAC requires improving cost efficiency from CPI ${CPI.toFixed(3)} to TCPI ${bacEval.value.toFixed(3)}. If recovery measures cannot close this gap, use the revised EAC (${formatBr(activeEac)}, TCPI ${eacEval.value !== null ? eacEval.value.toFixed(3) : 'N/A'}) as the realistic funding baseline.`,
+        narrative: `Meeting BAC requires achieving ${bacEval.value.toFixed(3)} cost efficiency on remaining work. If recovery measures cannot close this gap, use the revised EAC (${formatBr(activeEac)}, TCPI ${eacEval.value !== null ? eacEval.value.toFixed(3) : 'N/A'}) as the realistic funding baseline.`,
       };
     }
     return {
-      headline: 'Critical Alert — Original BAC Unlikely Based on Historical CPI',
+      headline: 'Critical Alert — Original BAC Unlikely Without Re-Baselining',
       tone: 'critical' as const,
-      narrative: `TCPI to BAC (${bacEval.value.toFixed(3)}) exceeds cumulative CPI (${CPI.toFixed(3)}) by +${(bacEval.value - CPI).toFixed(3)}. Under PMI EVM principles, reversing an overrun of this magnitude without scope revision is unrealistic; re-baseline governance around EAC (${formatBr(activeEac)}, TCPI ${eacEval.value !== null ? eacEval.value.toFixed(3) : 'N/A'}).`,
+      narrative: `TCPI to BAC (${bacEval.value.toFixed(3)}) exceeds the 1.000 baseline by +${(bacEval.value - 1.0).toFixed(3)}. Under PMI EVM principles, reversing an overrun of this magnitude without scope revision is unrealistic; re-baseline governance around EAC (${formatBr(activeEac)}, TCPI ${eacEval.value !== null ? eacEval.value.toFixed(3) : 'N/A'}).`,
     };
-  }, [bacEval, eacEval, AC, BAC, activeEac, CPI, formatBr]);
+  }, [bacEval, eacEval, AC, BAC, activeEac, formatBr]);
 
   const toneStyles = (tone: TcpiEvaluation['judgmentTone']) => {
     if (tone === 'favorable') {
@@ -225,7 +220,6 @@ export default function TcpiAnalysisPanel({
 
   const maxBarScale = Math.max(
     1.5,
-    CPI,
     bacEval.value ?? 0,
     eacEval.value ?? 0
   );
@@ -248,7 +242,7 @@ export default function TcpiAnalysisPanel({
               To-Complete Performance Index (TCPI) &amp; Cost Efficiency Judgment
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Measures cost efficiency required on remaining work (BAC &minus; EV) relative to remaining funds available, benchmarked against cumulative CPI ({CPI.toFixed(3)}).
+              Measures cost efficiency required on remaining work (BAC &minus; EV) relative to remaining funds available against the 1.000 planned baseline.
             </p>
           </div>
         </div>
@@ -421,14 +415,14 @@ export default function TcpiAnalysisPanel({
         </div>
       </div>
 
-      {/* TCPI vs. Cumulative CPI Comparison & Executive Judgment */}
+      {/* TCPI Target Comparison & Executive Judgment */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
         {/* Visual Comparison Bars */}
         <div className="lg:col-span-5 p-4 rounded-xl border border-slate-200 dark:border-slate-700/70 bg-slate-50/50 dark:bg-slate-900/35 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
               <TrendingUp className="w-4 h-4 text-indigo-500" />
-              TCPI vs. Cumulative CPI Benchmark
+              TCPI Target Comparison
             </span>
             <span className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
               Baseline = 1.000
@@ -436,21 +430,6 @@ export default function TcpiAnalysisPanel({
           </div>
 
           <div className="space-y-3 pt-1">
-            {/* Bar 1: Cumulative CPI */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-xs font-mono tabular-nums">
-                <span className="font-sans font-medium text-slate-700 dark:text-slate-300">Cumulative CPI (Past Performance)</span>
-                <span className={`font-bold ${CPI >= 1.0 ? 'text-emerald-600 dark:text-emerald-400' : CPI >= 0.9 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                  {CPI.toFixed(3)}
-                </span>
-              </div>
-              <div className="h-2.5 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${CPI >= 1.0 ? 'bg-emerald-500' : CPI >= 0.9 ? 'bg-amber-500' : 'bg-rose-500'}`}
-                  style={{ width: pctWidth(CPI) }}
-                />
-              </div>
-            </div>
 
             {/* Bar 2: TCPI (BAC) */}
             <div className="space-y-1">
@@ -507,7 +486,7 @@ export default function TcpiAnalysisPanel({
 
           {/* Efficiency Delta Summary */}
           <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-300">
-            <span>Efficiency Gap (TCPI_BAC &minus; CPI):</span>
+            <span>Variance vs. Baseline (TCPI_BAC &minus; 1.000):</span>
             <span className="font-bold">
               {bacEval.efficiencyGap !== null
                 ? `${bacEval.efficiencyGap >= 0 ? '+' : ''}${bacEval.efficiencyGap.toFixed(3)}`
@@ -559,7 +538,7 @@ export default function TcpiAnalysisPanel({
           <div className="flex items-start gap-2 text-[11px] text-slate-500 dark:text-slate-400 pt-1">
             <Info className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
             <span>
-              <strong className="text-slate-700 dark:text-slate-300">PMI Forecasting Context:</strong> Always compare TCPI against cumulative CPI ({CPI.toFixed(3)}) to judge realism. If TCPI significantly exceeds CPI, historical productivity makes the budget target improbable without formal scope or EAC adjustment.
+              <strong className="text-slate-700 dark:text-slate-300">PMI Forecasting Context:</strong> Compare TCPI against the 1.000 planned baseline and revised EAC targets to judge realism. If TCPI significantly exceeds 1.000, meeting the budget target without formal scope or EAC adjustment becomes improbable.
             </span>
           </div>
         </div>
