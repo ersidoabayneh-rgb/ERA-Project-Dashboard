@@ -105,6 +105,8 @@ interface SettingsViewProps {
   onClearAuditLogs?: () => void;
   themeSettings?: ThemeSettings;
   onUpdateThemeSettings?: (settings: ThemeSettings) => void;
+  tcpiAlertThreshold?: number;
+  onUpdateTcpiAlertThreshold?: (threshold: number) => void;
 }
 
 export default function SettingsView({
@@ -136,7 +138,9 @@ export default function SettingsView({
   projects = [],
   onClearAuditLogs,
   themeSettings = DEFAULT_THEME_SETTINGS,
-  onUpdateThemeSettings
+  onUpdateThemeSettings,
+  tcpiAlertThreshold: propsTcpiAlertThreshold,
+  onUpdateTcpiAlertThreshold
 }: SettingsViewProps) {
 
   const isMasterAdmin = Boolean(
@@ -146,7 +150,31 @@ export default function SettingsView({
     (currentUser?.username && currentUser.username.toLowerCase().includes('ersido'))
   );
 
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'security_audit' | 'scoring' | 'pdf' | 'appearance' | 'users' | 'tables' | 'all'>('security_audit');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'security_audit' | 'scoring' | 'evm_thresholds' | 'pdf' | 'appearance' | 'users' | 'tables' | 'all'>('security_audit');
+  const [tcpiThresholdDraft, setTcpiThresholdDraft] = useState<number>(() => {
+    if (typeof propsTcpiAlertThreshold === 'number' && !isNaN(propsTcpiAlertThreshold)) {
+      return propsTcpiAlertThreshold;
+    }
+    try {
+      const saved = localStorage.getItem('era_tcpi_alert_threshold');
+      if (saved) {
+        const n = Number(saved);
+        if (!isNaN(n) && n > 0) return n;
+      }
+    } catch {}
+    return 1.05;
+  });
+
+  const handleSaveTcpiThreshold = (nextVal: number) => {
+    const clamped = Number(Math.min(3.0, Math.max(0.5, nextVal)).toFixed(2));
+    setTcpiThresholdDraft(clamped);
+    safeSetSmallItem('era_tcpi_alert_threshold', String(clamped));
+    if (onUpdateTcpiAlertThreshold) {
+      onUpdateTcpiAlertThreshold(clamped);
+    }
+    setSaveSuccessMessage(`TCPI Alert Threshold saved: rows exceeding ${clamped.toFixed(2)} will be highlighted in red on the EVM page.`);
+    setTimeout(() => setSaveSuccessMessage(null), 3500);
+  };
   const [activeModelTab, setActiveModelTab] = useState<'contractor' | 'consultant'>('contractor');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tempContractorWeights, setTempContractorWeights] = useState<ContractorScoringWeights>(contractorWeights);
@@ -345,6 +373,19 @@ export default function SettingsView({
 
         <button
           type="button"
+          onClick={() => setActiveSettingsTab('evm_thresholds')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+            activeSettingsTab === 'evm_thresholds'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-400/40'
+              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700/80'
+          }`}
+        >
+          <Activity className="w-4 h-4 text-rose-400" />
+          <span>EVM &amp; TCPI Alerts</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveSettingsTab('pdf')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
             activeSettingsTab === 'pdf'
@@ -502,6 +543,129 @@ export default function SettingsView({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+      )}
+
+      {/* EVM & TCPI Custom Alert Threshold Configuration */}
+      {(activeSettingsTab === 'evm_thresholds' || activeSettingsTab === 'all') && (
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/70 p-6 rounded-2xl shadow-sm space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-700/60 pb-4">
+          <div className="flex items-start gap-3">
+            <div className="p-3 bg-rose-500/15 text-rose-600 dark:text-rose-400 rounded-xl border border-rose-500/30 shrink-0">
+              <Activity className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-base text-slate-900 dark:text-zinc-100">
+                EVM To-Complete Performance Index (TCPI) Alert Threshold
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
+                Define the custom TCPI alert ceiling for the EVM page. Rows in the EVM Metric Computations Table and EAC Scenarios Table whose calculated TCPI exceeds this value are highlighted in red and flagged on the TCPI trajectory chart.
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right font-mono tabular-nums shrink-0">
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">Active Alert Limit</div>
+            <div className="text-2xl font-bold text-rose-600 dark:text-rose-400">
+              &gt; {tcpiThresholdDraft.toFixed(2)}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <label htmlFor="tcpi-alert-threshold-input" className="text-slate-700 dark:text-slate-200">
+                Custom TCPI Alert Threshold
+              </label>
+              <span className="font-mono tabular-nums text-slate-500 dark:text-slate-400">
+                Range: 0.50 &ndash; 2.50 (Baseline = 1.00)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={0.8}
+                max={2.0}
+                step={0.01}
+                value={Math.min(2.0, Math.max(0.8, tcpiThresholdDraft))}
+                onChange={(e) => handleSaveTcpiThreshold(Number(e.target.value))}
+                className="flex-1 accent-rose-600 cursor-pointer"
+              />
+              <input
+                id="tcpi-alert-threshold-input"
+                type="number"
+                min={0.5}
+                max={3.0}
+                step={0.01}
+                value={tcpiThresholdDraft}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  if (!isNaN(val)) setTcpiThresholdDraft(val);
+                }}
+                onBlur={() => handleSaveTcpiThreshold(tcpiThresholdDraft)}
+                className="w-24 px-3 py-1.5 text-right font-mono tabular-nums text-sm font-bold rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white focus:outline-none focus:border-rose-500"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Presets:</span>
+              {[
+                { label: '1.00 (Strict Baseline)', val: 1.0 },
+                { label: '1.05 (+5% Tolerance)', val: 1.05 },
+                { label: '1.10 (+10% Warning)', val: 1.1 },
+                { label: '1.15 (+15% Critical)', val: 1.15 },
+                { label: '1.20 (+20% Severe)', val: 1.2 },
+              ].map((p) => (
+                <button
+                  key={p.val}
+                  type="button"
+                  onClick={() => handleSaveTcpiThreshold(p.val)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+                    Math.abs(tcpiThresholdDraft - p.val) < 0.001
+                      ? 'bg-rose-600 text-white border-rose-600'
+                      : 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/60 space-y-2.5 text-xs">
+            <div className="font-bold text-slate-800 dark:text-slate-100">
+              How This Threshold Applies on the EVM Page
+            </div>
+            <ul className="space-y-1.5 text-slate-600 dark:text-slate-300 list-disc pl-4">
+              <li>
+                <span className="font-semibold text-slate-800 dark:text-slate-100">TCPI Trajectory Chart:</span> Plots historical and current TCPI against the <span className="font-mono">1.00</span> project threshold and draws a red alert line at <span className="font-mono font-bold text-rose-600 dark:text-rose-400">{tcpiThresholdDraft.toFixed(2)}</span>.
+              </li>
+              <li>
+                <span className="font-semibold text-slate-800 dark:text-slate-100">Red Row Highlighting:</span> Any TCPI row in the EVM Metric Computations Table or EAC Scenarios Table exceeding <span className="font-mono font-bold text-rose-600 dark:text-rose-400">{tcpiThresholdDraft.toFixed(2)}</span> turns red immediately.
+              </li>
+            </ul>
+            <div className="pt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleSaveTcpiThreshold(tcpiThresholdDraft)}
+                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Threshold</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveTcpiThreshold(1.05)}
+                className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset (1.05)</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

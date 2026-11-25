@@ -19,6 +19,7 @@ import {
 import { Project } from '../types';
 import { parseMonthKey, isProjectActiveLifecycle, resolveCurrentMonthKey, isSameMonth } from '../lib/monthlySync';
 import { parseLocalDate, getRevisedCompletionDate } from '../lib/dateUtils';
+import { calculateIpcMaturation } from '../lib/ipcCalculations';
 
 // ==========================================
 // 1. EFY & Financial PA Derivation Helpers
@@ -275,38 +276,87 @@ const CustomForecastTooltip: React.FC<CustomForecastTooltipProps> = ({
 }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
+    const isPastAccomplished = Boolean(data.isAccomplishedOnly);
     return (
-      <div className="bg-slate-900/95 dark:bg-slate-950/95 p-3 rounded-xl border border-slate-700 dark:border-indigo-500/60 shadow-2xl text-xs space-y-1.5 text-white backdrop-blur-md min-w-[260px]">
+      <div className="bg-slate-900/95 dark:bg-slate-950/95 p-3 rounded-xl border border-slate-700 dark:border-indigo-500/60 shadow-2xl text-xs space-y-1.5 text-white backdrop-blur-md min-w-[270px]">
         <div className="flex items-center justify-between border-b border-slate-800 dark:border-indigo-900 pb-1.5">
           <span className="font-bold text-amber-300">{data.fullPeriod || label}</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 dark:bg-indigo-950 border border-slate-700 dark:border-indigo-700/60 text-indigo-300">
-            Pn: {data.pnFactor.toFixed(4)}
-          </span>
+          {isPastAccomplished ? (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-teal-950 border border-teal-700/60 text-teal-300">
+              Accomplished EFY
+            </span>
+          ) : (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 dark:bg-indigo-950 border border-slate-700 dark:border-indigo-700/60 text-indigo-300">
+              Pn: {Number(data.pnFactor || 1).toFixed(4)}
+            </span>
+          )}
         </div>
         <div className="text-[10px] text-slate-400 font-semibold">
-          Remaining Works Forecast · Plan &amp; EFY Basis
+          {isPastAccomplished
+            ? 'Historical Financial Data · Accomplishment & Net Payments'
+            : 'Remaining Works Forecast · Plan & EFY Basis'}
         </div>
         <div className="space-y-1 pt-1 font-mono text-[11px]">
-          <div className="flex justify-between items-center text-slate-300">
-            <span>Remaining Base Planned:</span>
-            <span className="font-bold text-white">{formatBr(data.baseCost)}</span>
-          </div>
-          <div className="flex justify-between items-center text-rose-300">
-            <span>Forecasted PA Adder:</span>
-            <span className="font-bold">+{formatBr(data.paAdder)}</span>
-          </div>
-          <div className="flex justify-between items-center text-emerald-300 font-bold border-t border-slate-800 pt-1">
-            <span>Estimated Outlay incl. PA:</span>
-            <span>{formatBr(data.escalatedCost)}</span>
-          </div>
-          <div className="flex justify-between items-center text-purple-300">
-            <span>Cumulative Remaining:</span>
-            <span>{formatBr(data.cumulativeEscalated)}</span>
-          </div>
-          <div className="flex justify-between items-center text-amber-300 text-[10px] pt-1 border-t border-slate-800">
-            <span>Remaining Plan (EFY):</span>
-            <span>{data.remainingPlanPct.toFixed(1)}%</span>
-          </div>
+          {data.hasAccomplishedData && (
+            <>
+              <div className="flex justify-between items-center text-teal-300">
+                <span>Accomplished Budget Used:</span>
+                <span className="font-bold">{formatBr(data.accomplishedBudgetUsed || 0)}</span>
+              </div>
+              <div className="flex justify-between items-center text-sky-300">
+                <span>Contractor Net Certified:</span>
+                <span className="font-bold">{formatBr(data.contractorNetCertified || 0)}</span>
+              </div>
+              <div className="flex justify-between items-center text-cyan-200">
+                <span>Contractor Net Paid:</span>
+                <span className="font-bold">{formatBr(data.contractorNetPaid || 0)}</span>
+              </div>
+              {data.accomplishedPct !== undefined && data.accomplishedPct > 0 && (
+                <div className="flex justify-between items-center text-slate-300 text-[10px]">
+                  <span>EFY Accomplishment:</span>
+                  <span>{Number(data.accomplishedPct).toFixed(1)}%</span>
+                </div>
+              )}
+            </>
+          )}
+
+          {!isPastAccomplished && (
+            <>
+              <div className={`flex justify-between items-center text-slate-300 ${data.hasAccomplishedData ? 'border-t border-slate-800 pt-1' : ''}`}>
+                <span>Remaining Base Planned:</span>
+                <span className="font-bold text-white">{formatBr(data.baseCost || 0)}</span>
+              </div>
+              <div className="flex justify-between items-center text-rose-300">
+                <span>Forecasted PA Adder:</span>
+                <span className="font-bold">+{formatBr(data.paAdder || 0)}</span>
+              </div>
+              <div className="flex justify-between items-center text-emerald-300 font-bold border-t border-slate-800 pt-1">
+                <span>Estimated Outlay incl. PA:</span>
+                <span>{formatBr(data.escalatedCost || 0)}</span>
+              </div>
+              {data.budgetVarianceAbs !== undefined && (
+                <div className="flex justify-between items-center text-amber-300 text-[10px]">
+                  <span>Budget Variance ({data.budgetVarianceType === 'gap' ? 'Gap' : data.budgetVarianceType === 'surplus' ? 'Surplus' : 'On Plan'}):</span>
+                  <span>{formatBr(data.budgetVarianceAbs)}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center text-purple-300">
+                <span>Cumulative Remaining:</span>
+                <span>{formatBr(data.cumulativeEscalated || 0)}</span>
+              </div>
+              <div className="flex justify-between items-center text-amber-300 text-[10px] pt-1 border-t border-slate-800">
+                <span>Remaining Plan (EFY):</span>
+                <span>{Number(data.remainingPlanPct || 0).toFixed(1)}%</span>
+              </div>
+            </>
+          )}
+
+          {isPastAccomplished && (
+            <div className="flex justify-between items-center text-purple-300 border-t border-slate-800 pt-1">
+              <span>Cumulative Budget Used:</span>
+              <span className="font-bold">{formatBr(data.cumulativeTrajectory || 0)}</span>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -336,11 +386,15 @@ export interface ForecastYearRow {
   remainingPlanPct: number;
   weightSharePct: number;
   activeMonthsInEfy: number;
+  plannedBaseCost: number;
   baseCost: number;
   pnFactor: number;
   paAdder: number;
   paSourceTag: string;
   escalatedCost: number;
+  budgetVarianceAbs: number;
+  budgetVarianceSigned: number;
+  budgetVarianceType: 'gap' | 'surplus' | 'balanced';
   cumulativeEscalated: number;
   balanceRemaining: number;
 }
@@ -380,6 +434,7 @@ export default function YearlyCostForecastSection({
   const [calendarView, setCalendarView] = useState<'EFY' | 'G.C.'>('EFY');
   const [showDivisionBreakdown, setShowDivisionBreakdown] = useState<boolean>(false);
   const [showChart, setShowChart] = useState<boolean>(true);
+  const [showAccomplishedEfys, setShowAccomplishedEfys] = useState<boolean>(false);
   const [chartUnit, setChartUnit] = useState<'millions' | 'full'>('millions');
   const [chartType, setChartType] = useState<'line' | 'area'>('line');
   const [copied, setCopied] = useState<boolean>(false);
@@ -420,40 +475,52 @@ export default function YearlyCostForecastSection({
     const exactRow = parsedMonthly.find(
       pt => (pt.serial === currentMonthSerial || isSameMonth(pt.raw, currentMonthKey)) && pt.actual !== null
     );
+    const priorWithActual = parsedMonthly.filter(pt => pt.serial < currentMonthSerial && pt.actual !== null);
+    const latestPrior = priorWithActual.length > 0 ? priorWithActual[priorWithActual.length - 1] : null;
 
     let actualAtCurrentMonth = 0;
     let actualRefMonthLabel = parsedCurrent?.key || currentMonthKey;
     let hasExactCurrentMonthActual = false;
 
     if (exactRow && exactRow.actual !== null) {
-      actualAtCurrentMonth = exactRow.actual;
+      // Preserve non-decreasing cumulative progress against previous month's actual cumulative
+      actualAtCurrentMonth = latestPrior && latestPrior.actual !== null
+        ? Math.max(exactRow.actual, latestPrior.actual)
+        : exactRow.actual;
       actualRefMonthLabel = exactRow.key;
       hasExactCurrentMonthActual = true;
+    } else if (latestPrior && latestPrior.actual !== null) {
+      // Current month has no actual yet -> take value from previous month's actual cumulative
+      actualAtCurrentMonth = latestPrior.actual;
+      actualRefMonthLabel = latestPrior.key;
     } else {
-      const priorWithActual = parsedMonthly.filter(pt => pt.serial <= currentMonthSerial && pt.actual !== null);
-      if (priorWithActual.length > 0) {
-        const latestPrior = priorWithActual[priorWithActual.length - 1];
-        actualAtCurrentMonth = latestPrior.actual!;
-        actualRefMonthLabel = latestPrior.key;
+      const anyWithActual = parsedMonthly.filter(pt => pt.actual !== null);
+      if (anyWithActual.length > 0) {
+        const latestAny = anyWithActual[anyWithActual.length - 1];
+        actualAtCurrentMonth = latestAny.actual!;
+        actualRefMonthLabel = latestAny.key;
       } else {
-        const anyWithActual = parsedMonthly.filter(pt => pt.actual !== null);
-        if (anyWithActual.length > 0) {
-          const latestAny = anyWithActual[anyWithActual.length - 1];
-          actualAtCurrentMonth = latestAny.actual!;
-          actualRefMonthLabel = latestAny.key;
-        } else {
-          actualAtCurrentMonth = Number(project.physicalProgress) || 0;
-        }
+        actualAtCurrentMonth = Number(project.physicalProgress) || 0;
       }
     }
 
     const clampedActual = Math.max(0, Math.min(100, actualAtCurrentMonth));
     const remainingPct = Math.max(0, Math.min(100, 100 - clampedActual));
 
+    // Plan value at reporting month (for Plan vs Actual EFY budget adjustment)
+    const planOnOrBefore = parsedMonthly.filter(pt => pt.serial <= currentMonthSerial);
+    const planAtCurrentMonth = planOnOrBefore.length > 0
+      ? Math.max(0, Math.min(100, planOnOrBefore[planOnOrBefore.length - 1].plan))
+      : 0;
+    // Positive => Plan > Actual (add difference to EFY budget); Negative => Actual > Plan (subtract difference from EFY budget)
+    const monthPlanActualDiff = planAtCurrentMonth - clampedActual;
+
     return {
       currentMonthKey: parsedCurrent?.key || currentMonthKey,
       currentMonthSerial,
       actualAtCurrentMonth: clampedActual,
+      planAtCurrentMonth,
+      monthPlanActualDiff,
       remainingPct,
       actualRefMonthLabel,
       hasExactCurrentMonthActual
@@ -463,6 +530,8 @@ export default function YearlyCostForecastSection({
   const {
     currentMonthSerial,
     actualAtCurrentMonth,
+    planAtCurrentMonth,
+    monthPlanActualDiff,
     remainingPct,
     actualRefMonthLabel,
     hasExactCurrentMonthActual
@@ -548,34 +617,58 @@ export default function YearlyCostForecastSection({
 
     const candidateEfys = Array.from(efySet).sort((a, b) => a - b);
 
-    // Evaluate explicit Monthly Cumulative Plan increments for each EFY >= currentEfy
-    const evalPlanRows = (efys: number[]) =>
-      efys.map(efy => {
-        const prevEfyEndSerial = getEfyEndSerial(efy - 1);
-        const currCutoffSerial = hasExactCurrentMonthActual ? currentMonthSerial : currentMonthSerial - 1;
-        const startBaselineSerial =
-          efy === currentEfy
-            ? Math.max(prevEfyEndSerial, currCutoffSerial)
-            : prevEfyEndSerial;
+    // Evaluate Monthly Cumulative Plan for each EFY >= currentEfy with explicit Plan vs Actual difference adjustment:
+    // - Current EFY: remaining planned work in Current EFY (endPlan(EFY) - planAtCurrentMonth)
+    //   + (Plan - Actual) if Plan > Actual (additional EFY budget)
+    //   - (Actual - Plan) if Actual > Plan (subtracted from EFY budget; excess carries to subsequent EFYs)
+    // - Upcoming EFYs: Monthly Cumulative Plan EFY increment minus any excess subtraction carried forward
+    let carrySubtraction = 0;
+    const waterfallRows = candidateEfys.map(efy => {
+      const prevEfyEndSerial = getEfyEndSerial(efy - 1);
+      const endSerial = getEfyEndSerial(efy);
 
-        const endSerial = getEfyEndSerial(efy);
-        const startPlan = getPlanAtSerial(startBaselineSerial);
-        const endPlan = getPlanAtSerial(endSerial);
-        const planInc = Math.max(0, endPlan.value - startPlan.value);
+      const prevEfyEndPlan = getPlanAtSerial(prevEfyEndSerial).value;
+      const efyEndPlan = getPlanAtSerial(endSerial).value;
 
+      if (efy === currentEfy) {
+        const remPlannedAfterCurrentMonth = Math.max(0, efyEndPlan - planAtCurrentMonth);
+        const adjustedCurrentBudget = remPlannedAfterCurrentMonth + monthPlanActualDiff;
+        if (adjustedCurrentBudget >= 0) {
+          return {
+            efyYear: efy,
+            unadjustedPlanPct: remPlannedAfterCurrentMonth,
+            efyPlanBudget: adjustedCurrentBudget,
+            activeMonths: getRemainingMonthsInEfy(efy)
+          };
+        }
+        // Actual exceeded Current EFY's end plan -> Current EFY is 0%, carry excess subtraction to Upcoming EFYs
+        carrySubtraction = Math.abs(adjustedCurrentBudget);
         return {
           efyYear: efy,
-          planInc,
+          unadjustedPlanPct: remPlannedAfterCurrentMonth,
+          efyPlanBudget: 0,
           activeMonths: getRemainingMonthsInEfy(efy)
         };
-      });
+      }
 
-    const explicitRows = evalPlanRows(candidateEfys);
-    const totalExplicitPlanInc = explicitRows.reduce((sum, item) => sum + item.planInc, 0);
+      const upcomingEfyPlanInc = Math.max(0, efyEndPlan - prevEfyEndPlan);
+      const netUpcomingBudget = Math.max(0, upcomingEfyPlanInc - carrySubtraction);
+      carrySubtraction = Math.max(0, carrySubtraction - upcomingEfyPlanInc);
+
+      return {
+        efyYear: efy,
+        unadjustedPlanPct: upcomingEfyPlanInc,
+        efyPlanBudget: netUpcomingBudget,
+        activeMonths: getRemainingMonthsInEfy(efy)
+      };
+    });
+
+    const totalWaterfallBudget = waterfallRows.reduce((sum, item) => sum + item.efyPlanBudget, 0);
 
     interface EfyAllocationRow {
       efyYear: number;
       basisType: 'plan' | 'efy_pace';
+      unadjustedPlanPct: number;
       remainingPlanPct: number;
       weightSharePct: number;
       activeMonths: number;
@@ -588,71 +681,80 @@ export default function YearlyCostForecastSection({
         {
           efyYear: currentEfy,
           basisType: 'plan',
+          unadjustedPlanPct: 0,
           remainingPlanPct: 0,
           weightSharePct: 0,
           activeMonths: getRemainingMonthsInEfy(currentEfy)
         }
       ];
-    } else if (totalExplicitPlanInc > 0) {
-      // Case A: Future Monthly Cumulative Plan increments exist -> apportion remainingPct (100% - Actual) by Monthly Cumulative Plan EFY shares
-      const activePlanRows = explicitRows.filter(item => item.efyYear === currentEfy || item.planInc > 0);
-      const effectivePlanSum = activePlanRows.reduce((sum, item) => sum + item.planInc, 0) || 1;
+    } else if (totalWaterfallBudget > 0 && !(revCompEfy > currentEfy && getPlanAtSerial(getEfyEndSerial(currentEfy - 1)).value >= 99.99)) {
+      // Standard Plan + Plan-vs-Actual Variance Allocation across Current & Upcoming EFYs
+      const activePlanRows = waterfallRows.filter(item => item.efyYear === currentEfy || item.efyPlanBudget > 0.0001);
+      const effectiveSum = activePlanRows.reduce((sum, item) => sum + item.efyPlanBudget, 0) || 1;
 
       allocatedEfys = activePlanRows.map(item => {
-        const weightSharePct = (item.planInc / effectivePlanSum) * 100;
+        const weightSharePct = (item.efyPlanBudget / effectiveSum) * 100;
         const efyRemainingPlanPct = remainingPct * (weightSharePct / 100);
         return {
           efyYear: item.efyYear,
           basisType: 'plan',
+          unadjustedPlanPct: item.unadjustedPlanPct,
           remainingPlanPct: efyRemainingPlanPct,
           weightSharePct,
           activeMonths: item.activeMonths
         };
       });
     } else if (revCompEfy > currentEfy) {
-      // Case B1: Monthly plan completed earlier, revised contract completion EFY extends into future EFYs -> distribute remainingPct by active EFY months
-      const horizonRows = candidateEfys.map(efy => ({
-        efyYear: efy,
-        activeMonths: getRemainingMonthsInEfy(efy)
-      }));
+      // Approved EOT extends completion past Current EFY after monthly plan hit 100% -> distribute across active EFY months
+      const horizonRows = candidateEfys.map(efy => {
+        const wf = waterfallRows.find(w => w.efyYear === efy);
+        return {
+          efyYear: efy,
+          unadjustedPlanPct: wf ? wf.unadjustedPlanPct : 0,
+          activeMonths: getRemainingMonthsInEfy(efy)
+        };
+      });
       const totalActiveMonths = horizonRows.reduce((s, r) => s + r.activeMonths, 0) || 1;
       allocatedEfys = horizonRows.map(item => {
         const weightSharePct = (item.activeMonths / totalActiveMonths) * 100;
         return {
           efyYear: item.efyYear,
           basisType: 'efy_pace',
+          unadjustedPlanPct: item.unadjustedPlanPct,
           remainingPlanPct: remainingPct * (weightSharePct / 100),
           weightSharePct,
           activeMonths: item.activeMonths
         };
       });
     } else {
-      // Case B2: Monthly plan reached 100% earlier & contract date elapsed -> walk EFYs from currentEfy using Monthly Cumulative Plan pace (%/mo)
+      // Incomplete S-curve fallback: walk EFYs from currentEfy using Monthly Cumulative Plan pace (%/mo)
       const pace = Math.max(0.5, avgMonthlyPlanPace);
       let remLeft = remainingPct;
-      const paceRows: { efyYear: number; alloc: number; activeMonths: number }[] = [];
+      const paceRows: { efyYear: number; alloc: number; activeMonths: number; unadjustedPlanPct: number }[] = [];
 
       for (let step = 0; step < 6 && remLeft > 0.0001; step++) {
         const efy = currentEfy + step;
         const activeMonths = getRemainingMonthsInEfy(efy);
+        const wf = waterfallRows.find(w => w.efyYear === efy);
         if (activeMonths <= 0 && step === 0) {
-          paceRows.push({ efyYear: efy, alloc: 0, activeMonths: 0 });
+          paceRows.push({ efyYear: efy, alloc: 0, activeMonths: 0, unadjustedPlanPct: wf?.unadjustedPlanPct || 0 });
           continue;
         }
         const effectiveMonths = Math.max(1, activeMonths);
         const capacity = effectiveMonths * pace;
         const alloc = step === 5 ? remLeft : Math.min(remLeft, capacity);
-        paceRows.push({ efyYear: efy, alloc, activeMonths });
+        paceRows.push({ efyYear: efy, alloc, activeMonths, unadjustedPlanPct: wf?.unadjustedPlanPct || 0 });
         remLeft = Math.max(0, remLeft - alloc);
       }
 
       if (paceRows.length === 0) {
-        paceRows.push({ efyYear: currentEfy, alloc: remainingPct, activeMonths: getRemainingMonthsInEfy(currentEfy) });
+        paceRows.push({ efyYear: currentEfy, alloc: remainingPct, activeMonths: getRemainingMonthsInEfy(currentEfy), unadjustedPlanPct: 0 });
       }
 
       allocatedEfys = paceRows.map(item => ({
         efyYear: item.efyYear,
         basisType: 'efy_pace',
+        unadjustedPlanPct: item.unadjustedPlanPct,
         remainingPlanPct: item.alloc,
         weightSharePct: remainingPct > 0 ? (item.alloc / remainingPct) * 100 : 0,
         activeMonths: item.activeMonths
@@ -667,12 +769,23 @@ export default function YearlyCostForecastSection({
       const endGreg = getEfyEndGregYear(planData.efyYear);
       const weightSharePct = planData.weightSharePct;
       const remainingPlanPct = planData.remainingPlanPct;
+      const plannedBaseCost = contractBase * (planData.unadjustedPlanPct / 100);
       const baseCost = remainingBalance * (weightSharePct / 100);
 
       // Forecasted Pn using Baseline P0 & Annual PA Increment Rate derived from Financial Data page
       const pnFactor = basePaFactor * Math.pow(1 + annualInflation, idx);
       const paAdder = baseCost * Math.max(0, pnFactor - 1.0);
       const escalatedCost = baseCost + paAdder;
+
+      // Projected Budget Variance: absolute difference between planned baseline cost and actual projected outlay
+      const budgetVarianceSigned = escalatedCost - plannedBaseCost;
+      const budgetVarianceAbs = Math.abs(budgetVarianceSigned);
+      const budgetVarianceType: 'gap' | 'surplus' | 'balanced' =
+        Math.abs(budgetVarianceSigned) <= 1
+          ? 'balanced'
+          : budgetVarianceSigned > 0
+          ? 'gap'
+          : 'surplus';
 
       runningRemainingEscalated += escalatedCost;
       remBalanceTrack = Math.max(0, remBalanceTrack - baseCost);
@@ -689,42 +802,283 @@ export default function YearlyCostForecastSection({
         remainingPlanPct,
         weightSharePct,
         activeMonthsInEfy: planData.activeMonths,
+        plannedBaseCost,
         baseCost,
         pnFactor,
         paAdder,
         paSourceTag: idx === 0 ? 'Current Forecast (P0)' : `Forecast (P0 × (1+r)^${idx})`,
         escalatedCost,
+        budgetVarianceAbs,
+        budgetVarianceSigned,
+        budgetVarianceType,
         cumulativeEscalated: runningRemainingEscalated,
         balanceRemaining: idx === allocatedEfys.length - 1 ? 0 : remBalanceTrack
       };
     });
-  }, [parsedMonthly, currentMonthSerial, hasExactCurrentMonthActual, project.startDate, project.origDays, project.eotDays, project.interimEotDays, currentEfy, remainingBalance, remainingPct, avgMonthlyPlanPace, basePaFactor, annualInflation]);
+  }, [parsedMonthly, currentMonthSerial, hasExactCurrentMonthActual, actualAtCurrentMonth, planAtCurrentMonth, monthPlanActualDiff, contractBase, project.startDate, project.origDays, project.eotDays, project.interimEotDays, currentEfy, remainingBalance, remainingPct, avgMonthlyPlanPace, basePaFactor, annualInflation]);
 
-  // Recharts dataset strictly represents Remaining Works Forecast across Current & Upcoming EFYs
-  const chartData = futureProjections.map((p) => {
-    return {
-      periodLabel: calendarView === 'EFY' ? p.efy : p.periodLabel,
-      fullPeriod: `${p.efy} (${p.periodLabel})`,
-      efyYearLabel: p.efy,
-      baseCost: p.baseCost,
-      baseCostM: p.baseCost / 1_000_000,
-      paAdder: p.paAdder,
-      paAdderM: p.paAdder / 1_000_000,
-      escalatedCost: p.escalatedCost,
-      escalatedCostM: p.escalatedCost / 1_000_000,
-      cumulativeEscalated: p.cumulativeEscalated,
-      cumulativeEscalatedM: p.cumulativeEscalated / 1_000_000,
-      pnFactor: p.pnFactor,
-      remainingPlanPct: p.remainingPlanPct
+  // 5. Accomplished EFYs History (from Financial Data IPCs / Net Payments & Accomplishment)
+  const accomplishedEfyData = useMemo(() => {
+    const ipcTracker = project.ipcTracker || [];
+    const exchangeRate = project.usdExchangeRate !== undefined ? project.usdExchangeRate : 57.50;
+    const annualInterestRate = project.annualInterestRate !== undefined ? project.annualInterestRate : 16.50;
+    const isUsdEnabled = project.enableUsdPayments !== undefined
+      ? Boolean(project.enableUsdPayments)
+      : Boolean(
+          project.supervisionConsultant?.enableUsdPayments ||
+          ipcTracker.some(i => (i.certifiedUsd || 0) > 0 || (i.grossBillUsd || 0) > 0 || (i.priceAdjustmentUsd || 0) > 0)
+        );
+
+    const ipcByEfy: Record<number, { grossWithPa: number; pa: number; netCertified: number; netPaid: number }> = {};
+
+    ipcTracker.forEach(ipc => {
+      const parsedPeriod = parseMonthKey(ipc.period);
+      const fallbackDate = parseLocalDate(ipc.certificationDate || ipc.paymentDate || ipc.submissionDate);
+      let efyYear: number | null = null;
+      if (parsedPeriod) {
+        efyYear = getEfyFromGregorian(parsedPeriod.year, parsedPeriod.monthIndex);
+      } else if (fallbackDate) {
+        efyYear = getEfyFromGregorian(fallbackDate.getFullYear(), fallbackDate.getMonth());
+      }
+      if (efyYear === null) return;
+
+      const maturation = calculateIpcMaturation(ipc, annualInterestRate, exchangeRate, new Date(), isUsdEnabled);
+      const grossEqv = (ipc.grossBillEtb || 0) + (isUsdEnabled ? (ipc.grossBillUsd || 0) * exchangeRate : 0);
+      const paEqv = (ipc.priceAdjustmentEtb || 0) + (isUsdEnabled ? (ipc.priceAdjustmentUsd || 0) * exchangeRate : 0);
+      const netCertEqv = (ipc.certifiedEtb || 0) + (isUsdEnabled ? (ipc.certifiedUsd || 0) * exchangeRate : 0);
+      const netPaidEqv = maturation.paidCertifiedEtb + (isUsdEnabled ? maturation.paidCertifiedUsd * exchangeRate : 0);
+
+      if (!ipcByEfy[efyYear]) {
+        ipcByEfy[efyYear] = { grossWithPa: 0, pa: 0, netCertified: 0, netPaid: 0 };
+      }
+      ipcByEfy[efyYear].grossWithPa += grossEqv + paEqv;
+      ipcByEfy[efyYear].pa += paEqv;
+      ipcByEfy[efyYear].netCertified += netCertEqv;
+      ipcByEfy[efyYear].netPaid += netPaidEqv;
+    });
+
+    const getEfyEndSerial = (efy: number) => getEfyEndGregYear(efy) * 12 + 5;
+    const getActualOnOrBefore = (targetSerial: number): number => {
+      const limitSerial = Math.min(targetSerial, currentMonthSerial);
+      const pts = parsedMonthly.filter(pt => pt.serial <= limitSerial && pt.actual !== null);
+      return pts.length > 0 ? Math.max(0, Math.min(100, pts[pts.length - 1].actual!)) : 0;
     };
-  });
+
+    const efyCandidates = new Set<number>();
+    const parsedStart = parseLocalDate(project.startDate);
+    if (parsedStart) {
+      const startEfy = getEfyFromGregorian(parsedStart.getFullYear(), parsedStart.getMonth());
+      if (startEfy < currentEfy) efyCandidates.add(startEfy);
+    }
+    parsedMonthly.forEach(pt => {
+      if (pt.efy < currentEfy && pt.actual !== null) efyCandidates.add(pt.efy);
+    });
+    Object.keys(ipcByEfy).forEach(k => {
+      const yr = Number(k);
+      if (yr <= currentEfy) efyCandidates.add(yr);
+    });
+
+    if (efyCandidates.size === 0) {
+      return {
+        pastRows: [] as Array<{
+          efyYear: number;
+          efy: string;
+          periodLabel: string;
+          accomplishedPct: number;
+          accomplishedBudgetUsed: number;
+          contractorNetCertified: number;
+          contractorNetPaid: number;
+          efyPaCertified: number;
+        }>,
+        currentEfyExecuted: {
+          accomplishedPct: 0,
+          accomplishedBudgetUsed: 0,
+          contractorNetCertified: ipcByEfy[currentEfy]?.netCertified || 0,
+          contractorNetPaid: ipcByEfy[currentEfy]?.netPaid || 0
+        },
+        totals: {
+          accomplishedBudgetUsed: 0,
+          contractorNetCertified: 0,
+          contractorNetPaid: 0
+        }
+      };
+    }
+
+    const sortedAll = Array.from(efyCandidates).sort((a, b) => a - b);
+    const minEfy = sortedAll[0];
+    const pastEfys: number[] = [];
+    for (let e = minEfy; e < currentEfy; e++) {
+      pastEfys.push(e);
+    }
+
+    // Also evaluate Financial Data 'Payment Milestones' unitemized certified fallback if ipcTracker is empty
+    const paymentList = project.payment || [];
+    const paymentTotalCertRow = paymentList.find(p => p.item.trim().toLowerCase().includes('total todate certified ipc'));
+    const totalIpcNetCert = Object.values(ipcByEfy).reduce((s, x) => s + x.netCertified, 0);
+    const fallbackUnitemizedNetCert = totalIpcNetCert === 0 && paymentTotalCertRow ? (paymentTotalCertRow.amount || 0) : 0;
+
+    const rawPastRows = pastEfys.map(efy => {
+      const prevAct = getActualOnOrBefore(getEfyEndSerial(efy - 1));
+      const endAct = getActualOnOrBefore(getEfyEndSerial(efy));
+      const accomplishedPct = Math.max(0, endAct - prevAct);
+      const ipcData = ipcByEfy[efy] || { grossWithPa: 0, pa: 0, netCertified: 0, netPaid: 0 };
+
+      // Budget used for accomplishment: prefer Financial Data IPC Gross+PA if logged for that EFY, otherwise accomplished progress scaled by empirical Financial Data Pn
+      const accomplishedPhysicalInclPa = (contractBase * (accomplishedPct / 100)) * financialPa.empiricalPn;
+      const accomplishedBudgetUsed = ipcData.grossWithPa > 0
+        ? Math.max(ipcData.grossWithPa, accomplishedPhysicalInclPa)
+        : accomplishedPhysicalInclPa;
+
+      return {
+        efyYear: efy,
+        efy: `EFY ${efy}`,
+        periodLabel: `${getEfyStartGregYear(efy)}/${getEfyEndGregYear(efy)} G.C.`,
+        accomplishedPct,
+        accomplishedBudgetUsed,
+        contractorNetCertified: ipcData.netCertified,
+        contractorNetPaid: ipcData.netPaid,
+        efyPaCertified: ipcData.pa
+      };
+    });
+
+    // If ipcTracker had zero entries, distribute Financial Data Payment Milestone net certified proportionally across accomplished EFYs
+    const totalPastAccomp = rawPastRows.reduce((s, r) => s + r.accomplishedPct, 0);
+    const pastRows = rawPastRows.map(r => {
+      if (fallbackUnitemizedNetCert > 0 && totalPastAccomp > 0) {
+        const netCertShare = fallbackUnitemizedNetCert * (r.accomplishedPct / totalPastAccomp);
+        return {
+          ...r,
+          contractorNetCertified: netCertShare,
+          contractorNetPaid: netCertShare
+        };
+      }
+      return r;
+    }).filter(r => r.accomplishedBudgetUsed > 0 || r.contractorNetCertified > 0 || r.accomplishedPct > 0);
+
+    // Current EFY accomplished-to-date portion
+    const currStartAct = getActualOnOrBefore(getEfyEndSerial(currentEfy - 1));
+    const currAccompPct = Math.max(0, actualAtCurrentMonth - currStartAct);
+    const currIpc = ipcByEfy[currentEfy] || { grossWithPa: 0, pa: 0, netCertified: 0, netPaid: 0 };
+    const currAccompBudgetUsed = currIpc.grossWithPa > 0
+      ? Math.max(currIpc.grossWithPa, (contractBase * (currAccompPct / 100)) * basePaFactor)
+      : (contractBase * (currAccompPct / 100)) * basePaFactor;
+
+    const totalAccompBudgetUsed = pastRows.reduce((s, r) => s + r.accomplishedBudgetUsed, 0) + currAccompBudgetUsed;
+    const totalNetCert = pastRows.reduce((s, r) => s + r.contractorNetCertified, 0) + currIpc.netCertified;
+    const totalNetPaid = pastRows.reduce((s, r) => s + r.contractorNetPaid, 0) + currIpc.netPaid;
+
+    return {
+      pastRows,
+      currentEfyExecuted: {
+        accomplishedPct: currAccompPct,
+        accomplishedBudgetUsed: currAccompBudgetUsed,
+        contractorNetCertified: currIpc.netCertified,
+        contractorNetPaid: currIpc.netPaid
+      },
+      totals: {
+        accomplishedBudgetUsed: totalAccompBudgetUsed,
+        contractorNetCertified: totalNetCert,
+        contractorNetPaid: totalNetPaid
+      }
+    };
+  }, [project.ipcTracker, project.usdExchangeRate, project.annualInterestRate, project.enableUsdPayments, project.supervisionConsultant?.enableUsdPayments, project.startDate, project.payment, parsedMonthly, currentEfy, currentMonthSerial, actualAtCurrentMonth, contractBase, financialPa.empiricalPn, basePaFactor]);
+
+  // Recharts dataset: Remaining Works only by default, or Accomplished EFYs + Remaining Works when toggled
+  const chartData = useMemo(() => {
+    let runningCombined = 0;
+
+    const pastPoints = showAccomplishedEfys
+      ? accomplishedEfyData.pastRows.map(row => {
+          runningCombined += row.accomplishedBudgetUsed;
+          return {
+            periodLabel: calendarView === 'EFY' ? row.efy : row.periodLabel,
+            fullPeriod: `${row.efy} (${row.periodLabel})`,
+            efyYearLabel: row.efy,
+            isAccomplishedOnly: true,
+            hasAccomplishedData: true,
+            accomplishedPct: row.accomplishedPct,
+            accomplishedBudgetUsed: row.accomplishedBudgetUsed,
+            accomplishedBudgetUsedM: row.accomplishedBudgetUsed / 1_000_000,
+            contractorNetCertified: row.contractorNetCertified,
+            contractorNetCertifiedM: row.contractorNetCertified / 1_000_000,
+            contractorNetPaid: row.contractorNetPaid,
+            contractorNetPaidM: row.contractorNetPaid / 1_000_000,
+            efyPaCertified: row.efyPaCertified,
+            baseCost: null as number | null,
+            baseCostM: null as number | null,
+            paAdder: null as number | null,
+            paAdderM: null as number | null,
+            escalatedCost: null as number | null,
+            escalatedCostM: null as number | null,
+            cumulativeEscalated: null as number | null,
+            cumulativeEscalatedM: null as number | null,
+            cumulativeTrajectory: runningCombined,
+            cumulativeTrajectoryM: runningCombined / 1_000_000,
+            pnFactor: financialPa.empiricalPn,
+            remainingPlanPct: 0,
+            budgetVarianceAbs: undefined as number | undefined,
+            budgetVarianceType: undefined as 'gap' | 'surplus' | 'balanced' | undefined
+          };
+        })
+      : [];
+
+    const futurePoints = futureProjections.map(p => {
+      const currExec = p.isCurrent && showAccomplishedEfys ? accomplishedEfyData.currentEfyExecuted : null;
+      const hasCurrentAccomp = Boolean(
+        currExec && (currExec.accomplishedBudgetUsed > 0 || currExec.contractorNetCertified > 0 || currExec.contractorNetPaid > 0)
+      );
+      runningCombined += (currExec ? currExec.accomplishedBudgetUsed : 0) + p.escalatedCost;
+
+      return {
+        periodLabel: calendarView === 'EFY' ? p.efy : p.periodLabel,
+        fullPeriod: `${p.efy} (${p.periodLabel})`,
+        efyYearLabel: p.efy,
+        isAccomplishedOnly: false,
+        hasAccomplishedData: hasCurrentAccomp,
+        accomplishedPct: currExec?.accomplishedPct,
+        accomplishedBudgetUsed: hasCurrentAccomp ? currExec!.accomplishedBudgetUsed : null,
+        accomplishedBudgetUsedM: hasCurrentAccomp ? currExec!.accomplishedBudgetUsed / 1_000_000 : null,
+        contractorNetCertified: hasCurrentAccomp ? currExec!.contractorNetCertified : null,
+        contractorNetCertifiedM: hasCurrentAccomp ? currExec!.contractorNetCertified / 1_000_000 : null,
+        contractorNetPaid: hasCurrentAccomp ? currExec!.contractorNetPaid : null,
+        contractorNetPaidM: hasCurrentAccomp ? currExec!.contractorNetPaid / 1_000_000 : null,
+        efyPaCertified: 0,
+        baseCost: p.baseCost,
+        baseCostM: p.baseCost / 1_000_000,
+        paAdder: p.paAdder,
+        paAdderM: p.paAdder / 1_000_000,
+        escalatedCost: p.escalatedCost,
+        escalatedCostM: p.escalatedCost / 1_000_000,
+        cumulativeEscalated: p.cumulativeEscalated,
+        cumulativeEscalatedM: p.cumulativeEscalated / 1_000_000,
+        cumulativeTrajectory: showAccomplishedEfys ? runningCombined : p.cumulativeEscalated,
+        cumulativeTrajectoryM: (showAccomplishedEfys ? runningCombined : p.cumulativeEscalated) / 1_000_000,
+        pnFactor: p.pnFactor,
+        remainingPlanPct: p.remainingPlanPct,
+        budgetVarianceAbs: p.budgetVarianceAbs,
+        budgetVarianceType: p.budgetVarianceType
+      };
+    });
+
+    return [...pastPoints, ...futurePoints];
+  }, [showAccomplishedEfys, accomplishedEfyData, futureProjections, calendarView, financialPa.empiricalPn]);
 
   // Summary aggregates (strictly Remaining Works)
   const totalRemainingPlanPct = futureProjections.reduce((sum, r) => sum + r.remainingPlanPct, 0);
+  const totalPlannedBaseForecast = futureProjections.reduce((sum, r) => sum + r.plannedBaseCost, 0);
   const totalBaseForecast = futureProjections.reduce((sum, r) => sum + r.baseCost, 0);
   const totalFuturePaAdder = futureProjections.reduce((sum, r) => sum + r.paAdder, 0);
   const totalProjectedEscalated = futureProjections.reduce((sum, r) => sum + r.escalatedCost, 0);
   const avgFuturePn = futureProjections.reduce((a, b) => a + b.pnFactor, 0) / (futureProjections.length || 1);
+
+  const netPortfolioVarianceSigned = totalProjectedEscalated - totalPlannedBaseForecast;
+  const netPortfolioVarianceAbs = Math.abs(netPortfolioVarianceSigned);
+  const netPortfolioVarianceType: 'gap' | 'surplus' | 'balanced' =
+    Math.abs(netPortfolioVarianceSigned) <= 1
+      ? 'balanced'
+      : netPortfolioVarianceSigned > 0
+      ? 'gap'
+      : 'surplus';
 
   const totalLifetimePa = financialPa.totalPa + totalFuturePaAdder;
   const ppaThresholdRatio = BAC > 0 ? (totalLifetimePa / BAC) * 100 : 0;
@@ -732,6 +1086,8 @@ export default function YearlyCostForecastSection({
 
   const firstForecastEfy = futureProjections[0]?.efy || `EFY ${currentEfy}`;
   const lastForecastEfy = futureProjections[futureProjections.length - 1]?.efy || `EFY ${currentEfy}`;
+  const firstChartEfy = chartData[0]?.efyYearLabel || firstForecastEfy;
+  const lastChartEfy = chartData[chartData.length - 1]?.efyYearLabel || lastForecastEfy;
 
   // Copy summary report to clipboard
   const handleCopySummary = () => {
@@ -747,13 +1103,14 @@ Financial Data PA Baseline P0: ${basePaFactor.toFixed(4)} (${((basePaFactor - 1)
 Financial Data Annual PA Increment (r): ${(annualInflation * 100).toFixed(2)}% p.a. (${financialPa.methodologySummary})
 -----------------------------------------------------
 REMAINING WORKS FORECAST BY EFY (MONTHLY CUMULATIVE PLAN & EFY BASIS):
-${futureProjections.map(r => `• ${r.efy} [${r.periodLabel}] ${r.isCurrent ? '[CURRENT]' : '[UPCOMING]'} | Remaining Plan: ${r.remainingPlanPct.toFixed(1)}% | Base: ${formatBr(r.baseCost)} | Pn: ${r.pnFactor.toFixed(4)} | PA: +${formatBr(r.paAdder)} | Est. Outlay: ${formatBr(r.escalatedCost)} | Cum.: ${formatBr(r.cumulativeEscalated)}`).join('\n')}
+${futureProjections.map(r => `• ${r.efy} [${r.periodLabel}] ${r.isCurrent ? '[CURRENT]' : '[UPCOMING]'} | Remaining Plan: ${r.remainingPlanPct.toFixed(1)}% | Base: ${formatBr(r.baseCost)} | Pn: ${r.pnFactor.toFixed(4)} | PA: +${formatBr(r.paAdder)} | Est. Outlay: ${formatBr(r.escalatedCost)} | Budget Variance: ${formatBr(r.budgetVarianceAbs)} (${r.budgetVarianceType === 'gap' ? 'Funding Gap' : r.budgetVarianceType === 'surplus' ? 'Surplus' : 'On Plan'}) | Cum.: ${formatBr(r.cumulativeEscalated)}`).join('\n')}
 -----------------------------------------------------
 TOTAL FORECAST FOR REMAINING WORKS:
 Total Remaining Plan (%): ${totalRemainingPlanPct.toFixed(1)}%
 Base Remaining Works: ${formatBr(totalBaseForecast)}
 Forecasted Price Adjustment: +${formatBr(totalFuturePaAdder)}
 Total Estimated Outlay to Completion: ${formatBr(totalProjectedEscalated)}
+Net Projected Budget Variance: ${formatBr(netPortfolioVarianceAbs)} (${netPortfolioVarianceType === 'gap' ? 'Funding Gap' : netPortfolioVarianceType === 'surplus' ? 'Surplus' : 'On Plan'})
 PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} (${ppaThresholdRatio.toFixed(2)}% of Contract) -> ${isPpaCompliant ? 'COMPLIANT' : 'EXCEEDS 20% CAP'}
 =====================================================`;
     navigator.clipboard.writeText(summaryText);
@@ -787,6 +1144,8 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
         'Forecasted PA (ETB)',
         'PA Formula Tier',
         'Estimated Outlay incl. PA (ETB)',
+        'Projected Budget Variance (ETB)',
+        'Budget Variance Status',
         'Cumulative Remaining Outlay (ETB)',
         'Remaining Balance Liability (ETB)'
       ]
@@ -804,6 +1163,8 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
         r.paAdder.toFixed(2),
         r.paSourceTag,
         r.escalatedCost.toFixed(2),
+        r.budgetVarianceAbs.toFixed(2),
+        r.budgetVarianceType === 'gap' ? 'Funding Gap' : r.budgetVarianceType === 'surplus' ? 'Surplus' : 'On Plan',
         r.cumulativeEscalated.toFixed(2),
         r.balanceRemaining.toFixed(2)
       ]);
@@ -821,6 +1182,8 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
       totalFuturePaAdder.toFixed(2),
       'Financial Data PA Increment',
       totalProjectedEscalated.toFixed(2),
+      netPortfolioVarianceAbs.toFixed(2),
+      netPortfolioVarianceType === 'gap' ? 'Net Funding Gap' : netPortfolioVarianceType === 'surplus' ? 'Net Surplus' : 'On Plan',
       totalProjectedEscalated.toFixed(2),
       '0.00'
     ]);
@@ -918,8 +1281,15 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
           <div className="text-base sm:text-lg font-mono font-black text-slate-900 dark:text-white">
             {formatBr(remainingBalance)}
           </div>
-          <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight font-mono">
-            {remainingPct.toFixed(1)}% remaining (100% &minus; {actualAtCurrentMonth.toFixed(1)}% Actual @ {actualRefMonthLabel})
+          <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight font-mono space-y-0.5">
+            <div>{remainingPct.toFixed(1)}% remaining (100% &minus; {actualAtCurrentMonth.toFixed(1)}% Actual @ {actualRefMonthLabel})</div>
+            {Math.abs(monthPlanActualDiff) >= 0.05 && (
+              <div className={monthPlanActualDiff > 0 ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-emerald-600 dark:text-emerald-400 font-semibold'}>
+                {monthPlanActualDiff > 0
+                  ? `Plan (${planAtCurrentMonth.toFixed(1)}%) > Actual: +${monthPlanActualDiff.toFixed(1)}% added to EFY ${currentEfy}`
+                  : `Actual > Plan (${planAtCurrentMonth.toFixed(1)}%): −${Math.abs(monthPlanActualDiff).toFixed(1)}% deducted from EFY`}
+              </div>
+            )}
           </div>
         </div>
 
@@ -981,25 +1351,41 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
       {/* Visual Line Chart for Remaining Works Multi-Year Forecast */}
       {showChart && (
         <div className="p-4 bg-slate-50/70 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-200 dark:border-slate-700/60">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pb-2 border-b border-slate-200 dark:border-slate-700/60">
             <div className="flex items-center gap-2">
               <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">
                 <BarChart3 className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="text-xs font-black uppercase tracking-wide text-slate-900 dark:text-white flex items-center gap-2">
+                <h4 className="text-xs font-black uppercase tracking-wide text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
                   Remaining Works Cost Forecast Trajectory
                   <span className="text-[9px] font-mono font-normal px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50">
-                    {firstForecastEfy} &ndash; {lastForecastEfy}
+                    {firstChartEfy} &ndash; {lastChartEfy}
                   </span>
                 </h4>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                  Visual breakdown of Base Remaining Works (Plan &amp; EFY), Forecasted Price Adjustment, and Total Estimated Outlay to Completion.
+                  {showAccomplishedEfys
+                    ? 'Full project EFY trajectory combining Financial Data Accomplished EFYs & Contractor Net Payments with Remaining Works Forecast.'
+                    : 'Visual breakdown of Base Remaining Works (Plan & EFY), Forecasted Price Adjustment, and Total Estimated Outlay to Completion.'}
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+              {/* Toggle Accomplished EFYs from Financial Data */}
+              <button
+                onClick={() => setShowAccomplishedEfys(!showAccomplishedEfys)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1.5 border cursor-pointer ${
+                  showAccomplishedEfys
+                    ? 'bg-teal-600 text-white border-teal-500 shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+                title="Include accomplished historical EFYs budget used and contractor net payments from Financial Data page"
+              >
+                <Layers className="w-3 h-3" />
+                <span>{showAccomplishedEfys ? 'Accomplished EFYs: On' : 'Show Accomplished EFYs'}</span>
+              </button>
+
               {/* Unit Toggle */}
               <div className="flex items-center bg-white dark:bg-slate-800 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700 text-[10px] font-bold">
                 <button
@@ -1042,6 +1428,35 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
             </div>
           </div>
 
+          {showAccomplishedEfys && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-2.5 rounded-lg bg-teal-50/70 dark:bg-teal-950/25 border border-teal-200/80 dark:border-teal-800/50 text-[11px] font-mono">
+              <div className="flex items-center justify-between sm:block">
+                <span className="text-[9.5px] font-sans font-bold uppercase text-teal-700 dark:text-teal-300 block">
+                  Accomplished EFYs Budget Used
+                </span>
+                <span className="font-bold text-slate-900 dark:text-white">
+                  {formatBr(accomplishedEfyData.totals.accomplishedBudgetUsed)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between sm:block">
+                <span className="text-[9.5px] font-sans font-bold uppercase text-sky-700 dark:text-sky-300 block">
+                  Contractor Net Certified (IPCs)
+                </span>
+                <span className="font-bold text-slate-900 dark:text-white">
+                  {formatBr(accomplishedEfyData.totals.contractorNetCertified)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between sm:block">
+                <span className="text-[9.5px] font-sans font-bold uppercase text-cyan-700 dark:text-cyan-300 block">
+                  Contractor Net Paid (Disbursed)
+                </span>
+                <span className="font-bold text-slate-900 dark:text-white">
+                  {formatBr(accomplishedEfyData.totals.contractorNetPaid)}
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className="h-72 w-full pt-1">
             <ResponsiveContainer width="100%" height="100%">
               {chartType === 'line' ? (
@@ -1067,6 +1482,46 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                   />
                   <RechartsTooltip content={<CustomForecastTooltip formatBr={formatBr} />} />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+                  {showAccomplishedEfys && (
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey={chartUnit === 'millions' ? 'accomplishedBudgetUsedM' : 'accomplishedBudgetUsed'}
+                      name="Accomplished Budget Used (Financial Data)"
+                      stroke="#14b8a6"
+                      strokeWidth={2.5}
+                      connectNulls={false}
+                      dot={{ r: 4, fill: '#14b8a6', strokeWidth: 1.5, stroke: '#ffffff' }}
+                      activeDot={{ r: 6 }}
+                    />
+                  )}
+                  {showAccomplishedEfys && (
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey={chartUnit === 'millions' ? 'contractorNetCertifiedM' : 'contractorNetCertified'}
+                      name="Contractor Net Certified (IPCs)"
+                      stroke="#0ea5e9"
+                      strokeWidth={2}
+                      strokeDasharray="5 3"
+                      connectNulls={false}
+                      dot={{ r: 3.5, fill: '#0ea5e9', strokeWidth: 1.5, stroke: '#ffffff' }}
+                      activeDot={{ r: 5 }}
+                    />
+                  )}
+                  {showAccomplishedEfys && (
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey={chartUnit === 'millions' ? 'contractorNetPaidM' : 'contractorNetPaid'}
+                      name="Contractor Net Paid"
+                      stroke="#06b6d4"
+                      strokeWidth={2}
+                      strokeDasharray="2 3"
+                      connectNulls={false}
+                      dot={{ r: 3, fill: '#06b6d4' }}
+                    />
+                  )}
                   <Line
                     yAxisId="left"
                     type="monotone"
@@ -1074,6 +1529,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                     name="Remaining Base Work (Plan)"
                     stroke="#6366f1"
                     strokeWidth={2.5}
+                    connectNulls={false}
                     dot={{ r: 4, fill: '#6366f1', strokeWidth: 1.5, stroke: '#ffffff' }}
                     activeDot={{ r: 6 }}
                   />
@@ -1085,6 +1541,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                     stroke="#f43f5e"
                     strokeWidth={2.5}
                     strokeDasharray="4 4"
+                    connectNulls={false}
                     dot={{ r: 4, fill: '#f43f5e', strokeWidth: 1.5, stroke: '#ffffff' }}
                     activeDot={{ r: 6 }}
                   />
@@ -1095,14 +1552,23 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                     name="Annual Estimated Outlay (incl. PA)"
                     stroke="#10b981"
                     strokeWidth={3.5}
+                    connectNulls={false}
                     dot={{ r: 5, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }}
                     activeDot={{ r: 7 }}
                   />
                   <Line
                     yAxisId="right"
                     type="monotone"
-                    dataKey={chartUnit === 'millions' ? 'cumulativeEscalatedM' : 'cumulativeEscalated'}
-                    name="Cumulative Remaining (Right Axis)"
+                    dataKey={
+                      showAccomplishedEfys
+                        ? chartUnit === 'millions'
+                          ? 'cumulativeTrajectoryM'
+                          : 'cumulativeTrajectory'
+                        : chartUnit === 'millions'
+                        ? 'cumulativeEscalatedM'
+                        : 'cumulativeEscalated'
+                    }
+                    name={showAccomplishedEfys ? 'Cumulative Project Trajectory (Right Axis)' : 'Cumulative Remaining (Right Axis)'}
                     stroke="#a855f7"
                     strokeWidth={2}
                     strokeDasharray="2 2"
@@ -1124,6 +1590,27 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                   />
                   <RechartsTooltip content={<CustomForecastTooltip formatBr={formatBr} />} />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+                  {showAccomplishedEfys && (
+                    <Area
+                      type="monotone"
+                      dataKey={chartUnit === 'millions' ? 'accomplishedBudgetUsedM' : 'accomplishedBudgetUsed'}
+                      name="Accomplished Budget Used (Financial Data)"
+                      fill="#14b8a6"
+                      stroke="#0d9488"
+                      fillOpacity={0.28}
+                      stackId="accomplished"
+                    />
+                  )}
+                  {showAccomplishedEfys && (
+                    <Line
+                      type="monotone"
+                      dataKey={chartUnit === 'millions' ? 'contractorNetPaidM' : 'contractorNetPaid'}
+                      name="Contractor Net Paid"
+                      stroke="#0ea5e9"
+                      strokeWidth={2.5}
+                      dot={{ r: 3.5, fill: '#0ea5e9' }}
+                    />
+                  )}
                   <Area
                     type="monotone"
                     dataKey={chartUnit === 'millions' ? 'baseCostM' : 'baseCost'}
@@ -1442,7 +1929,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                   title="Remaining Plan (%)"
                   tooltipTitle="Remaining Plan Percentage per EFY"
                   formula={`Total = 100% − Actual (${actualRefMonthLabel})`}
-                  explanation={`Total remaining % is always 100% minus Monthly Cumulative Actual at ${actualRefMonthLabel} (${actualAtCurrentMonth.toFixed(1)}% -> ${remainingPct.toFixed(1)}% remaining), distributed across each EFY based on the Monthly Cumulative Plan.`}
+                  explanation={`Total remaining % is always 100% minus Monthly Cumulative Actual at ${actualRefMonthLabel} (${actualAtCurrentMonth.toFixed(1)}% -> ${remainingPct.toFixed(1)}% remaining). When Plan (${planAtCurrentMonth.toFixed(1)}%) > Actual, the difference (+${Math.max(0, monthPlanActualDiff).toFixed(1)}%) is added to Current EFY budget; when Actual > Plan, the difference is subtracted from the EFY budget.`}
                   align="center"
                 />
               </th>
@@ -1491,7 +1978,18 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                 />
               </th>
 
-              {/* Header 8: Cumulative Remaining Outlay */}
+              {/* Header 8: Projected Budget Variance */}
+              <th className="p-3 text-right">
+                <HeaderTooltip
+                  title="Projected Budget Variance"
+                  tooltipTitle="Absolute Plan vs Actual Cost Variance"
+                  formula="Variance = |Projected Outlay − Plan Base Cost|"
+                  explanation="Calculates the absolute difference between the unadjusted Monthly Plan cost and the actual-adjusted projected outlay per EFY to highlight potential funding gaps or budget surpluses."
+                  align="right"
+                />
+              </th>
+
+              {/* Header 9: Cumulative Remaining Outlay */}
               <th className="p-3 text-right">
                 <HeaderTooltip
                   title="Cumulative Remaining (ETB)"
@@ -1502,7 +2000,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                 />
               </th>
 
-              {/* Header 9: Unexecuted Balance After EFY */}
+              {/* Header 10: Unexecuted Balance After EFY */}
               <th className="p-3 text-right">
                 <HeaderTooltip
                   title="Remaining Balance (ETB)"
@@ -1613,12 +2111,44 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
                     {formatBr(row.escalatedCost)}
                   </td>
 
-                  {/* 8. Cumulative Remaining Outlay */}
+                  {/* 8. Projected Budget Variance */}
+                  <td className="p-3 text-right font-mono tabular-nums">
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span
+                        className={`font-bold ${
+                          row.budgetVarianceType === 'gap'
+                            ? 'text-rose-600 dark:text-rose-400'
+                            : row.budgetVarianceType === 'surplus'
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-slate-500 dark:text-slate-400'
+                        }`}
+                      >
+                        {formatBr(row.budgetVarianceAbs)}
+                      </span>
+                      <span
+                        className={`text-[9px] font-sans font-semibold ${
+                          row.budgetVarianceType === 'gap'
+                            ? 'text-rose-500 dark:text-rose-400'
+                            : row.budgetVarianceType === 'surplus'
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-slate-400'
+                        }`}
+                      >
+                        {row.budgetVarianceType === 'gap'
+                          ? 'Funding Gap'
+                          : row.budgetVarianceType === 'surplus'
+                          ? 'Surplus'
+                          : 'On Plan'}
+                      </span>
+                    </div>
+                  </td>
+
+                  {/* 9. Cumulative Remaining Outlay */}
                   <td className="p-3 text-right font-mono tabular-nums font-bold text-indigo-600 dark:text-indigo-400">
                     {formatBr(row.cumulativeEscalated)}
                   </td>
 
-                  {/* 9. Remaining Balance Liability */}
+                  {/* 10. Remaining Balance Liability */}
                   <td className="p-3 text-right font-mono tabular-nums font-semibold text-slate-500 dark:text-slate-400">
                     {formatBr(row.balanceRemaining)}
                   </td>
@@ -1642,6 +2172,28 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
               </td>
               <td className="p-3 text-right font-mono tabular-nums text-rose-600 dark:text-rose-400">+{formatBr(totalFuturePaAdder)}</td>
               <td className="p-3 text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400 text-sm">{formatBr(totalProjectedEscalated)}</td>
+              <td className="p-3 text-right font-mono tabular-nums">
+                <div className="flex flex-col items-end">
+                  <span
+                    className={
+                      netPortfolioVarianceType === 'gap'
+                        ? 'text-rose-600 dark:text-rose-400'
+                        : netPortfolioVarianceType === 'surplus'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-slate-600 dark:text-slate-300'
+                    }
+                  >
+                    {formatBr(netPortfolioVarianceAbs)}
+                  </span>
+                  <span className="text-[9px] font-sans font-semibold text-slate-500 dark:text-slate-400">
+                    {netPortfolioVarianceType === 'gap'
+                      ? 'Net Funding Gap'
+                      : netPortfolioVarianceType === 'surplus'
+                      ? 'Net Surplus'
+                      : 'On Plan'}
+                  </span>
+                </div>
+              </td>
               <td className="p-3 text-right font-mono tabular-nums text-indigo-600 dark:text-indigo-400 text-sm">{formatBr(totalProjectedEscalated)}</td>
               <td className="p-3 text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400">Br. 0.00</td>
             </tr>
@@ -1658,7 +2210,7 @@ PPA 20% Statutory Cap (Certified + Forecasted PA): ${formatBr(totalLifetimePa)} 
             <span>Remaining Works Plan &amp; EFY Methodology:</span>
           </div>
           <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-            Remaining % is always <strong>100% &minus; Monthly Cumulative Actual at {actualRefMonthLabel} ({actualAtCurrentMonth.toFixed(1)}%) = {remainingPct.toFixed(1)}%</strong> (<strong>{formatBr(remainingBalance)}</strong>), planned across <strong>{firstForecastEfy}</strong> through <strong>{lastForecastEfy}</strong> from the Monthly Cumulative Plan (~{avgMonthlyPlanPace.toFixed(2)}%/mo pace). Price Adjustment is compounded via <strong>Pn = P0 &times; (1 + r)^t</strong> using Financial Data baseline <strong>P0 = {basePaFactor.toFixed(4)}</strong> and increment rate <strong>r = {(annualInflation * 100).toFixed(2)}% p.a.</strong>
+            Remaining % is always <strong>100% &minus; Monthly Cumulative Actual at {actualRefMonthLabel} ({actualAtCurrentMonth.toFixed(1)}%) = {remainingPct.toFixed(1)}%</strong> (<strong>{formatBr(remainingBalance)}</strong>), planned across <strong>{firstForecastEfy}</strong> through <strong>{lastForecastEfy}</strong>. Whenever Monthly Plan &gt; Actual for the reporting month, the shortfall (+Plan &minus; Actual) is added as additional budget on Current EFY; whenever Actual &gt; Plan, the surplus is subtracted from the EFY budget. Price Adjustment compounds via <strong>Pn = P0 &times; (1 + r)^t</strong> using Financial Data baseline <strong>P0 = {basePaFactor.toFixed(4)}</strong> and increment rate <strong>r = {(annualInflation * 100).toFixed(2)}% p.a.</strong>
           </p>
         </div>
 

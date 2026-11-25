@@ -1,5 +1,23 @@
 import { Project, isProjectClosed } from '../types';
 
+export type EacScenarioId =
+  | 'cpi_continues'
+  | 'original_plan_resumes'
+  | 'cost_and_schedule'
+  | 'bottom_up_etc';
+
+export interface EacScenarioResult {
+  id: EacScenarioId;
+  number: 1 | 2 | 3 | 4;
+  title: string;
+  formula: string;
+  whenToUse: string;
+  etc: number;
+  eac: number;
+  vac: number;
+  tcpiEac: number | null;
+}
+
 export interface EvmMetrics {
   BAC: number; // Budget At Completion (ETB)
   AC: number;  // Actual Cost (ETB)
@@ -17,9 +35,18 @@ export interface EvmMetrics {
   CV_pct: number; // (EV - AC) / AC * 100
   SV_pct: number; // (EV - PV) / PV * 100
   scheduleGapPct: number; // actualPct - plannedPct
-  EAC: number; // Estimate At Completion (BAC / CPI)
+  EAC: number; // Estimate At Completion (active scenario)
+  ETC: number; // Estimate To Complete (active scenario)
   VAC: number; // Variance At Completion (BAC - EAC)
+  activeEacScenario: EacScenarioId;
+  bottomUpEtc: number;
+  eacScenarios: EacScenarioResult[];
   TCPI: number; // To-Complete Performance Index (BAC - EV) / (BAC - AC)
+  remainingWork: number; // BAC - EV
+  remainingFundsBac: number; // BAC - AC
+  remainingFundsEac: number; // EAC - AC
+  tcpiBac: number | null; // To meet original budget (BAC): (BAC - EV) / (BAC - AC), null if BAC - AC <= 0
+  tcpiEac: number | null; // To meet revised forecast (EAC): (BAC - EV) / (EAC - AC), null if EAC - AC <= 0
   cpiStatus: {
     label: string;
     description: string;
@@ -55,7 +82,10 @@ export interface EvmMetrics {
  * - CPI (Cost Performance Index): EV / AC.
  * - SPI (Schedule Performance Index): EV / PV = Physical Progress % / Original Plan %.
  */
-export function calculateProjectEvm(project: Project): EvmMetrics {
+export function calculateProjectEvm(
+  project: Project,
+  options?: { eacScenario?: EacScenarioId; bottomUpEtcEtb?: number }
+): EvmMetrics {
   const MILLION = 1_000_000;
   
   // 1. Budget At Completion (BAC) = Original Contract Amount
@@ -202,9 +232,93 @@ export function calculateProjectEvm(project: Project): EvmMetrics {
   const SV_pct = PV > 0 ? ((EV - PV) / PV) * 100 : 0;
   const scheduleGapPct = actualPct - plannedPct;
 
-  // 8. Forecasts
-  const EAC = CPI > 0 ? (BAC / CPI) : BAC;
+  // 8. Forecasts (4 Standard EVM EAC Scenarios) & TCPI
+  const remainingWork = Math.max(0, BAC - EV);
+
+  // Scenario 1: Current cost performance continues -> EAC = BAC / CPI
+  const eacS1 = CPI > 0 ? BAC / CPI : BAC;
+  const etcS1 = Math.max(0, eacS1 - AC);
+
+  // Scenario 2: Original budget plan resumes -> EAC = AC + (BAC - EV)
+  const etcS2 = remainingWork;
+  const eacS2 = AC + etcS2;
+
+  // Scenario 3: Both cost and schedule affect future work -> EAC = AC + (BAC - EV) / (CPI * SPI)
+  const cpiSpi = CPI * SPI;
+  const etcS3 = cpiSpi > 0 ? remainingWork / cpiSpi : remainingWork;
+  const eacS3 = AC + etcS3;
+
+  // Scenario 4: Original estimate is fundamentally flawed -> EAC = AC + Bottom-up ETC
+  const rawBottomUpEtc = options?.bottomUpEtcEtb ?? project.bottomUpEtcEtb;
+  const bottomUpEtc =
+    typeof rawBottomUpEtc === 'number' && !isNaN(rawBottomUpEtc) && rawBottomUpEtc >= 0
+      ? rawBottomUpEtc
+      : remainingWork;
+  const eacS4 = AC + bottomUpEtc;
+
+  const computeTcpiForEac = (eacVal: number): number | null => {
+    if (remainingWork <= 0) return 0;
+    const remFunds = eacVal - AC;
+    return remFunds > 0 ? remainingWork / remFunds : null;
+  };
+
+  const eacScenarios: EacScenarioResult[] = [
+    {
+      id: 'cpi_continues',
+      number: 1,
+      title: 'Current cost performance continues',
+      formula: 'EAC = BAC / CPI',
+      whenToUse: 'Past cost variance is typical and expected to continue through the end of the project. (Most common)',
+      etc: etcS1,
+      eac: eacS1,
+      vac: BAC - eacS1,
+      tcpiEac: computeTcpiForEac(eacS1),
+    },
+    {
+      id: 'original_plan_resumes',
+      number: 2,
+      title: 'Original budget plan resumes',
+      formula: 'EAC = AC + (BAC − EV)',
+      whenToUse: 'Past cost variances were one-time events, and future work will proceed at the originally planned rate.',
+      etc: etcS2,
+      eac: eacS2,
+      vac: BAC - eacS2,
+      tcpiEac: computeTcpiForEac(eacS2),
+    },
+    {
+      id: 'cost_and_schedule',
+      number: 3,
+      title: 'Both cost and schedule affect future work',
+      formula: 'EAC = AC + (BAC − EV) / (CPI × SPI)',
+      whenToUse: 'The project is behind schedule, and you must spend extra money to meet a strict deadline.',
+      etc: etcS3,
+      eac: eacS3,
+      vac: BAC - eacS3,
+      tcpiEac: computeTcpiForEac(eacS3),
+    },
+    {
+      id: 'bottom_up_etc',
+      number: 4,
+      title: 'Original estimate is fundamentally flawed',
+      formula: 'EAC = AC + Bottom-up ETC',
+      whenToUse: 'Original assumptions are no longer valid, requiring a completely new manual estimate for remaining work.',
+      etc: bottomUpEtc,
+      eac: eacS4,
+      vac: BAC - eacS4,
+      tcpiEac: computeTcpiForEac(eacS4),
+    },
+  ];
+
+  const activeEacScenario: EacScenarioId = options?.eacScenario ?? project.eacScenario ?? 'cpi_continues';
+  const selectedScenarioObj = eacScenarios.find(s => s.id === activeEacScenario) || eacScenarios[0];
+
+  const EAC = selectedScenarioObj.eac;
+  const ETC = selectedScenarioObj.etc;
   const VAC = BAC - EAC;
+  const remainingFundsBac = BAC - AC;
+  const remainingFundsEac = EAC - AC;
+  const tcpiBac = remainingWork <= 0 ? 0 : remainingFundsBac > 0 ? remainingWork / remainingFundsBac : null;
+  const tcpiEac = selectedScenarioObj.tcpiEac;
   const TCPI = (BAC - AC) > 0 ? (BAC - EV) / (BAC - AC) : 1.0;
 
   // 8. Status Badges & Descriptive Text
@@ -279,8 +393,17 @@ export function calculateProjectEvm(project: Project): EvmMetrics {
     SV_pct,
     scheduleGapPct,
     EAC,
+    ETC,
     VAC,
+    activeEacScenario,
+    bottomUpEtc,
+    eacScenarios,
     TCPI,
+    remainingWork,
+    remainingFundsBac,
+    remainingFundsEac,
+    tcpiBac,
+    tcpiEac,
     cpiStatus: {
       label: cpiStatusLabel,
       description: cpiDescription,

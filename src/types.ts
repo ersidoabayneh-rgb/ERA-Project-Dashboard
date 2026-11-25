@@ -778,6 +778,8 @@ export interface Project {
     updatedBy?: string;
   }>;
   customLinearItems?: any[];
+  eacScenario?: 'cpi_continues' | 'original_plan_resumes' | 'cost_and_schedule' | 'bottom_up_etc';
+  bottomUpEtcEtb?: number;
 }
 
 export interface DailyActivityEquipmentItem {
@@ -1541,6 +1543,7 @@ export const ALL_EDITABLE_PAGES: EditablePageOption[] = [
   { id: 'workProgram', name: '📅 Work Program CPM Schedule', description: 'CPM schedule activities, durations, dependencies' },
   { id: 'resourceMobilization', name: '🚚 Logistics & Resources', description: 'Equipment mobilization, plant availability, stockpiles' },
   { id: 'risks', name: '⚠️ Project Risk Register', description: 'Identified risk matrix, probabilities, and mitigations' },
+  { id: 'evm', name: '💹 EVM (Earned Value Management)', description: 'BAC, PV, EV, AC, CPI, SPI, 4-scenario EAC forecasts & TCPI judgment' },
   { id: 'analysis', name: '📊 Performance Analysis', description: 'Financial & physical performance analytics' },
   { id: 'documentation', name: '📁 Project Documentation', description: 'Dossier files, monthly reports, contract upload library' },
   { id: 'consultant', name: '👔 Supervision Consultant', description: 'Consultant contract, fee invoices, and assigned personnel directory' },

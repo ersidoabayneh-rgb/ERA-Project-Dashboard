@@ -242,6 +242,9 @@ export function canUserViewPage(user: User | null, pageId: string): boolean {
   }
 
   if (user.assignedPages && Array.isArray(user.assignedPages) && user.assignedPages.length > 0) {
+    if (pageId === 'evm') {
+      return user.assignedPages.includes('evm') || user.assignedPages.includes('analysis');
+    }
     return user.assignedPages.includes(pageId);
   }
   return true;
@@ -299,6 +302,9 @@ export function canUserEditPage(user: User | null, pageId: string): boolean {
   }
 
   if (user.assignedPages && Array.isArray(user.assignedPages) && user.assignedPages.length > 0) {
+    if (pageId === 'evm') {
+      return user.assignedPages.includes('evm') || user.assignedPages.includes('analysis');
+    }
     return user.assignedPages.includes(pageId);
   }
   return true;
@@ -358,6 +364,7 @@ import QuantityEditorView from './components/QuantityEditorView';
 import BondsGuaranteeView from './components/BondsGuaranteeView';
 import VariationAndClaimView from './components/VariationAndClaimView';
 import ComprehensiveAnalysisView from './components/ComprehensiveAnalysisView';
+import EvmView from './components/EvmView';
 import DocumentationView from './components/DocumentationView';
 import SupervisionConsultantView from './components/SupervisionConsultantView';
 import SubmittalLogView from './components/SubmittalLogView';
@@ -554,6 +561,18 @@ export default function App() {
     return DEFAULT_THEME_SETTINGS;
   });
   const [isThemeCustomizerOpen, setIsThemeCustomizerOpen] = useState(false);
+
+  // Custom TCPI Alert Threshold (configured in Settings, enforced on EVM page)
+  const [tcpiAlertThreshold, setTcpiAlertThreshold] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('era_tcpi_alert_threshold');
+      if (saved) {
+        const parsed = Number(saved);
+        if (!isNaN(parsed) && parsed >= 0.5 && parsed <= 3.0) return parsed;
+      }
+    } catch {}
+    return 1.05;
+  });
 
   const handleUpdateTheme = (newSettings: ThemeSettings) => {
     setThemeSettings(newSettings);
@@ -5722,6 +5741,7 @@ let isBatchSyncRunning = false;
                 { id: 'consultant', label: '👔 Supervision Consultant' },
                 { id: 'submittalLog', label: '📋 Submittal Log' },
                 /* { id: 'workspace', label: '☁️ Workspace' }, */
+                { id: 'evm', label: '💹 EVM' },
                 { id: 'analysis', label: '📊 Comprehensive analysis' },
                 { id: 'documentation', label: '📁 Documentation' },
                 { id: 'history', label: '📜 History' },
@@ -6057,6 +6077,15 @@ let isBatchSyncRunning = false;
                 />
               )}
 
+              {activeTab === 'evm' && (
+                <EvmView
+                  project={currentProject}
+                  onUpdateProject={(updProj, actionDesc) => handleProjectUpdate(updProj, actionDesc)}
+                  isReadonly={!canUserEditPage(currentUserObj, 'evm')}
+                  tcpiAlertThreshold={tcpiAlertThreshold}
+                />
+              )}
+
               {activeTab === 'analysis' && (
                 <ComprehensiveAnalysisView 
                   project={currentProject} 
@@ -6195,6 +6224,11 @@ let isBatchSyncRunning = false;
                   onUpdateThemeSettings={(updated) => {
                     setThemeSettings(updated);
                     safeSetSmallItem('era_theme_settings', JSON.stringify(updated));
+                  }}
+                  tcpiAlertThreshold={tcpiAlertThreshold}
+                  onUpdateTcpiAlertThreshold={(threshold) => {
+                    setTcpiAlertThreshold(threshold);
+                    safeSetSmallItem('era_tcpi_alert_threshold', String(threshold));
                   }}
                 />
               )}
