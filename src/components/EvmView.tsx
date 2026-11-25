@@ -4,7 +4,6 @@ import { Project, formatAccounting } from '../types';
 import { calculateProjectEvm, EacScenarioId } from '../lib/evmCalculations';
 import EacScenariosPanel from './EacScenariosPanel';
 import TcpiAnalysisPanel from './TcpiAnalysisPanel';
-import TcpiTrajectoryChart from './TcpiTrajectoryChart';
 
 interface EvmViewProps {
   project: Project;
@@ -273,13 +272,6 @@ export default function EvmView({
         </div>
       </div>
 
-      {/* Visual Recharts TCPI Trajectory against 1.000 & Custom Alert Threshold */}
-      <TcpiTrajectoryChart
-        project={project}
-        evm={evm}
-        tcpiAlertThreshold={tcpiAlertThreshold}
-        formatBr={formatBr}
-      />
 
       {/* 4-Scenario Estimate at Completion (EAC) Calculator & Selector */}
       <EacScenariosPanel

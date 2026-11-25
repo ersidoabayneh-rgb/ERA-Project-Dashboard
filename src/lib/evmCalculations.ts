@@ -191,7 +191,7 @@ export function calculateProjectEvm(
         // If original cumulative % reached 100% before or at that month, take 100% as original cumulative %
         originalPlannedPct = 100;
       } else if (rawOriginalPlan !== null) {
-        originalPlannedPct = Math.max(0, rawOriginalPlan);
+        originalPlannedPct = Math.min(100, Math.max(0, rawOriginalPlan));
       } else {
         // If target month has no raw original plan entry, check if prior months reached 100% or take the latest prior original plan
         const priorOps = monthlyList
@@ -202,13 +202,14 @@ export function calculateProjectEvm(
         if (priorOps.length > 0 && Math.max(...priorOps) >= 100) {
           originalPlannedPct = 100;
         } else if (priorOps.length > 0) {
-          originalPlannedPct = priorOps[priorOps.length - 1];
+          originalPlannedPct = Math.min(100, Math.max(0, priorOps[priorOps.length - 1]));
         } else {
           originalPlannedPct = 100;
         }
       }
 
-      // Enforce: planned value on EVM must be the original cumulative planned % times the original contract amount
+      // Enforce: planned value on EVM must be the original cumulative planned % times original contract amount, capped at 100% if original plan reached 100%
+      originalPlannedPct = originalPlannedPct >= 100 ? 100 : Math.min(100, Math.max(0, originalPlannedPct));
       plannedPct = originalPlannedPct;
       planLabel = 'Original Plan';
     }
