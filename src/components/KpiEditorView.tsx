@@ -189,9 +189,41 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
   const isViewer = Boolean(currentUserObj?.role?.includes('viewer'));
   const canEditKpis = isAuthorized && !isViewer && !isMonthLocked;
 
+  const mergeLiveAutoKpis = React.useCallback((savedItems: KpiAllocatedItem[], targetProject: Project): KpiAllocatedItem[] => {
+    const liveList = getIntegratedKpiAllocated(targetProject);
+    const liveMap = new Map(liveList.map(item => [item.itemId, item]));
+    const savedMap = new Map(savedItems.map(item => [item.itemId, item]));
+
+    return liveList.map(liveItem => {
+      const saved = savedMap.get(liveItem.itemId);
+      if (!saved) return liveItem;
+      if (saved.isOverridden) {
+        return {
+          ...liveItem,
+          alloc: saved.alloc,
+          naActive: saved.naActive,
+          isOverridden: true,
+          sscName: saved.sscName ?? liveItem.sscName,
+          sscWt: saved.sscWt ?? liveItem.sscWt
+        };
+      }
+      // For non-overridden items, always reflect live integrated values (including Bonds, Risks, Progress, EVM, etc.)
+      return {
+        ...liveItem,
+        sscName: saved.sscName ?? liveItem.sscName,
+        sscWt: saved.sscWt ?? liveItem.sscWt
+      };
+    }).concat(
+      savedItems.filter(s => !liveMap.has(s.itemId))
+    );
+  }, []);
+
   const [draftKpis, setDraftKpis] = React.useState<KpiAllocatedItem[]>(() => {
-    if (project.kpiMonthlyRecords && project.kpiMonthlyRecords[project.kpiActiveMonth || 'Oct-26']?.items?.length) {
-      return project.kpiMonthlyRecords[project.kpiActiveMonth || 'Oct-26'].items;
+    const activeMonthKey = project.kpiActiveMonth || 'Oct-26';
+    const rec = project.kpiMonthlyRecords?.[activeMonthKey];
+    if (rec?.items?.length) {
+      const activeLock = Boolean(rec.isLocked || getMonthLockInfo(activeMonthKey).isPast10Days);
+      return activeLock ? rec.items : mergeLiveAutoKpis(rec.items, project);
     }
     return getIntegratedKpiAllocated(project);
   });
@@ -199,22 +231,33 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
 
   const prevProjectKpiIdRef = React.useRef(project.id);
   const prevKpiAllocatedLengthRef = React.useRef(project.kpiAllocated?.length || 0);
+  const bondsSyncSignature = React.useMemo(
+    () => JSON.stringify((project.bonds || []).map(b => [b.type, b.status, b.expireDate])),
+    [project.bonds]
+  );
+  const prevBondsSyncSignatureRef = React.useRef(bondsSyncSignature);
 
   React.useEffect(() => {
-    if (prevProjectKpiIdRef.current !== project.id || prevKpiAllocatedLengthRef.current !== (project.kpiAllocated?.length || 0)) {
+    const projectChanged = prevProjectKpiIdRef.current !== project.id;
+    const lenChanged = prevKpiAllocatedLengthRef.current !== (project.kpiAllocated?.length || 0);
+    const bondsChanged = prevBondsSyncSignatureRef.current !== bondsSyncSignature;
+
+    if (projectChanged || lenChanged || bondsChanged) {
       prevProjectKpiIdRef.current = project.id;
       prevKpiAllocatedLengthRef.current = project.kpiAllocated?.length || 0;
+      prevBondsSyncSignatureRef.current = bondsSyncSignature;
       if (!isMonthLocked) {
-        setDraftKpis(getIntegratedKpiAllocated(project));
+        setDraftKpis(prev => projectChanged || lenChanged ? getIntegratedKpiAllocated(project) : mergeLiveAutoKpis(prev, project));
       }
     }
-  }, [project.id, project.kpiAllocated, isMonthLocked]);
+  }, [project, project.id, project.kpiAllocated, bondsSyncSignature, isMonthLocked, mergeLiveAutoKpis]);
 
   const handleSelectMonth = (monthKey: string) => {
     setSelectedMonth(monthKey);
     const rec = project.kpiMonthlyRecords?.[monthKey];
+    const targetLocked = Boolean(rec?.isLocked || getMonthLockInfo(monthKey).isPast10Days);
     if (rec && rec.items && rec.items.length > 0) {
-      setDraftKpis(rec.items);
+      setDraftKpis(targetLocked ? rec.items : mergeLiveAutoKpis(rec.items, { ...project, kpiActiveMonth: monthKey }));
     } else {
       const calc = calculateProgressKpiScores(project, monthKey);
       const base = getIntegratedKpiAllocated({ ...project, kpiActiveMonth: monthKey });
@@ -699,12 +742,29 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
   };
 
   const handleResetToAuto = (itemId: string) => {
-    const updated = kpis.map(k => {
+    const baseCleared = kpis.map(k => (k.itemId === itemId ? { ...k, isOverridden: false } : k));
+    const recomputed = getIntegratedKpiAllocated({
+      ...project,
+      kpiAllocated: baseCleared,
+      kpiActiveMonth: selectedMonth
+    });
+    const autoItem = recomputed.find(k => k.itemId === itemId);
+
+    const updated = baseCleared.map(k => {
       if (k.itemId === itemId) {
         if (itemId === 'PP-1') {
           return {
             ...k,
             alloc: progressKpiResult.pp1Score,
+            naActive: false,
+            isOverridden: false
+          };
+        }
+        if (autoItem) {
+          return {
+            ...k,
+            alloc: autoItem.alloc,
+            naActive: autoItem.naActive,
             isOverridden: false
           };
         }
@@ -1675,7 +1735,9 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                             </button>
                           )}
                         </div>
-                        <span className="font-mono text-2xs">Sub-Score: {sscScore.toFixed(2)}%</span>
+                        <span className="font-mono text-2xs">
+                          Sub-Score: {sscScore < 0 ? 'N/A' : `${sscScore.toFixed(2)}%`}
+                        </span>
                       </div>
 
                       {/* Add Criteria Inline Form */}

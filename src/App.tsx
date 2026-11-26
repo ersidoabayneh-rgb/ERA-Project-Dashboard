@@ -5905,7 +5905,9 @@ let isBatchSyncRunning = false;
               {activeTab === 'monthly' && (
                 <MonthlyScurveView
                   project={currentProject}
+                  isReadonly={!canUserEditPage(currentUserObj, 'monthly')}
                   onUpdateMonthly={(monthly) => handleProjectUpdate({ monthly }, 'Cumulative S-Curve records Updated')}
+                  onUpdateEfyPlans={(efyPlans, desc) => handleProjectUpdate({ efyPlans }, desc || 'Updated EFY Annual Plan Schedule')}
                 />
               )}
 

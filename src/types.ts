@@ -780,6 +780,20 @@ export interface Project {
   customLinearItems?: any[];
   eacScenario?: 'cpi_continues' | 'original_plan_resumes' | 'cost_and_schedule' | 'bottom_up_etc';
   bottomUpEtcEtb?: number;
+  efyPlans?: Record<string, EfyAnnualLayerPlan>;
+}
+
+export interface EfyAnnualLayerPlan {
+  efyYear: string;
+  physicalContractorPlan: Array<number | null>; // 12 months (Jul..Jun)
+  physicalEraPlan: Array<number | null>;        // 12 months (Jul..Jun)
+  subBasePlan: Array<number | null>;            // 12 months (Jul..Jun)
+  subBaseActual: Array<number | null>;          // 12 months (Jul..Jun)
+  baseCoursePlan: Array<number | null>;         // 12 months (Jul..Jun)
+  baseCourseActual: Array<number | null>;       // 12 months (Jul..Jun)
+  asphaltPlan: Array<number | null>;            // 12 months (Jul..Jun)
+  asphaltActual: Array<number | null>;          // 12 months (Jul..Jun)
+  updatedAt?: string;
 }
 
 export interface DailyActivityEquipmentItem {
@@ -852,6 +866,7 @@ export interface DailySiteLogEntry {
   date: string; // YYYY-MM-DD
   weather: string;
   shift: string;
+  dailyKmAccomplishment?: number; // Daily road length accomplishment in Km
   dailyNotes: string; // Construction Manager textual context tying labor, equipment & material inputs
   laborSummary: DailyActivityLaborItem[];
   equipmentFleet: DailyEquipmentFleetItem[];

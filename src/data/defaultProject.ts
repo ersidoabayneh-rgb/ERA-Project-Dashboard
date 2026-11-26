@@ -944,17 +944,19 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
   // 3. Bonds / Guarantees statuses check
   const isBondValidStatus = (st?: string) => {
     if (!st) return false;
-    const s = st.toLowerCase();
+    const s = st.trim().toLowerCase();
     return s === 'valid' || s === 'recovered' || s === 'returned' || s === 'amortized' || s === 'fully amortized';
   };
   const isBondExpiredStatus = (st?: string) => {
     if (!st) return false;
-    const s = st.toLowerCase();
+    const s = st.trim().toLowerCase();
     return s === 'expired';
   };
 
   const evaluateBondItem = (bonds: any[], predicate: (b: any) => boolean) => {
-    const matched = bonds.filter(predicate);
+    const matched = bonds.filter(
+      b => b && predicate(b) && String(b.status || '').trim().toLowerCase() !== 'n/a'
+    );
     if (matched.length === 0) {
       return { naActive: true, alloc: 0 };
     }
@@ -966,7 +968,7 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
     if (hasValidOrRecovered) {
       return { naActive: false, alloc: 1 };
     }
-    return { naActive: false, alloc: isBondValidStatus(matched[0].status) ? 1 : 0 };
+    return { naActive: false, alloc: 0 };
   };
 
   // 4. EVM Calculations for SC4.2 (Schedule Variance) via unified engine
@@ -1168,27 +1170,36 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
     } else if (k.itemId === 'CC-1F' && autoCc1fScore !== null) {
       computedAlloc = autoCc1fScore;
     } else if (k.itemId === 'CC-3A') {
-      const res = evaluateBondItem(project.bonds || [], b => b.type.toLowerCase().includes('performance'));
+      const res = evaluateBondItem(project.bonds || [], b => (b.type || '').toLowerCase().includes('performance'));
       computedAlloc = res.alloc;
       computedNaActive = res.naActive;
     } else if (k.itemId === 'CC-3B') {
-      const res = evaluateBondItem(project.bonds || [], b => b.type.toLowerCase().includes('advance'));
+      const res = evaluateBondItem(project.bonds || [], b => (b.type || '').toLowerCase().includes('advance'));
       computedAlloc = res.alloc;
       computedNaActive = res.naActive;
     } else if (k.itemId === 'CC-3C') {
-      const res = evaluateBondItem(project.bonds || [], b => b.type.toLowerCase().includes('retention'));
+      const res = evaluateBondItem(project.bonds || [], b => (b.type || '').toLowerCase().includes('retention'));
       computedAlloc = res.alloc;
       computedNaActive = res.naActive;
     } else if (k.itemId === 'CC-3D') {
-      const res = evaluateBondItem(project.bonds || [], b => b.type.toLowerCase().includes('car') || b.type.toLowerCase().includes('all risk') || b.type.toLowerCase().includes('all-risk'));
+      const res = evaluateBondItem(project.bonds || [], b => {
+        const t = (b.type || '').toLowerCase();
+        return t.includes('car') || t.includes('all risk') || t.includes('all-risk');
+      });
       computedAlloc = res.alloc;
       computedNaActive = res.naActive;
     } else if (k.itemId === 'CC-3E') {
-      const res = evaluateBondItem(project.bonds || [], b => b.type.toLowerCase().includes('indemnity') || b.type.toLowerCase().includes('professional'));
+      const res = evaluateBondItem(project.bonds || [], b => {
+        const t = (b.type || '').toLowerCase();
+        return t.includes('indemnity') || t.includes('professional');
+      });
       computedAlloc = res.alloc;
       computedNaActive = res.naActive;
     } else if (k.itemId === 'CC-3F') {
-      const res = evaluateBondItem(project.bonds || [], b => b.type.toLowerCase().includes('plant') || b.type.toLowerCase().includes('equipment') || b.type.toLowerCase().includes('machinery'));
+      const res = evaluateBondItem(project.bonds || [], b => {
+        const t = (b.type || '').toLowerCase();
+        return t.includes('plant') || t.includes('equipment') || t.includes('machinery') || t.includes('(cpm)');
+      });
       computedAlloc = res.alloc;
       computedNaActive = res.naActive;
     } else if (k.itemId === 'RK-1' || k.itemId === 'RK-2' || k.itemId === 'RK-3' || k.itemId === 'RK-4') {

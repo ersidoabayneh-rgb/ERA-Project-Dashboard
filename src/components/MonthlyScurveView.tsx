@@ -2,9 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   CalendarRange, Plus, Trash2, Activity, ArrowUpToLine, AlertCircle, AlertTriangle, X,
-  ClipboardList, MessageSquare, Users, Truck, Package, CheckCircle2, ChevronDown, ChevronUp
+  ClipboardList, MessageSquare, CheckCircle2
 } from 'lucide-react';
-import { Project, MonthlyProgress } from '../types';
+import { Project, MonthlyProgress, EfyAnnualLayerPlan } from '../types';
 import { 
   resolveCurrentMonthKey, 
   isSameMonth, 
@@ -18,10 +18,13 @@ import {
   clampActualsToLiveValue
 } from '../lib/monthlySync';
 import { aggregateDailyDataByMonth, MonthlyDailySyncSummary } from '../lib/dailyActivitiesSync';
+import { EfyPlanTableSection } from './EfyPlanTableSection';
 
 interface MonthlyScurveViewProps {
   project: Project;
+  isReadonly?: boolean;
   onUpdateMonthly: (monthly: MonthlyProgress[]) => void;
+  onUpdateEfyPlans?: (efyPlans: Record<string, EfyAnnualLayerPlan>, actionDesc?: string) => void;
 }
 
 interface EditableCellProps {
@@ -115,7 +118,7 @@ const EditableCell: React.FC<EditableCellProps> = ({
   );
 };
 
-export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyScurveViewProps) {
+export default function MonthlyScurveView({ project, isReadonly = false, onUpdateMonthly, onUpdateEfyPlans }: MonthlyScurveViewProps) {
   const currentMonthKey = resolveCurrentMonthKey(project);
   const [tableError, setTableError] = useState<string | null>(null);
   const [syncPulseTick, setSyncPulseTick] = useState(0);
@@ -156,14 +159,6 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
     () => aggregateDailyDataByMonth(project),
     [project.dailyActivities, project.dailySiteLogs, project.lastModifiedAt, syncPulseTick]
   );
-
-  const [expandedDailyMonthKey, setExpandedDailyMonthKey] = useState<string | null>(null);
-  const activeInspectMonthKey = useMemo(() => {
-    if (expandedDailyMonthKey && dailyByMonth.byMonth[expandedDailyMonthKey]) {
-      return expandedDailyMonthKey;
-    }
-    return dailyByMonth.monthKeys[0] || null;
-  }, [expandedDailyMonthKey, dailyByMonth]);
 
   const totalSyncedDailyNotes = useMemo(
     () => dailyByMonth.allDays.filter(d => Boolean(d.dailyNotes)).length,
@@ -625,7 +620,6 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                 const monthDailyStats: MonthlyDailySyncSummary | undefined =
                   dailyByMonth.byMonth[m.month] ||
                   Object.values(dailyByMonth.byMonth).find((b: MonthlyDailySyncSummary) => isSameMonth(b.monthKey, m.month));
-                const isInspectedMonth = Boolean(monthDailyStats && activeInspectMonthKey === monthDailyStats.monthKey);
 
                 return (
                   <tr 
@@ -828,28 +822,18 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
                     </td>
                     <td className="p-2.5 text-left">
                       {monthDailyStats ? (
-                        <button
-                          type="button"
-                          onClick={() => setExpandedDailyMonthKey(monthDailyStats.monthKey)}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-lg border text-[11px] transition cursor-pointer ${
-                            isInspectedMonth
-                              ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-200'
-                              : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                          }`}
-                          title="Inspect synced daily activities, labor, equipment, materials & Daily Notes for this month"
-                        >
+                        <div className="w-full text-left px-2.5 py-1.5 rounded-lg border text-[11px] bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
                           <div className="flex items-center justify-between gap-1 font-semibold tabular-nums">
                             <span>{monthDailyStats.loggedDaysCount}d · {monthDailyStats.totalActivitiesCount} tasks</span>
                             <span className="text-blue-600 dark:text-blue-400 flex items-center gap-0.5">
                               <MessageSquare className="w-3 h-3" />
                               {monthDailyStats.notesCount}
-                              {isInspectedMonth ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                             </span>
                           </div>
                           <div className="text-[10px] text-slate-500 dark:text-slate-400 tabular-nums mt-0.5 truncate">
                             {monthDailyStats.totalLaborHeadcount} crew · {monthDailyStats.operatingEquipmentUnits}/{monthDailyStats.totalEquipmentUnits} equip
                           </div>
-                        </button>
+                        </div>
                       ) : (
                         <span className="text-slate-400 text-[11px]">—</span>
                       )}
@@ -888,110 +872,12 @@ export default function MonthlyScurveView({ project, onUpdateMonthly }: MonthlyS
         </div>
       </div>
 
-      {/* Selected Month Cumulative Daily Operations & Construction Manager Notes Inspector */}
-      {activeInspectMonthKey && dailyByMonth.byMonth[activeInspectMonthKey] && (() => {
-        const inspectBucket = dailyByMonth.byMonth[activeInspectMonthKey];
-        return (
-          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
-            <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700/50 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wide">
-                  Monthly Field Summary &amp; Manager Daily Notes — {inspectBucket.monthKey}
-                </h3>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-1.5">
-                {dailyByMonth.monthKeys.map(mKey => (
-                  <button
-                    key={mKey}
-                    type="button"
-                    onClick={() => setExpandedDailyMonthKey(mKey)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold font-mono transition cursor-pointer border ${
-                      mKey === activeInspectMonthKey
-                        ? 'bg-slate-900 dark:bg-blue-600 text-white border-slate-900 dark:border-blue-600'
-                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    {mKey} ({dailyByMonth.byMonth[mKey].loggedDaysCount}d)
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="p-3.5 space-y-3">
-              {/* Monthly Rollup KPIs */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 text-xs">
-                <div className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/40">
-                  <div className="text-[10px] font-bold uppercase text-slate-400">Logged Days</div>
-                  <div className="font-mono font-bold text-slate-900 dark:text-white tabular-nums mt-0.5">
-                    {inspectBucket.loggedDaysCount}d ({inspectBucket.totalActivitiesCount} tasks)
-                  </div>
-                </div>
-                <div className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/40">
-                  <div className="text-[10px] font-bold uppercase text-slate-400">Cumulative Crew</div>
-                  <div className="font-mono font-bold text-indigo-700 dark:text-indigo-300 tabular-nums mt-0.5">
-                    {inspectBucket.totalLaborHeadcount.toLocaleString()} ({inspectBucket.avgDailyLabor}/day)
-                  </div>
-                </div>
-                <div className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/40">
-                  <div className="text-[10px] font-bold uppercase text-slate-400">Equipment Operating</div>
-                  <div className="font-mono font-bold text-emerald-700 dark:text-emerald-300 tabular-nums mt-0.5">
-                    {inspectBucket.operatingEquipmentUnits}/{inspectBucket.totalEquipmentUnits} ({inspectBucket.equipmentHoursTotal.toFixed(1)}h)
-                  </div>
-                </div>
-                <div className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/40">
-                  <div className="text-[10px] font-bold uppercase text-slate-400">Materials Used / Recv</div>
-                  <div className="font-mono font-bold text-slate-900 dark:text-white tabular-nums mt-0.5">
-                    {inspectBucket.totalMaterialUsed.toLocaleString()} / {inspectBucket.totalMaterialReceived.toLocaleString()}
-                  </div>
-                </div>
-                <div className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/40">
-                  <div className="text-[10px] font-bold uppercase text-slate-400">Executed Output</div>
-                  <div className="font-mono font-bold text-blue-700 dark:text-blue-300 tabular-nums mt-0.5">
-                    {inspectBucket.executedKmSum} km · {inspectBucket.executedM3Sum} m³
-                  </div>
-                </div>
-              </div>
-
-              {/* Individual Logged Days & Manager Notes in this Month */}
-              <div className="divide-y divide-slate-100 dark:divide-slate-700/50 border border-slate-200 dark:border-slate-700/60 rounded-xl overflow-hidden">
-                {inspectBucket.days.map(day => (
-                  <div key={day.date} className="p-3 bg-white dark:bg-slate-800/60 flex flex-col md:flex-row md:items-start justify-between gap-2 text-xs">
-                    <div className="space-y-1 min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">
-                          {day.date}
-                        </span>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {day.weather} · {day.isNoWorkDay ? 'Standstill Day' : 'Active Workday'}
-                        </span>
-                      </div>
-                      <p className={`text-xs ${day.dailyNotes ? 'text-slate-800 dark:text-slate-100' : 'text-slate-400 italic'}`}>
-                        {day.dailyNotes || 'No Daily Notes recorded for this date.'}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-300 shrink-0">
-                      <span className="px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-                        <Users className="w-3 h-3 inline mr-1 text-indigo-500" />
-                        {day.totalLabor}
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-                        <Truck className="w-3 h-3 inline mr-1 text-emerald-500" />
-                        {day.operatingEquipment}/{day.totalEquipmentUnits}
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-                        <Package className="w-3 h-3 inline mr-1 text-amber-500" />
-                        {day.totalMaterialUsed}/{day.totalMaterialReceived}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* EFY Plan & Pavement Progress Schedule (Km) */}
+      <EfyPlanTableSection
+        project={project}
+        isReadonly={isReadonly}
+        onSaveEfyPlans={onUpdateEfyPlans}
+      />
     </div>
   );
 }

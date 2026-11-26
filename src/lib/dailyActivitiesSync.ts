@@ -76,6 +76,7 @@ export interface NormalizedDailyDayRecord {
   monthKey: string | null;
   weather: string;
   shift: string;
+  dailyKmAccomplishment?: number;
   dailyNotes: string;
   isNoWorkDay: boolean;
   noWorkReason: string;
@@ -234,11 +235,18 @@ export function getNormalizedDailyRecordsByDate(project: Project | undefined | n
       return latest;
     }, undefined);
 
+    const rawDailyKm = (log as { dailyKmAccomplishment?: number | string } | undefined)?.dailyKmAccomplishment;
+    const parsedDailyKm = typeof rawDailyKm === 'number'
+      ? rawDailyKm
+      : (typeof rawDailyKm === 'string' && rawDailyKm.trim() !== '' ? Number(rawDailyKm) : NaN);
+    const dailyKmAccomplishment = !isNaN(parsedDailyKm) && parsedDailyKm >= 0 ? Number(parsedDailyKm.toFixed(3)) : undefined;
+
     records.push({
       date,
       monthKey: getMonthKeyFromIsoDate(date),
       weather: log?.weather || dayActs[0]?.weatherCondition || 'Sunny',
       shift: log?.shift || dayActs[0]?.shift || 'Day Shift (Standard)',
+      dailyKmAccomplishment,
       dailyNotes: resolvedDailyNotes,
       isNoWorkDay: Boolean(log?.isNoWorkDay),
       noWorkReason: log?.noWorkReason || '',
@@ -289,6 +297,7 @@ export interface MonthlyDailySyncSummary {
   plantProductionActual: number;
   plantProductionTarget: number;
   executedKmSum: number;
+  dailyKmAccomplishmentSum: number;
   executedM3Sum: number;
   executedStructuresSum: number;
   notesCount: number;
@@ -333,6 +342,7 @@ export function aggregateDailyDataByMonth(project: Project | undefined | null): 
         plantProductionActual: 0,
         plantProductionTarget: 0,
         executedKmSum: 0,
+        dailyKmAccomplishmentSum: 0,
         executedM3Sum: 0,
         executedStructuresSum: 0,
         notesCount: 0,
@@ -357,6 +367,9 @@ export function aggregateDailyDataByMonth(project: Project | undefined | null): 
     bucket.plantProductionActual += day.totalPlantActual;
     bucket.plantProductionTarget += day.totalPlantTarget;
     bucket.executedKmSum = Number((bucket.executedKmSum + day.executedKm).toFixed(3));
+    if (typeof day.dailyKmAccomplishment === 'number' && !isNaN(day.dailyKmAccomplishment)) {
+      bucket.dailyKmAccomplishmentSum = Number((bucket.dailyKmAccomplishmentSum + day.dailyKmAccomplishment).toFixed(3));
+    }
     bucket.executedM3Sum = Number((bucket.executedM3Sum + day.executedM3).toFixed(2));
     bucket.executedStructuresSum = Number((bucket.executedStructuresSum + day.executedStructures).toFixed(3));
 

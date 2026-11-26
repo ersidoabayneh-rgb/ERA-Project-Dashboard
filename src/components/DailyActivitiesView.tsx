@@ -35,7 +35,7 @@ import {
 } from '../lib/dailyActivitiesSync';
 import eraLogo from '../assets/logo.png';
 import { SpecialStructuresStandaloneTables } from './SpecialStructuresStandaloneTables';
-import { DailyActivitiesSummaryDashboard } from './DailyActivitiesSummaryDashboard';
+import { MonthlyKmAccomplishmentSummary } from './MonthlyKmAccomplishmentSummary';
 
 interface DailyActivitiesViewProps {
   project: Project;
@@ -516,6 +516,20 @@ function hydrateDayFieldsFromProject(proj: Project, dateStr: string) {
     dailyNotes = readLocalJson<string>(`era_daily_notes_${proj.id}_${dateStr}`, '');
   }
 
+  // Resolve Daily Km Accomplishment
+  let dailyKmAccomplishment = '';
+  if (
+    explicitLog &&
+    typeof explicitLog.dailyKmAccomplishment === 'number' &&
+    Number.isFinite(explicitLog.dailyKmAccomplishment) &&
+    explicitLog.dailyKmAccomplishment >= 0
+  ) {
+    dailyKmAccomplishment = String(explicitLog.dailyKmAccomplishment);
+  } else {
+    const storedKm = readLocalJson<string>(`era_daily_km_${proj.id}_${dateStr}`, '');
+    dailyKmAccomplishment = typeof storedKm === 'string' ? storedKm : '';
+  }
+
   // Resolve Labor Summary
   let laborSummary: DailyActivityLaborItem[] = [];
   if (explicitLog && Array.isArray(explicitLog.laborSummary) && explicitLog.laborSummary.length > 0) {
@@ -608,6 +622,7 @@ function hydrateDayFieldsFromProject(proj: Project, dateStr: string) {
 
   return {
     dailyNotes,
+    dailyKmAccomplishment,
     laborSummary,
     weather,
     shift,
@@ -634,11 +649,22 @@ export default function DailyActivitiesView({
 
   // View States
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [summaryTargetMonth, setSummaryTargetMonth] = useState<string>(() =>
+    new Date().toISOString().slice(0, 7)
+  );
+  const dailyKmInputRef = useRef<HTMLInputElement | null>(null);
   const initialHydration = useMemo(() => hydrateDayFieldsFromProject(project, selectedDate), []);
+
+  useEffect(() => {
+    if (selectedDate && selectedDate.length >= 7) {
+      setSummaryTargetMonth(selectedDate.slice(0, 7));
+    }
+  }, [selectedDate]);
 
   const [weather, setWeather] = useState<string>(initialHydration.weather);
   const [shift, setShift] = useState<string>(initialHydration.shift);
   const [dailyNotes, setDailyNotes] = useState<string>(initialHydration.dailyNotes);
+  const [dailyKmAccomplishment, setDailyKmAccomplishment] = useState<string>(initialHydration.dailyKmAccomplishment);
   const [laborSummary, setLaborSummary] = useState<DailyActivityLaborItem[]>(initialHydration.laborSummary);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(initialHydration.updatedAt);
 
@@ -1044,6 +1070,7 @@ export default function DailyActivitiesView({
     weather,
     shift,
     dailyNotes,
+    dailyKmAccomplishment,
     laborSummary,
     isNoWorkDay,
     noWorkReason,
@@ -1064,6 +1091,7 @@ export default function DailyActivitiesView({
     weather,
     shift,
     dailyNotes,
+    dailyKmAccomplishment,
     laborSummary,
     isNoWorkDay,
     noWorkReason,
@@ -1104,11 +1132,19 @@ export default function DailyActivitiesView({
     const nowIso = new Date().toISOString();
     lastLocalCommitAtRef.current = nowIso;
 
+    const rawDailyKm = (s.dailyKmAccomplishment || '').trim();
+    const parsedDailyKm = rawDailyKm === '' ? undefined : Number(rawDailyKm);
+    const validDailyKm =
+      parsedDailyKm !== undefined && Number.isFinite(parsedDailyKm) && parsedDailyKm >= 0
+        ? parsedDailyKm
+        : undefined;
+
     const entry: DailySiteLogEntry = {
       date: s.selectedDate,
       weather: s.weather,
       shift: s.shift,
       dailyNotes: s.dailyNotes,
+      ...(validDailyKm !== undefined ? { dailyKmAccomplishment: validDailyKm } : {}),
       isNoWorkDay: s.isNoWorkDay,
       noWorkReason: s.noWorkReason,
       noWorkNotes: s.noWorkNotes,
@@ -1240,6 +1276,7 @@ export default function DailyActivitiesView({
 
     const hydrated = hydrateDayFieldsFromProject(project, selectedDate);
     setDailyNotes(hydrated.dailyNotes);
+    setDailyKmAccomplishment(hydrated.dailyKmAccomplishment);
     setLaborSummary(hydrated.laborSummary);
     setWeather(hydrated.weather);
     setShift(hydrated.shift);
@@ -1299,6 +1336,7 @@ export default function DailyActivitiesView({
   useEffect(() => {
     const entries: Array<[string, unknown]> = [
       [`era_daily_notes_${project.id}_${selectedDate}`, dailyNotes],
+      [`era_daily_km_${project.id}_${selectedDate}`, dailyKmAccomplishment],
       [`era_labor_${project.id}_${selectedDate}`, laborSummary],
       [`era_no_work_${project.id}_${selectedDate}`, isNoWorkDay],
       [`era_no_work_reason_${project.id}_${selectedDate}`, noWorkReason],
@@ -1317,7 +1355,7 @@ export default function DailyActivitiesView({
     } catch {
       // Primary persistence lives in project.dailySiteLogs & Firestore; skip mirror on tight quota
     }
-  }, [dailyNotes, laborSummary, isNoWorkDay, noWorkReason, noWorkNotes, productionList, equipmentFleet, siteChallenges, tomorrowPlans, sections, project.id, selectedDate]);
+  }, [dailyNotes, dailyKmAccomplishment, laborSummary, isNoWorkDay, noWorkReason, noWorkNotes, productionList, equipmentFleet, siteChallenges, tomorrowPlans, sections, project.id, selectedDate]);
 
   // Navigate date with Previous/Next buttons
   const handleDateNav = (offset: number) => {
@@ -1377,6 +1415,29 @@ export default function DailyActivitiesView({
       totalMaterialReceived
     };
   }, [equipmentFleet, currentActivities, productionList, laborSummary, materialsList]);
+
+  // Merge active day's live Daily Km Accomplishment & site context so Monthly Summary & PDF reflect unsaved edits immediately
+  const liveDailySiteLogs = useMemo<Record<string, DailySiteLogEntry>>(() => {
+    const base = { ...(project.dailySiteLogs || {}) };
+    const existing = base[selectedDate] || ({ date: selectedDate } as DailySiteLogEntry);
+    const trimmedKm = dailyKmAccomplishment.trim();
+    const parsedKm = trimmedKm === '' ? undefined : Number(trimmedKm);
+    const nextEntry: DailySiteLogEntry = {
+      ...existing,
+      date: selectedDate,
+      dailyNotes,
+      isNoWorkDay,
+      weather,
+      shift
+    };
+    if (parsedKm !== undefined && Number.isFinite(parsedKm) && parsedKm >= 0) {
+      nextEntry.dailyKmAccomplishment = parsedKm;
+    } else {
+      delete nextEntry.dailyKmAccomplishment;
+    }
+    base[selectedDate] = nextEntry;
+    return base;
+  }, [project.dailySiteLogs, selectedDate, dailyKmAccomplishment, dailyNotes, isNoWorkDay, weather, shift]);
 
   // Check activities exceeding BOQ quantity threshold (> 20% variance)
   const activitiesExceedingBoq = useMemo(() => {
@@ -2585,151 +2646,304 @@ export default function DailyActivitiesView({
           </div>
         </div>
 
-        {/* CLEAN TOP HEADER & ACTION BAR */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3 print:hidden">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0">
-              <ClipboardList className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
-                  Daily Activities &amp; Site Log
-                </h1>
-                {saveStatus === 'saving' ? (
-                  <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
-                    <RefreshCw className="w-3 h-3 animate-spin" /> Saving
-                  </span>
-                ) : (
-                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                    <Check className="w-3 h-3" /> Synced
-                  </span>
-                )}
+        {/* UNIFIED DAILY ACTIVITIES HEADER, MONTHLY KM SUMMARY, DATE NAVIGATOR & SITE PARTIES CONTAINER */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm divide-y divide-slate-200 dark:divide-slate-800 print:border-none print:shadow-none">
+          {/* 1. TOP HEADER & ACTION BAR */}
+          <div className="p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3 print:hidden">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0">
+                <ClipboardList className="w-5 h-5" />
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                {project.name || 'Road Project'} · {formatDisplayDate(selectedDate)}
-              </p>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                    Daily Activities &amp; Site Log
+                  </h1>
+                  {saveStatus === 'saving' ? (
+                    <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3 animate-spin" /> Saving
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Synced
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  {project.name || 'Road Project'}
+                </p>
+              </div>
             </div>
-          </div>
 
             <div className="flex flex-wrap items-center gap-2 text-xs">
-            {!isReadonly && (
+              {!isReadonly && (
+                <button
+                  type="button"
+                  onClick={handleSaveAndSyncNow}
+                  className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-3.5 py-1.5 font-semibold flex items-center gap-1.5 transition whitespace-nowrap shrink-0 cursor-pointer"
+                  title="Save Daily Site Log & Daily Notes and sync immediately to Comprehensive Analysis & Monthly Cumulative"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Save &amp; Sync</span>
+                </button>
+              )}
+
               <button
-                type="button"
-                onClick={handleSaveAndSyncNow}
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-3.5 py-1.5 font-semibold flex items-center gap-1.5 transition"
-                title="Save Daily Site Log & Daily Notes and sync immediately to Comprehensive Analysis & Monthly Cumulative"
+                onClick={() => {
+                  setPrintTargetDate(selectedDate);
+                  setIsPrintSpecificDayOpen(true);
+                }}
+                className="bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 font-medium flex items-center gap-1.5 transition whitespace-nowrap shrink-0 cursor-pointer"
+                title="Select and Print a Specific Day"
               >
-                <Save className="w-3.5 h-3.5" />
-                <span>Save &amp; Sync</span>
+                <Printer className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Print Day</span>
               </button>
+
+              <button
+                onClick={handleExportCSV}
+                className="bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 font-medium flex items-center gap-1.5 transition whitespace-nowrap shrink-0 cursor-pointer"
+                title="Export Current Day Activities as CSV"
+              >
+                <DownloadCloud className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Export CSV</span>
+              </button>
+
+              <button
+                onClick={() => setIsTemplateModalOpen(true)}
+                className="bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 font-medium flex items-center gap-1.5 transition whitespace-nowrap shrink-0 cursor-pointer"
+                title="Save and Load Daily Activity Templates"
+              >
+                <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Templates ({templates.length})</span>
+              </button>
+
+              <button
+                onClick={handleExportPDF}
+                className="bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white rounded-lg px-3.5 py-1.5 font-semibold flex items-center gap-1.5 transition whitespace-nowrap shrink-0 cursor-pointer"
+                title="Print / Export Current DPR as PDF"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print / PDF DPR</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2. DEDICATED MONTHLY KM ACCOMPLISHMENT SUMMARY (SYNCED WITH CUMULATIVE PDF) */}
+          <MonthlyKmAccomplishmentSummary
+            embedded
+            project={project}
+            activities={activities}
+            selectedDate={selectedDate}
+            targetMonth={summaryTargetMonth}
+            onChangeTargetMonth={setSummaryTargetMonth}
+            onSelectDate={handleSelectDate}
+            onFocusDailyKmInput={() => {
+              dailyKmInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              setTimeout(() => dailyKmInputRef.current?.focus(), 150);
+            }}
+            sections={sections}
+            currentUserObj={currentUserObj}
+            liveDailySiteLogs={liveDailySiteLogs}
+          />
+
+          {/* 3. DATE NAVIGATOR + RECENT LOGGED DATES STRIP */}
+          <div className="px-4 py-3 space-y-2.5 print:hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <button
+                onClick={() => handleDateNav(-1)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold transition border border-slate-200 dark:border-slate-700 whitespace-nowrap shrink-0 cursor-pointer"
+                title="Switch to Previous Day"
+              >
+                <ChevronLeft className="w-4 h-4 text-slate-500" />
+                <span>Previous Day</span>
+              </button>
+
+              <div className="flex flex-wrap items-center justify-center gap-2.5">
+                <div className="flex items-center gap-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-1.5">
+                  <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <div className="flex flex-col text-left">
+                    <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider leading-none mb-0.5">
+                      {formatDisplayDate(selectedDate)}
+                    </span>
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={e => handleSelectDate(e.target.value)}
+                      className="text-xs font-bold text-slate-900 dark:text-white bg-transparent outline-none cursor-pointer tabular-nums"
+                      title="Click to open calendar date picker"
+                    />
+                  </div>
+                </div>
+
+                {selectedDate !== new Date().toISOString().split('T')[0] && (
+                  <button
+                    onClick={() => handleSelectDate(new Date().toISOString().split('T')[0])}
+                    className="text-xs bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 px-3 py-2 rounded-lg font-semibold transition whitespace-nowrap shrink-0 cursor-pointer"
+                    title="Jump directly to today's date"
+                  >
+                    Today
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    const next = !isNoWorkDay;
+                    setIsNoWorkDay(next);
+                    scheduleResourceSync({ isNoWorkDay: next }, next ? 'Marked Standstill Day' : 'Resumed Active Workday');
+                  }}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition border whitespace-nowrap shrink-0 cursor-pointer ${
+                    isNoWorkDay
+                      ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                      : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                  }`}
+                >
+                  {isNoWorkDay ? 'Standstill Day (Click to Resume)' : 'Active Workday'}
+                </button>
+              </div>
+
+              <button
+                onClick={() => handleDateNav(1)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold transition border border-slate-200 dark:border-slate-700 whitespace-nowrap shrink-0 cursor-pointer"
+                title="Switch to Next Day"
+              >
+                <span>Next Day</span>
+                <ChevronRight className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+
+            {loggedDatesSummary.length > 0 && (
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 overflow-x-auto text-[11px]">
+                <span className="text-slate-500 dark:text-slate-400 font-semibold shrink-0">
+                  Recent Logged Dates:
+                </span>
+                {loggedDatesSummary.slice(0, 8).map(item => {
+                  const isSelected = item.date === selectedDate;
+                  return (
+                    <button
+                      key={item.date}
+                      onClick={() => handleSelectDate(item.date)}
+                      className={`px-2.5 py-1 rounded-md border font-medium tabular-nums shrink-0 transition cursor-pointer ${
+                        isSelected
+                          ? 'bg-slate-900 dark:bg-blue-600 text-white border-slate-900 dark:border-blue-600'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {item.date} ({item.count})
+                    </button>
+                  );
+                })}
+              </div>
             )}
+          </div>
 
-            <button
-              onClick={() => {
-                setPrintTargetDate(selectedDate);
-                setIsPrintSpecificDayOpen(true);
-              }}
-              className="bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 font-medium flex items-center gap-1.5 transition"
-              title="Select and Print a Specific Day"
-            >
-              <Printer className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>Print Day</span>
-            </button>
+          {/* 4. COMPACT PROJECT PARTIES, WEATHER & SHIFT BAR (COLLAPSIBLE PARTY INPUTS) */}
+          <div>
+            <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs print:hidden">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-600 dark:text-slate-300 min-w-0">
+                <span className="truncate">
+                  Contractor: <strong className="text-slate-800 dark:text-slate-100">{project.contractor || '—'}</strong>
+                </span>
+                <span className="text-slate-300 dark:text-slate-700 hidden md:inline">|</span>
+                <span className="truncate hidden md:inline">
+                  {consultantRoleLabel}: <strong className="text-slate-800 dark:text-slate-100">{project.consultant || project.supervisionConsultant?.firmName || '—'}</strong>
+                </span>
+              </div>
 
-            <button
-              onClick={handleExportCSV}
-              className="bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 font-medium flex items-center gap-1.5 transition"
-              title="Export Current Day Activities as CSV"
-            >
-              <DownloadCloud className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Export CSV</span>
-            </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <Sun className="w-3.5 h-3.5 text-amber-500" />
+                  <select
+                    value={weather}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setWeather(val);
+                      scheduleResourceSync({ weather: val }, `Updated site weather to ${val}`);
+                    }}
+                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 font-semibold text-slate-800 dark:text-slate-100 outline-none cursor-pointer text-xs"
+                    aria-label="Site Weather"
+                  >
+                    <option value="Sunny">Sunny</option>
+                    <option value="Sunny & Cloudy">Sunny &amp; Cloudy</option>
+                    <option value="Rainy">Rainy / Wet</option>
+                    <option value="Overcast">Overcast</option>
+                  </select>
+                </div>
 
-            <button
-              onClick={() => setIsTemplateModalOpen(true)}
-              className="bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 font-medium flex items-center gap-1.5 transition"
-              title="Save and Load Daily Activity Templates"
-            >
-              <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>Templates ({templates.length})</span>
-            </button>
+                <select
+                  value={shift}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setShift(val);
+                    scheduleResourceSync({ shift: val }, `Updated site shift to ${val}`);
+                  }}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 font-semibold text-slate-800 dark:text-slate-100 outline-none cursor-pointer text-xs"
+                  aria-label="Work Shift"
+                >
+                  <option value="Day Shift (Standard)">Day Shift</option>
+                  <option value="Night Shift">Night Shift</option>
+                  <option value="Extended / Overtime">Overtime</option>
+                </select>
 
-            <button
-              onClick={handleExportPDF}
-              className="bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white rounded-lg px-3.5 py-1.5 font-semibold flex items-center gap-1.5 transition"
-              title="Print / Export Current DPR as PDF"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print / PDF DPR</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPartyEditor(!showPartyEditor)}
+                  className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <span>{showPartyEditor ? 'Hide Parties' : 'Edit Parties'}</span>
+                  {showPartyEditor ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            <div className={`${showPartyEditor ? 'grid border-t border-slate-100 dark:border-slate-800' : 'hidden print:grid'} p-3.5 bg-slate-50/70 dark:bg-slate-800/50 grid-cols-1 md:grid-cols-2 gap-3 text-xs`}>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 dark:text-slate-400 w-36 font-medium text-[11px]">Employer / Client:</span>
+                  <input
+                    value={project.client || ''}
+                    onChange={e => onUpdateProject({ client: e.target.value }, 'Updated Client')}
+                    placeholder="Ethiopian Road Administration (ERA)"
+                    className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-slate-100 font-medium text-xs outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 dark:text-slate-400 w-36 font-medium text-[11px]">{consultantRoleLabel}:</span>
+                  <input
+                    value={project.consultant || project.supervisionConsultant?.firmName || ''}
+                    onChange={e => onUpdateProject({
+                      consultant: e.target.value,
+                      supervisionConsultant: project.supervisionConsultant ? { ...project.supervisionConsultant, firmName: e.target.value } : undefined
+                    }, 'Updated Consultant')}
+                    placeholder="Supervision Consultant Firm"
+                    className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-slate-100 font-medium text-xs outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 dark:text-slate-400 w-28 font-medium text-[11px]">Contractor:</span>
+                  <input
+                    value={project.contractor || ''}
+                    onChange={e => onUpdateProject({ contractor: e.target.value }, 'Updated Contractor')}
+                    placeholder="Contractor Name"
+                    className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-slate-100 font-medium text-xs outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 dark:text-slate-400 w-28 font-medium text-[11px]">Project Name:</span>
+                  <input
+                    value={project.name || ''}
+                    onChange={e => onUpdateProject({ name: e.target.value }, 'Updated Project Name')}
+                    placeholder="Road Project Name"
+                    className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-900 dark:text-white font-bold text-xs outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* 4-CARD SIMPLE DAILY SNAPSHOT */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 print:hidden">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              <span>Work Logged Today</span>
-              <Activity className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div className="mt-1.5 text-xl font-bold text-slate-900 dark:text-white tabular-nums">
-              {summaryStats.totalActivities} {summaryStats.totalActivities === 1 ? 'entry' : 'entries'}
-            </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
-              Across {summaryStats.activeSectionsToday} active work sections
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              <span>Labor &amp; Fleet</span>
-              <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div className="mt-1.5 text-xl font-bold text-slate-900 dark:text-white tabular-nums">
-              {summaryStats.totalLaborCount} crew · {summaryStats.activeEquipment}/{summaryStats.totalFleet} equip
-            </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
-              {summaryStats.standbyEquipment} standby · {summaryStats.breakdownEquipment} maint.
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              <span>Site Plant Production</span>
-              <Factory className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div className="mt-1.5 text-xl font-bold text-slate-900 dark:text-white tabular-nums">
-              {summaryStats.totalPlantActual.toLocaleString()} units
-            </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
-              {summaryStats.totalProductionUnits} plant units active
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              <span>Site Status &amp; Note</span>
-              <Sun className="w-4 h-4 text-amber-500" />
-            </div>
-            <div className="mt-1.5 text-xl font-bold text-slate-900 dark:text-white">
-              {isNoWorkDay ? 'Standstill Day' : 'Active Workday'}
-            </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {weather} · {dailyNotes.trim() ? 'Daily Note Linked' : 'No Daily Note Yet'}
-            </div>
-          </div>
-        </div>
-
-        {/* AGGREGATED DAILY & END-OF-MONTH ACTIVITIES SUMMARY DASHBOARD */}
-        <DailyActivitiesSummaryDashboard
-          project={project}
-          activities={activities}
-          selectedDate={selectedDate}
-          sections={sections}
-          getDefaultUnit={getDefaultUnit}
-          currentUserObj={currentUserObj}
-        />
 
         {/* INLINE FEEDBACK NOTICE (REPLACES BLOCKING ALERTS) */}
         {feedbackNotice && (
@@ -2744,207 +2958,6 @@ export default function DailyActivitiesView({
             </button>
           </div>
         )}
-
-        {/* DATE NAVIGATOR + RECENT LOGGED DATES STRIP */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3 shadow-sm space-y-2.5 print:hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <button
-              onClick={() => handleDateNav(-1)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold transition border border-slate-200 dark:border-slate-700"
-              title="Switch to Previous Day"
-            >
-              <ChevronLeft className="w-4 h-4 text-slate-500" />
-              <span>Previous Day</span>
-            </button>
-
-            <div className="flex flex-wrap items-center justify-center gap-2.5">
-              <div className="flex items-center gap-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-1.5">
-                <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                <div className="flex flex-col text-left">
-                  <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider leading-none mb-0.5">
-                    {formatDisplayDate(selectedDate)}
-                  </span>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={e => handleSelectDate(e.target.value)}
-                    className="text-xs font-bold text-slate-900 dark:text-white bg-transparent outline-none cursor-pointer tabular-nums"
-                    title="Click to open calendar date picker"
-                  />
-                </div>
-              </div>
-
-              {selectedDate !== new Date().toISOString().split('T')[0] && (
-                <button
-                  onClick={() => handleSelectDate(new Date().toISOString().split('T')[0])}
-                  className="text-xs bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 px-3 py-2 rounded-lg font-semibold transition"
-                  title="Jump directly to today's date"
-                >
-                  Today
-                </button>
-              )}
-
-              <button
-                onClick={() => {
-                  const next = !isNoWorkDay;
-                  setIsNoWorkDay(next);
-                  scheduleResourceSync({ isNoWorkDay: next }, next ? 'Marked Standstill Day' : 'Resumed Active Workday');
-                }}
-                className={`px-3 py-2 rounded-lg text-xs font-semibold transition border ${
-                  isNoWorkDay
-                    ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800'
-                    : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                }`}
-              >
-                {isNoWorkDay ? 'Standstill Day (Click to Resume)' : 'Active Workday'}
-              </button>
-            </div>
-
-            <button
-              onClick={() => handleDateNav(1)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold transition border border-slate-200 dark:border-slate-700"
-              title="Switch to Next Day"
-            >
-              <span>Next Day</span>
-              <ChevronRight className="w-4 h-4 text-slate-500" />
-            </button>
-          </div>
-
-          {loggedDatesSummary.length > 0 && (
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 overflow-x-auto text-[11px]">
-              <span className="text-slate-500 dark:text-slate-400 font-semibold shrink-0">
-                Recent Logged Dates:
-              </span>
-              {loggedDatesSummary.slice(0, 8).map(item => {
-                const isSelected = item.date === selectedDate;
-                return (
-                  <button
-                    key={item.date}
-                    onClick={() => handleSelectDate(item.date)}
-                    className={`px-2.5 py-1 rounded-md border font-medium tabular-nums shrink-0 transition ${
-                      isSelected
-                        ? 'bg-slate-900 dark:bg-blue-600 text-white border-slate-900 dark:border-blue-600'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    {item.date} ({item.count})
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* COMPACT PROJECT PARTIES, WEATHER & SHIFT BAR (COLLAPSIBLE PARTY INPUTS) */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-          <div className="px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs border-b border-slate-100 dark:border-slate-800">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-600 dark:text-slate-300 min-w-0">
-              <span className="truncate">
-                <strong className="text-slate-900 dark:text-white">{project.name || 'Road Project'}</strong>
-              </span>
-              <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
-              <span className="truncate">
-                Contractor: <strong className="text-slate-800 dark:text-slate-100">{project.contractor || '—'}</strong>
-              </span>
-              <span className="text-slate-300 dark:text-slate-700 hidden md:inline">|</span>
-              <span className="truncate hidden md:inline">
-                {consultantRoleLabel}: <strong className="text-slate-800 dark:text-slate-100">{project.consultant || project.supervisionConsultant?.firmName || '—'}</strong>
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 print:hidden">
-              <div className="flex items-center gap-1.5">
-                <Sun className="w-3.5 h-3.5 text-amber-500" />
-                <select
-                  value={weather}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setWeather(val);
-                    scheduleResourceSync({ weather: val }, `Updated site weather to ${val}`);
-                  }}
-                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 font-semibold text-slate-800 dark:text-slate-100 outline-none cursor-pointer text-xs"
-                  aria-label="Site Weather"
-                >
-                  <option value="Sunny">Sunny</option>
-                  <option value="Sunny & Cloudy">Sunny &amp; Cloudy</option>
-                  <option value="Rainy">Rainy / Wet</option>
-                  <option value="Overcast">Overcast</option>
-                </select>
-              </div>
-
-              <select
-                value={shift}
-                onChange={e => {
-                  const val = e.target.value;
-                  setShift(val);
-                  scheduleResourceSync({ shift: val }, `Updated site shift to ${val}`);
-                }}
-                className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 font-semibold text-slate-800 dark:text-slate-100 outline-none cursor-pointer text-xs"
-                aria-label="Work Shift"
-              >
-                <option value="Day Shift (Standard)">Day Shift</option>
-                <option value="Night Shift">Night Shift</option>
-                <option value="Extended / Overtime">Overtime</option>
-              </select>
-
-              <button
-                type="button"
-                onClick={() => setShowPartyEditor(!showPartyEditor)}
-                className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-              >
-                <span>{showPartyEditor ? 'Hide Parties' : 'Edit Parties'}</span>
-                {showPartyEditor ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-          </div>
-
-          <div className={`${showPartyEditor ? 'grid' : 'hidden print:grid'} p-3 bg-slate-50/70 dark:bg-slate-800/50 grid-cols-1 md:grid-cols-2 gap-3 text-xs`}>
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="text-slate-500 dark:text-slate-400 w-36 font-medium text-[11px]">Employer / Client:</span>
-                <input
-                  value={project.client || ''}
-                  onChange={e => onUpdateProject({ client: e.target.value }, 'Updated Client')}
-                  placeholder="Ethiopian Road Administration (ERA)"
-                  className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-slate-100 font-medium text-xs outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-slate-500 dark:text-slate-400 w-36 font-medium text-[11px]">{consultantRoleLabel}:</span>
-                <input
-                  value={project.consultant || project.supervisionConsultant?.firmName || ''}
-                  onChange={e => onUpdateProject({
-                    consultant: e.target.value,
-                    supervisionConsultant: project.supervisionConsultant ? { ...project.supervisionConsultant, firmName: e.target.value } : undefined
-                  }, 'Updated Consultant')}
-                  placeholder="Supervision Consultant Firm"
-                  className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-slate-100 font-medium text-xs outline-none focus:border-blue-500"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="text-slate-500 dark:text-slate-400 w-28 font-medium text-[11px]">Contractor:</span>
-                <input
-                  value={project.contractor || ''}
-                  onChange={e => onUpdateProject({ contractor: e.target.value }, 'Updated Contractor')}
-                  placeholder="Contractor Name"
-                  className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-800 dark:text-slate-100 font-medium text-xs outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-slate-500 dark:text-slate-400 w-28 font-medium text-[11px]">Project Name:</span>
-                <input
-                  value={project.name || ''}
-                  onChange={e => onUpdateProject({ name: e.target.value }, 'Updated Project Name')}
-                  placeholder="Road Project Name"
-                  className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-slate-900 dark:text-white font-bold text-xs outline-none focus:border-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* STANDSTILL / NO WORK DAY BANNER IF TOGGLED */}
         {isNoWorkDay && (
@@ -3005,65 +3018,69 @@ export default function DailyActivitiesView({
           </div>
         )}
 
-        {/* CONSTRUCTION MANAGER DAILY NOTES & REAL-TIME SYNC PANEL */}
+        {/* DAILY KM ACCOMPLISHMENT ENTRY (ROLLED UP INTO MONTHLY SUMMARY & PDF) */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-          <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-              <div className="min-w-0">
-                <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wide">
-                  Daily Notes — Construction Manager Field Context
-                </h3>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Add textual context for today&apos;s labor and material inputs. Synced in real time to Comprehensive Analysis &amp; Monthly Cumulative.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono tabular-nums print:hidden">
-              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
-                Labor: {summaryStats.totalLaborCount}
-              </span>
-              {lastSyncedAt && (
-                <span className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
-                  Synced {new Date(lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
+          <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+            <Activity className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <div className="min-w-0">
+              <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wide">
+                Daily Km Accomplishment
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Record total road length accomplished on <strong className="font-mono text-slate-700 dark:text-slate-200">{selectedDate}</strong>.
+              </p>
             </div>
           </div>
 
-          <div className="p-3.5 space-y-2.5">
-            <label htmlFor="daily-manager-notes-input" className="sr-only">
-              Construction Manager Daily Notes for {selectedDate}
+          <div className="p-3.5 flex flex-wrap items-center gap-2.5">
+            <label
+              htmlFor="daily-km-accomplishment-input"
+              className="text-xs font-semibold text-slate-700 dark:text-slate-200"
+            >
+              Accomplishment for {selectedDate}:
             </label>
-            <textarea
-              id="daily-manager-notes-input"
-              rows={3}
-              disabled={isReadonly}
-              value={dailyNotes}
-              onChange={e => {
-                const val = e.target.value;
-                setDailyNotes(val);
-                scheduleResourceSync({ dailyNotes: val }, `Updated Daily Notes for ${selectedDate}`);
-              }}
-              placeholder="Summarize today's crew allocation, equipment bottlenecks, quarry/batching throughput, material deliveries, QA inspections, or schedule mitigation actions..."
-              className="w-full bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 resize-y disabled:opacity-70"
-            />
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] print:hidden">
-              <span className="text-slate-500 dark:text-slate-400 tabular-nums">
-                {dailyNotes.length} characters · Linked to date <strong className="font-mono text-slate-700 dark:text-slate-200">{selectedDate}</strong>
+            <div className="flex items-center bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/15">
+              <input
+                ref={dailyKmInputRef}
+                id="daily-km-accomplishment-input"
+                type="number"
+                min="0"
+                step="0.001"
+                disabled={isReadonly}
+                value={dailyKmAccomplishment}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val !== '' && Number(val) < 0) return;
+                  setDailyKmAccomplishment(val);
+                  scheduleResourceSync(
+                    { dailyKmAccomplishment: val },
+                    `Updated Daily Km Accomplishment for ${selectedDate}`
+                  );
+                }}
+                placeholder="0.000"
+                className="w-32 bg-transparent text-sm font-bold text-slate-900 dark:text-white tabular-nums outline-none placeholder-slate-400 disabled:opacity-70"
+              />
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 pl-1.5 border-l border-slate-200 dark:border-slate-700">
+                km
               </span>
-              {!isReadonly && (
-                <button
-                  type="button"
-                  onClick={handleSaveAndSyncNow}
-                  className="bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>Save &amp; Sync to Analysis &amp; Monthly</span>
-                </button>
-              )}
             </div>
+            {!isReadonly && dailyKmAccomplishment.trim() !== '' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDailyKmAccomplishment('');
+                  scheduleResourceSync(
+                    { dailyKmAccomplishment: '' },
+                    `Cleared Daily Km Accomplishment for ${selectedDate}`
+                  );
+                }}
+                className="px-2 py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md transition flex items-center gap-1 print:hidden"
+                title="Clear daily Km entry"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Clear</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -6677,6 +6694,51 @@ export default function DailyActivitiesView({
                     </tr>
                   </tfoot>
                 </table>
+              </div>
+            </div>
+
+            {/* CONSTRUCTION MANAGER DAILY NOTES & REAL-TIME SYNC PANEL */}
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+              <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <MessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <div className="min-w-0">
+                    <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wide">
+                      Daily Notes — Construction Manager Field Context
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Add textual context for today&apos;s labor and material inputs. Synced in real time to Comprehensive Analysis &amp; Monthly Cumulative.
+                    </p>
+                  </div>
+                </div>
+
+                {lastSyncedAt && (
+                  <span className="text-[11px] font-mono tabular-nums text-emerald-700 dark:text-emerald-300 print:hidden">
+                    Synced {new Date(lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+
+              <div className="p-3.5 space-y-2">
+                <label htmlFor="daily-manager-notes-input" className="sr-only">
+                  Construction Manager Daily Notes for {selectedDate}
+                </label>
+                <textarea
+                  id="daily-manager-notes-input"
+                  rows={3}
+                  disabled={isReadonly}
+                  value={dailyNotes}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setDailyNotes(val);
+                    scheduleResourceSync({ dailyNotes: val }, `Updated Daily Notes for ${selectedDate}`);
+                  }}
+                  placeholder="Summarize today's crew allocation, equipment bottlenecks, quarry/batching throughput, material deliveries, QA inspections, or schedule mitigation actions..."
+                  className="w-full bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 resize-y disabled:opacity-70"
+                />
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums print:hidden">
+                  {dailyNotes.length} characters · Linked to date <strong className="font-mono text-slate-700 dark:text-slate-200">{selectedDate}</strong>
+                </div>
               </div>
             </div>
 

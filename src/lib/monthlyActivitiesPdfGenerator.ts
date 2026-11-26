@@ -195,6 +195,26 @@ export interface MonthlyActivityLogRow {
   status: string;
 }
 
+export interface DailyKmLogBreakdownItem {
+  date: string;
+  km: number;
+  runningMonthCumulative: number;
+  runningTotalToDate: number;
+  weather: string;
+  isNoWorkDay: boolean;
+  dailyNotes: string;
+}
+
+export interface MonthlyKmSummaryResult {
+  monthYYYYMM: string;
+  monthDisplayLabel: string;
+  dailyKmAccomplishmentMonth: number;
+  dailyKmAccomplishmentPrior: number;
+  dailyKmAccomplishmentToDate: number;
+  dailyKmLoggedDays: number;
+  entries: DailyKmLogBreakdownItem[];
+}
+
 export interface MonthlyExecutionSummary {
   monthYYYYMM: string;
   monthDisplayLabel: string;
@@ -203,6 +223,10 @@ export interface MonthlyExecutionSummary {
   activeWorkDays: number;
   standstillDays: number;
   activeSectionsCount: number;
+  dailyKmAccomplishmentMonth: number;
+  dailyKmAccomplishmentPrior: number;
+  dailyKmAccomplishmentToDate: number;
+  dailyKmLoggedDays: number;
   rows: ActivityAggregateRow[];
   unitTotals: UnitTotalSummary[];
   logs: MonthlyActivityLogRow[];
@@ -345,6 +369,79 @@ export function computeDailyActivitySummary(
   };
 }
 
+export function computeMonthlyKmSummary(
+  project: Project,
+  targetMonthYYYYMM?: string
+): MonthlyKmSummaryResult {
+  const monthYYYYMM = resolveTargetMonthYYYYMM(project, targetMonthYYYYMM);
+  const monthStart = `${monthYYYYMM}-01`;
+  const siteLogs = project.dailySiteLogs || {};
+
+  let dailyKmAccomplishmentPrior = 0;
+  const rawMonthEntries: Array<{
+    date: string;
+    km: number;
+    weather: string;
+    isNoWorkDay: boolean;
+    dailyNotes: string;
+  }> = [];
+
+  Object.entries(siteLogs).forEach(([dateKey, log]) => {
+    const rawKm = (log as { dailyKmAccomplishment?: number | string } | undefined)?.dailyKmAccomplishment;
+    const kmVal =
+      typeof rawKm === 'number'
+        ? rawKm
+        : typeof rawKm === 'string' && rawKm.trim() !== ''
+          ? Number(rawKm)
+          : NaN;
+    const validKm = !isNaN(kmVal) && Number.isFinite(kmVal) && kmVal >= 0 ? kmVal : null;
+    if (validKm === null) return;
+
+    if (dateKey.startsWith(monthYYYYMM)) {
+      rawMonthEntries.push({
+        date: dateKey,
+        km: validKm,
+        weather: log?.weather || 'Sunny',
+        isNoWorkDay: Boolean(log?.isNoWorkDay),
+        dailyNotes: log?.dailyNotes || ''
+      });
+    } else if (dateKey < monthStart) {
+      dailyKmAccomplishmentPrior += validKm;
+    }
+  });
+
+  rawMonthEntries.sort((a, b) => a.date.localeCompare(b.date));
+
+  const roundedPrior = Number(dailyKmAccomplishmentPrior.toFixed(3));
+  let runningMonth = 0;
+  const entries: DailyKmLogBreakdownItem[] = rawMonthEntries.map(item => {
+    runningMonth += item.km;
+    const roundedMonthCum = Number(runningMonth.toFixed(3));
+    return {
+      date: item.date,
+      km: Number(item.km.toFixed(3)),
+      runningMonthCumulative: roundedMonthCum,
+      runningTotalToDate: Number((roundedPrior + roundedMonthCum).toFixed(3)),
+      weather: item.weather,
+      isNoWorkDay: item.isNoWorkDay,
+      dailyNotes: item.dailyNotes
+    };
+  });
+
+  const dailyKmAccomplishmentMonth = Number(runningMonth.toFixed(3));
+  const dailyKmAccomplishmentToDate = Number((roundedPrior + dailyKmAccomplishmentMonth).toFixed(3));
+
+  return {
+    monthYYYYMM,
+    monthDisplayLabel: formatMonthDisplayLabel(monthYYYYMM),
+    dailyKmAccomplishmentMonth,
+    dailyKmAccomplishmentPrior: roundedPrior,
+    dailyKmAccomplishmentToDate,
+    dailyKmLoggedDays: entries.length,
+    entries
+  };
+}
+
 export function computeMonthlyActivitySummary(
   project: Project,
   targetMonthYYYYMM?: string,
@@ -377,6 +474,14 @@ export function computeMonthlyActivitySummary(
       activeDaySet.add(a.date);
     }
   });
+
+  const kmSummary = computeMonthlyKmSummary(project, monthYYYYMM);
+  const {
+    dailyKmAccomplishmentMonth,
+    dailyKmAccomplishmentPrior,
+    dailyKmAccomplishmentToDate,
+    dailyKmLoggedDays
+  } = kmSummary;
 
   const rows: ActivityAggregateRow[] = [];
   let totalEntries = 0;
@@ -461,10 +566,21 @@ export function computeMonthlyActivitySummary(
     activeWorkDays: activeDaySet.size,
     standstillDays: standstillDaySet.size,
     activeSectionsCount,
+    dailyKmAccomplishmentMonth,
+    dailyKmAccomplishmentPrior,
+    dailyKmAccomplishmentToDate,
+    dailyKmLoggedDays,
     rows,
     unitTotals: computeUnitTotals(rows),
     logs
   };
+}
+
+export function formatKmAccomplishment(val: number): string {
+  return (Number.isFinite(val) ? val : 0).toLocaleString('en-US', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3
+  });
 }
 
 export function formatQtyNumber(val: number, unit?: string): string {
@@ -538,12 +654,71 @@ export function generateMonthlyActivitiesSummaryPdf(options: MonthlyActivitiesPd
   doc.setFontSize(6.5);
   doc.setTextColor(71, 85, 105);
   doc.text(
-    `Active Days: ${summary.activeWorkDays}  |  Standstill Days: ${summary.standstillDays}  |  Entries Logged: ${summary.totalEntries}  |  Active Sections: ${summary.activeSectionsCount}`,
+    `Active Days: ${summary.activeWorkDays}  |  Standstill Days: ${summary.standstillDays}  |  Entries: ${summary.totalEntries}  |  Monthly Km Accomplished: ${formatKmAccomplishment(summary.dailyKmAccomplishmentMonth)} km`,
     rightX,
     curY + 26
   );
 
   curY += ribbonHeight + 10;
+
+  // Daily Km Accomplishment Monthly Cumulative Strip (Always visible)
+  const kmGap = 8;
+  const kmCardW = (contentWidth - kmGap * 2) / 3;
+  const kmCardH = 36;
+  const kmCards = [
+    {
+      label: `MONTHLY CUMULATIVE KM ACCOMPLISHMENT (${summary.monthDisplayLabel.toUpperCase()})`,
+      value: `${formatKmAccomplishment(summary.dailyKmAccomplishmentMonth)} km`,
+      sub: `${summary.dailyKmLoggedDays} day(s) with daily Km accomplishment logged`,
+      fill: [239, 246, 255] as [number, number, number],
+      border: [147, 197, 253] as [number, number, number],
+      labelColor: [30, 64, 175] as [number, number, number],
+      valueColor: [15, 23, 42] as [number, number, number]
+    },
+    {
+      label: 'PRIOR MONTHS CUMULATIVE KM ACCOMPLISHMENT',
+      value: `${formatKmAccomplishment(summary.dailyKmAccomplishmentPrior)} km`,
+      sub: `Cumulative daily Km entries prior to ${summary.monthYYYYMM}-01`,
+      fill: [248, 250, 252] as [number, number, number],
+      border: [203, 213, 225] as [number, number, number],
+      labelColor: [100, 116, 139] as [number, number, number],
+      valueColor: [15, 23, 42] as [number, number, number]
+    },
+    {
+      label: 'CUMULATIVE KM ACCOMPLISHMENT TO DATE',
+      value: `${formatKmAccomplishment(summary.dailyKmAccomplishmentToDate)} km`,
+      sub: `End-of-month cumulative through ${summary.monthDisplayLabel}`,
+      fill: [236, 253, 245] as [number, number, number],
+      border: [110, 231, 183] as [number, number, number],
+      labelColor: [6, 95, 70] as [number, number, number],
+      valueColor: [15, 23, 42] as [number, number, number]
+    }
+  ];
+
+  kmCards.forEach((kc, idx) => {
+    const x = margin + idx * (kmCardW + kmGap);
+    doc.setFillColor(kc.fill[0], kc.fill[1], kc.fill[2]);
+    doc.setDrawColor(kc.border[0], kc.border[1], kc.border[2]);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(x, curY, kmCardW, kmCardH, 3, 3, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.8);
+    doc.setTextColor(kc.labelColor[0], kc.labelColor[1], kc.labelColor[2]);
+    doc.text(kc.label, x + 8, curY + 11);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(kc.valueColor[0], kc.valueColor[1], kc.valueColor[2]);
+    doc.text(kc.value, x + 8, curY + 23.5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(kc.sub, x + 8, curY + 31.5);
+  });
+
+  curY += kmCardH + 10;
 
   // Unit-Wise Grand Totals Strip
   if (summary.unitTotals.length > 0) {

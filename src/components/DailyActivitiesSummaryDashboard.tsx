@@ -12,7 +12,7 @@ import {
   X,
   RotateCcw
 } from 'lucide-react';
-import { DailyActivityRecord, Project, User } from '../types';
+import { DailyActivityRecord, DailySiteLogEntry, Project, User } from '../types';
 import {
   ACTIVITY_CATEGORIES,
   ActivityCategoryId,
@@ -20,6 +20,7 @@ import {
   computeMonthlyActivitySummary,
   computeUnitTotals,
   downloadMonthlyActivitiesSummaryPdf,
+  formatKmAccomplishment,
   formatQtyNumber,
   SummarySectionDef
 } from '../lib/monthlyActivitiesPdfGenerator';
@@ -31,6 +32,9 @@ interface DailyActivitiesSummaryDashboardProps {
   sections: SummarySectionDef[];
   getDefaultUnit: (sectionId: string) => string;
   currentUserObj?: User | null;
+  liveDailySiteLogs?: Record<string, DailySiteLogEntry>;
+  targetMonth?: string;
+  onChangeTargetMonth?: (month: string) => void;
 }
 
 type DashboardMode = 'daily' | 'monthly';
@@ -41,10 +45,13 @@ export const DailyActivitiesSummaryDashboard: React.FC<DailyActivitiesSummaryDas
   selectedDate,
   sections,
   getDefaultUnit,
-  currentUserObj
+  currentUserObj,
+  liveDailySiteLogs,
+  targetMonth: controlledTargetMonth,
+  onChangeTargetMonth
 }) => {
   const [mode, setMode] = useState<DashboardMode>('daily');
-  const [targetMonth, setTargetMonth] = useState<string>(() =>
+  const [internalTargetMonth, setInternalTargetMonth] = useState<string>(() =>
     selectedDate && selectedDate.length >= 7 ? selectedDate.slice(0, 7) : new Date().toISOString().slice(0, 7)
   );
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -55,9 +62,15 @@ export const DailyActivitiesSummaryDashboard: React.FC<DailyActivitiesSummaryDas
 
   useEffect(() => {
     if (selectedDate && selectedDate.length >= 7) {
-      setTargetMonth(selectedDate.slice(0, 7));
+      setInternalTargetMonth(selectedDate.slice(0, 7));
     }
   }, [selectedDate]);
+
+  const targetMonth = controlledTargetMonth || internalTargetMonth;
+  const setTargetMonth = (nextMonth: string) => {
+    setInternalTargetMonth(nextMonth);
+    onChangeTargetMonth?.(nextMonth);
+  };
 
   const dailySummary = useMemo(
     () => computeDailyActivitySummary(activities, selectedDate, sections, getDefaultUnit),
@@ -67,9 +80,10 @@ export const DailyActivitiesSummaryDashboard: React.FC<DailyActivitiesSummaryDas
   const projectWithLiveActivities = useMemo<Project>(
     () => ({
       ...project,
-      dailyActivities: activities
+      dailyActivities: activities,
+      dailySiteLogs: liveDailySiteLogs || project.dailySiteLogs
     }),
-    [project, activities]
+    [project, activities, liveDailySiteLogs]
   );
 
   const monthlySummary = useMemo(
@@ -322,7 +336,24 @@ export const DailyActivitiesSummaryDashboard: React.FC<DailyActivitiesSummaryDas
       )}
 
       {/* Unit-Aggregated Totals Strip */}
-      <div className="px-4 py-3 bg-slate-50/70 dark:bg-slate-950/50 border-b border-slate-200 dark:border-slate-800">
+      <div className="px-4 py-3 bg-slate-50/70 dark:bg-slate-950/50 border-b border-slate-200 dark:border-slate-800 space-y-3">
+        {mode === 'monthly' && (
+          <div className="bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/70 rounded-lg px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                Monthly Cumulative Daily Km Accomplishment ({monthlySummary.monthDisplayLabel})
+              </div>
+              <div className="text-[11px] text-slate-600 dark:text-slate-400 tabular-nums mt-0.5">
+                {monthlySummary.dailyKmLoggedDays} day(s) logged · Prior Months: {formatKmAccomplishment(monthlySummary.dailyKmAccomplishmentPrior)} km · To-Date Cumulative: {formatKmAccomplishment(monthlySummary.dailyKmAccomplishmentToDate)} km
+              </div>
+            </div>
+            <div className="text-xl font-bold text-slate-900 dark:text-white font-mono tabular-nums">
+              {formatKmAccomplishment(monthlySummary.dailyKmAccomplishmentMonth)}{' '}
+              <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">km</span>
+            </div>
+          </div>
+        )}
+
         {unitTotals.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {unitTotals.map(ut => (

@@ -701,11 +701,14 @@ export function evaluateContractorPerformance(input: ContractorEvaluationInput):
   const expiredBonds = bondsList.filter(b => b.status === 'Expired').length;
   const validBonds = bondsList.length - expiredBonds;
 
-  const sc123Score = Math.max(0, getSscScore('SC12.3'));
+  const sc123RawScore = getSscScore('SC12.3');
+  const sc123Score = Math.max(0, sc123RawScore);
   const cl4Item = kpis.find(k => k.itemId === 'CL-4');
   const cl4Score = Math.max(0, getKpiScorePct(cl4Item));
   const bondRatioFallback = bondsList.length > 0 ? (validBonds / bondsList.length) * 100 : sc123Score;
-  const effectiveSecurityScore = bondsList.length > 0 ? ((sc123Score * 0.6) + (bondRatioFallback * 0.4)) : sc123Score;
+  const effectiveSecurityScore = bondsList.length > 0
+    ? (sc123RawScore >= 0 ? ((sc123Score * 0.6) + (bondRatioFallback * 0.4)) : bondRatioFallback)
+    : sc123Score;
 
   const financialScore = clampPct((effectiveSecurityScore * 0.45) + (g3Score * 0.40) + (cl4Score * 0.15));
   const financialGradeInfo = getPerformanceAuditGrade(financialScore);
@@ -1002,7 +1005,11 @@ export function evaluateContractorPerformance(input: ContractorEvaluationInput):
         { label: 'Net Variation vs BAC', value: `+${variationPct.toFixed(2)}% (ETB ${(netVariationVal / 1e6).toFixed(2)}M)`, status: variationPct <= 15 ? 'positive' : 'critical' },
         { label: 'Bonds & Insurances', value: `${validBonds} Valid / ${expiredBonds} Expired`, status: expiredBonds === 0 ? 'positive' : 'critical' },
         { label: 'IPCs Paid / Certified', value: `${paidIpcCount}/${ipcList.length} (ETB ${(ipcCertifiedSum / 1e6).toFixed(1)}M)`, status: 'neutral' },
-        { label: 'SC12.3 Securities Score', value: `${sc123Score.toFixed(1)}%`, status: sc123Score >= 80 ? 'positive' : 'warning' }
+        {
+          label: 'SC12.3 Securities Score',
+          value: sc123RawScore < 0 ? 'N/A' : `${sc123Score.toFixed(1)}%`,
+          status: sc123RawScore < 0 ? 'neutral' : sc123Score >= 80 ? 'positive' : 'warning'
+        }
       ]
     },
     {

@@ -31,6 +31,7 @@
         "contractAmountStatus": { "type": "string", "description": "Status of contract amount (Draft, Submitted, Validated)" },
         "dailyActivities": { "type": "array", "description": "Chronological daily construction activities executed on site" },
         "dailySiteLogs": { "type": "object", "description": "Per-date construction manager daily notes, labor deployment, equipment fleet, material tracker, and production logs keyed by YYYY-MM-DD" },
+        "efyPlans": { "type": "object", "description": "Per-EFY year monthly Physical, Sub Base, Base Course, and Asphalt plan/actual Km records keyed by EFY year" },
         "updatedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "name", "client"]
