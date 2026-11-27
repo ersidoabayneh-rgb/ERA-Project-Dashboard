@@ -56,6 +56,7 @@ import {
   syncProjectsReportExclusionFlags
 } from './lib/reportExclusionUtils';
 import { sortProgressPlanHistoryDescending } from './lib/monthlySync';
+import { buildProjectUpdatesFromEfyPlans } from './lib/efyPlanSync';
 
 export function hasApprovalCredentials(user: User | null): boolean {
   if (!user) return false;
@@ -5907,7 +5908,13 @@ let isBatchSyncRunning = false;
                   project={currentProject}
                   isReadonly={!canUserEditPage(currentUserObj, 'monthly')}
                   onUpdateMonthly={(monthly) => handleProjectUpdate({ monthly }, 'Cumulative S-Curve records Updated')}
-                  onUpdateEfyPlans={(efyPlans, desc) => handleProjectUpdate({ efyPlans }, desc || 'Updated EFY Annual Plan Schedule')}
+                  onUpdateEfyPlans={(efyPlans, desc) => {
+                    const progressPatch = buildProjectUpdatesFromEfyPlans(currentProject, efyPlans);
+                    handleProjectUpdate(
+                      { efyPlans, ...(progressPatch || {}) },
+                      desc || 'Updated EFY Annual Plan Schedule'
+                    );
+                  }}
                 />
               )}
 

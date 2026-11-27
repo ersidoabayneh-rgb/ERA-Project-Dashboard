@@ -97,7 +97,13 @@ export function generateProgressComparisonPdf(options: ProgressComparisonPdfOpti
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(71, 85, 105);
-  const perfText = `Fiscal Year: EFY ${efyLabel}  |  Road Completed: ${activePlan.actual.todate.toFixed(2)} Km (${toPct(activePlan.actual.todate)})`;
+  const clampTodate = (km: number) =>
+    totalLength > 0 ? Math.min(Math.max(0, km || 0), totalLength) : Math.max(0, km || 0);
+  const contractorTodate = clampTodate(activePlan.contractor.todate);
+  const eraTodate = clampTodate(activePlan.era.todate);
+  const actualTodate = clampTodate(activePlan.actual.todate);
+
+  const perfText = `Fiscal Year: EFY ${efyLabel}  |  Road Completed: ${actualTodate.toFixed(2)} Km (${toPct(actualTodate)})`;
   const wrappedPerf = doc.splitTextToSize(perfText, halfWidth);
   doc.text(wrappedPerf[0] || perfText, rightX, curY + 23);
 
@@ -119,28 +125,28 @@ export function generateProgressComparisonPdf(options: ProgressComparisonPdfOpti
       month: fmtVal(activePlan.contractor.month),
       quarter: fmtVal(activePlan.contractor.quarter),
       efy: fmtVal(activePlan.contractor.efy),
-      todate: fmtVal(activePlan.contractor.todate)
+      todate: fmtVal(contractorTodate)
     },
     {
       category: "ERA Approved Milestone Plan",
       month: fmtVal(activePlan.era.month),
       quarter: fmtVal(activePlan.era.quarter),
       efy: fmtVal(activePlan.era.efy),
-      todate: fmtVal(activePlan.era.todate)
+      todate: fmtVal(eraTodate)
     },
     {
       category: "Actual Road Completed (Km)",
       month: fmtVal(activePlan.actual.month),
       quarter: fmtVal(activePlan.actual.quarter),
       efy: fmtVal(activePlan.actual.efy),
-      todate: fmtVal(activePlan.actual.todate)
+      todate: fmtVal(actualTodate)
     },
     {
       category: "% of Actual Divided by ERA Plan",
       month: activePlan.era.month > 0 ? `${((activePlan.actual.month / activePlan.era.month) * 100).toFixed(2)}%` : '0.00%',
       quarter: activePlan.era.quarter > 0 ? `${((activePlan.actual.quarter / activePlan.era.quarter) * 100).toFixed(2)}%` : '0.00%',
       efy: activePlan.era.efy > 0 ? `${((activePlan.actual.efy / activePlan.era.efy) * 100).toFixed(2)}%` : '0.00%',
-      todate: activePlan.era.todate > 0 ? `${((activePlan.actual.todate / activePlan.era.todate) * 100).toFixed(2)}%` : '0.00%'
+      todate: eraTodate > 0 ? `${((actualTodate / eraTodate) * 100).toFixed(2)}%` : '0.00%'
     }
   ];
 
@@ -187,14 +193,19 @@ export function generateProgressComparisonPdf(options: ProgressComparisonPdfOpti
 
     curY += 8;
 
-    const historyRows = historyList.map(h => ({
-      period: h.monthLabel,
-      subperiod: `${h.quarterLabel || 'Q1'} | ${h.efyLabel}`,
-      contractor: `${h.contractorMonth.toFixed(2)} Km  (Tot: ${(h.contractorTodate || 0).toFixed(1)} Km)`,
-      era: `${h.eraMonth.toFixed(2)} Km  (Tot: ${(h.eraTodate || 0).toFixed(1)} Km)`,
-      actual: `${h.actualMonth.toFixed(2)} Km  (Tot: ${(h.actualTodate || 0).toFixed(1)} Km)`,
-      progress: h.physicalProgress !== undefined ? `${h.physicalProgress.toFixed(2)}%` : toPct(h.actualTodate || 0)
-    }));
+    const historyRows = historyList.map(h => {
+      const hContrTot = clampTodate(h.contractorTodate || 0);
+      const hEraTot = clampTodate(h.eraTodate || 0);
+      const hActTot = clampTodate(h.actualTodate || 0);
+      return {
+        period: h.monthLabel,
+        subperiod: `${h.quarterLabel || 'Q1'} | ${h.efyLabel}`,
+        contractor: `${h.contractorMonth.toFixed(2)} Km  (Tot: ${hContrTot.toFixed(1)} Km)`,
+        era: `${h.eraMonth.toFixed(2)} Km  (Tot: ${hEraTot.toFixed(1)} Km)`,
+        actual: `${h.actualMonth.toFixed(2)} Km  (Tot: ${hActTot.toFixed(1)} Km)`,
+        progress: toPct(hActTot)
+      };
+    });
 
     curY = drawSafeTable(doc, {
       startY: curY,

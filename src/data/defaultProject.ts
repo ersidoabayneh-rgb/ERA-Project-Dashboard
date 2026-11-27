@@ -975,20 +975,16 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
   const evm = calculateProjectEvm(project);
   const { PV, SV_pct } = evm;
 
-  // 4b. Live Telemetry for Linear Asphalt, Submittals (RFI/WIR/Materials), Daily Activities, and Defects
-  const linearAsphaltExecKm =
-    (project.linear?.asphalt || []).reduce((s, r) => s + (Number(r.exec) || 0), 0) +
-    (project.linearSpur?.asphalt || []).reduce((s, r) => s + (Number(r.exec) || 0), 0);
-  const linearAsphaltPlanKm =
-    (project.linearPlan?.asphalt?.plannedKm || 0) +
-    (project.linearPlanSpur?.asphalt?.plannedKm || 0);
-  const qtyAsphalt = (project.quantities || []).find(q => q.name.toLowerCase().includes('asphalt'));
-  let autoPp3Score: number | null = null;
-  if (linearAsphaltPlanKm > 0 && (linearAsphaltExecKm > 0 || (project.linearPlan?.asphalt?.plannedKm ?? 0) > 0)) {
-    autoPp3Score = Math.min(100, Math.max(0, (linearAsphaltExecKm / linearAsphaltPlanKm) * 100));
-  } else if (qtyAsphalt && qtyAsphalt.plan > 0 && (qtyAsphalt.exec > 0 || project.physicalProgress === 0)) {
-    autoPp3Score = Math.min(100, Math.max(0, (qtyAsphalt.exec / qtyAsphalt.plan) * 100));
-  }
+  // 4b. Live Telemetry for Linear & Pavement KPIs (EFY Plan vs Daily Activities), Submittals, and Defects
+  const progressCalc = calculateProgressKpiScores(project, project.kpiActiveMonth);
+  const autoPp3Score: number | null =
+    progressCalc.pavement.usesEfyPlan ||
+    progressCalc.pavement.usesDailyActivities ||
+    progressCalc.pavement.pp3Score > 0 ||
+    (project.linearPlan?.asphalt?.plannedKm ?? 0) > 0 ||
+    project.physicalProgress === 0
+      ? progressCalc.pavement.pp3Score
+      : null;
 
   const dedupSubmittals = deduplicateSubmittals(project.supervisionConsultant?.submittalKpis || []);
   const rfiSubmittals = dedupSubmittals.filter(isRfiRecord);
@@ -1122,11 +1118,14 @@ export function getIntegratedKpiAllocated(project: Project): KpiAllocatedItem[] 
       if (k.isOverridden && k.alloc !== undefined) {
         computedAlloc = k.alloc;
       } else {
-        const progressCalc = calculateProgressKpiScores(project, project.kpiActiveMonth);
         computedAlloc = progressCalc.pp1Score;
       }
-    } else if (k.itemId === 'PP-3' && autoPp3Score !== null) {
-      computedAlloc = Number(autoPp3Score.toFixed(2));
+    } else if (k.itemId === 'PP-3') {
+      if (k.isOverridden && k.alloc !== undefined) {
+        computedAlloc = k.alloc;
+      } else if (autoPp3Score !== null) {
+        computedAlloc = Number(autoPp3Score.toFixed(2));
+      }
     } else if (k.itemId === 'PT-1') {
       computedAlloc = Math.min(100, Math.max(0, ratio));
     } else if (k.itemId === 'CM-1') {

@@ -102,8 +102,8 @@ export interface ContractorEvaluationResult {
 }
 
 export const AUTO_KPI_SOURCE_MAP: Record<string, string> = {
-  'PP-1': 'Monthly Status Report (Actual / ERA Plan)',
-  'PP-3': 'Linear Asphalt Layer & Quantities Ledger',
+  'PP-1': 'EFY Physical Plan vs Daily Activities Monthly Km',
+  'PP-3': 'EFY Pavement Schedule vs Daily Activities Monthly Cumulative',
   'PT-1': 'Physical Progress % / Elapsed Time %',
   'CM-1': 'Contract Sum vs Revised Variation Sum',
   'CM-2': 'Quarterly Variation & Cost Growth Tracker',
@@ -604,7 +604,29 @@ export function evaluateContractorPerformance(input: ContractorEvaluationInput):
     { key: 'asphalt', label: 'Asphalt Concrete' }
   ];
 
+  const pavementMap = {
+    subbase: progressKpiResult.pavement.subbase,
+    basecourse: progressKpiResult.pavement.basecourse,
+    asphalt: progressKpiResult.pavement.asphalt
+  };
+  const usesEfyPavementSchedule = progressKpiResult.pavement.usesEfyPlan;
+  const isMonthlyBasis = progressKpiResult.calculationBasis === 'monthly';
+
   const linearLayers: LinearLayerMetric[] = layerDefs.map(({ key, label }) => {
+    const efyLayer =
+      key === 'subbase' || key === 'basecourse' || key === 'asphalt'
+        ? pavementMap[key]
+        : undefined;
+
+    if (efyLayer && (efyLayer.hasMonthPlan || efyLayer.hasTodatePlan || efyLayer.dailyEntryCount > 0)) {
+      const useMonthly = isMonthlyBasis && efyLayer.monthPlanKm > 0;
+      const planKm = Number((useMonthly ? efyLayer.monthPlanKm : efyLayer.todatePlanKm).toFixed(3));
+      const execKm = Number((useMonthly ? efyLayer.monthActualKm : (efyLayer.hasTodatePlan ? efyLayer.todateActualKm : efyLayer.monthActualKm)).toFixed(3));
+      const ratioPct = planKm > 0 ? clampPct((execKm / planKm) * 100) : (execKm > 0 ? 100 : 0);
+      const varianceKm = Number((execKm - planKm).toFixed(3));
+      return { key, label, planKm, execKm, varianceKm, ratioPct };
+    }
+
     const mainExec = (project.linear?.[key] || []).reduce((s, r) => s + (Number(r.exec) || 0), 0);
     const spurExec = (project.linearSpur?.[key] || []).reduce((s, r) => s + (Number(r.exec) || 0), 0);
     const execKm = Number((mainExec + spurExec).toFixed(2));
@@ -868,14 +890,18 @@ export function evaluateContractorPerformance(input: ContractorEvaluationInput):
       grade: linearGradeInfo.grade,
       letter: linearGradeInfo.letter,
       pointsEarned: linearPoints,
-      criteria: `Live Main + Spur pavement layers execution vs baseline linear plan (${layerDefs.map(l => l.label).join(', ')}), linked to G1/SC1.3 Asphalt Progress (PP-3) and G6 Design Management.`,
-      evaluationBasis: `Linear Elevation & Plan (${(project.lengthKm || 0).toFixed(1)} km corridor) + KPI PP-3/G6`,
+      criteria: usesEfyPavementSchedule
+        ? `EFY Pavement Progress Schedule (${selectedMonth}) vs Daily Activities monthly cumulative (${layerDefs.map(l => l.label).join(', ')}), linked to G1/SC1.3 Asphalt Progress (PP-3) and G6 Design Management.`
+        : `Live Main + Spur pavement layers execution vs baseline linear plan (${layerDefs.map(l => l.label).join(', ')}), linked to G1/SC1.3 Asphalt Progress (PP-3) and G6 Design Management.`,
+      evaluationBasis: usesEfyPavementSchedule
+        ? `EFY Pavement Schedule (${selectedMonth}) vs Daily Activities + KPI PP-3/G6`
+        : `Linear Elevation & Plan (${(project.lengthKm || 0).toFixed(1)} km corridor) + KPI PP-3/G6`,
       telemetrySummary: activeLayers.length > 0
         ? linearLayers.map(l => `${l.label}: ${l.execKm}/${l.planKm}km (${l.ratioPct.toFixed(0)}%)`).join(' · ')
         : 'No linear layer baseline or execution chainage data recorded yet.',
       attribution: {
         contractor: activeLayers.length > 0
-          ? `Mean layer execution across ${linearLayers.length} pavement layers is ${meanLinearLayerPct.toFixed(1)}%; asphalt wearing course stands at ${linearLayers[linearLayers.length - 1]?.ratioPct.toFixed(1) || '0.0'}% of planned km.`
+          ? `Mean layer execution across ${linearLayers.length} pavement layers is ${meanLinearLayerPct.toFixed(1)}%; asphalt wearing course stands at ${linearLayers[linearLayers.length - 1]?.ratioPct.toFixed(1) || '0.0'}% (${usesEfyPavementSchedule ? 'EFY Schedule vs Daily Activities' : 'corridor linear plan'}).`
           : 'Awaiting chainage segment logs in Linear Elevation Diagram to quantify pavement layer progress.',
         employerOrExternal: `Design management alignment (G6) rated at ${g6Score.toFixed(1)}% with ${rowClearPct.toFixed(1)}% corridor ROW clearance.`
       },

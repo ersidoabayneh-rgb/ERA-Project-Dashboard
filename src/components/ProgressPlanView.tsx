@@ -39,13 +39,22 @@ import {
   Sparkles,
   AlertTriangle,
   Lock,
-  Unlock
+  Unlock,
+  Link2,
+  ArrowRightLeft,
+  ExternalLink
 } from 'lucide-react';
 import {
   parseMonthKey,
   sortProgressPlanHistoryDescending,
   sortProgressPlanHistoryWithOrder
 } from '../lib/monthlySync';
+import {
+  clampTodateToProjectLength,
+  computeLinkedEfyMetrics,
+  mergeLinkedEfyIntoProgressPlan,
+  buildEfyPlansFromProgressPlan
+} from '../lib/efyPlanSync';
 import { generateProgressComparisonPdf } from '../lib/progressComparisonPdfGenerator';
 import { getCredentialSignatures } from '../lib/pdfReportEngine';
 
@@ -159,6 +168,8 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
   const [quarterLabel, setQuarterLabel] = useState<string>(initialQuarterLabel);
   const [efyLabel, setEfyLabel] = useState<string>(initialEfyLabel);
 
+  const clampTodate = (val: number) => clampTodateToProjectLength(val, totalLength);
+
   // Active Comparison Plan Values
   const initialPlan: ProgressPlan = useMemo(() => {
     return {
@@ -166,24 +177,77 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
         month: project.progressPlan?.contractor?.month ?? 1.20,
         quarter: project.progressPlan?.contractor?.quarter ?? 3.70,
         efy: project.progressPlan?.contractor?.efy ?? 7.87,
-        todate: project.progressPlan?.contractor?.todate ?? 85.12
+        todate: clampTodateToProjectLength(project.progressPlan?.contractor?.todate ?? 85.12, totalLength)
       },
       era: {
         month: project.progressPlan?.era?.month ?? 0.85,
         quarter: project.progressPlan?.era?.quarter ?? 1.42,
         efy: project.progressPlan?.era?.efy ?? 3.80,
-        todate: project.progressPlan?.era?.todate ?? 73.11
+        todate: clampTodateToProjectLength(project.progressPlan?.era?.todate ?? 73.11, totalLength)
       },
       actual: {
         month: project.progressPlan?.actual?.month ?? 0.50,
         quarter: project.progressPlan?.actual?.quarter ?? 1.15,
         efy: project.progressPlan?.actual?.efy ?? 2.50,
-        todate: project.progressPlan?.actual?.todate ?? 67.42
+        todate: clampTodateToProjectLength(project.progressPlan?.actual?.todate ?? 67.42, totalLength)
       }
     };
-  }, [project.progressPlan]);
+  }, [project.progressPlan, totalLength]);
 
   const [activePlan, setActivePlan] = useState<ProgressPlan>(initialPlan);
+
+  const [autoSyncEfy, setAutoSyncEfy] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(`era_auto_sync_efy_${project.id}`);
+      return saved === null ? true : saved === 'true';
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`era_auto_sync_efy_${project.id}`);
+      setAutoSyncEfy(saved === null ? true : saved === 'true');
+    } catch {
+      setAutoSyncEfy(true);
+    }
+  }, [project.id]);
+
+  const handleToggleAutoSyncEfy = () => {
+    setAutoSyncEfy(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem(`era_auto_sync_efy_${project.id}`, String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Sync local labels & activePlan when switching project or when progressPlan updates externally (e.g., from Monthly Cumulative EFY Plan)
+  const lastExternalSyncRef = useRef<string>('');
+  useEffect(() => {
+    const sig = JSON.stringify({
+      id: project.id,
+      labels: project.progressPlanLabels,
+      plan: project.progressPlan
+    });
+    if (lastExternalSyncRef.current === sig) return;
+    lastExternalSyncRef.current = sig;
+    setMonthLabel(project.progressPlanLabels?.monthLabel || "Sep '24");
+    setQuarterLabel(project.progressPlanLabels?.quarterLabel || "July 2024-September 2024");
+    setEfyLabel(project.progressPlanLabels?.efyLabel || "EFY 2017");
+    setActivePlan(initialPlan);
+  }, [project.id, project.progressPlanLabels, project.progressPlan, initialPlan]);
+
+  // Linked EFY Physical Plan metrics for currently viewed (monthLabel, efyLabel)
+  const linkedEfy = useMemo(
+    () => computeLinkedEfyMetrics(project.efyPlans, monthLabel, efyLabel, totalLength),
+    [project.efyPlans, monthLabel, efyLabel, totalLength]
+  );
+
+  const lastPushedEfySigRef = useRef<string>('');
+  const prevPeriodLinkedRef = useRef<{ key: string; linked: ReturnType<typeof computeLinkedEfyMetrics> } | null>(null);
 
   // Milestone History resolution - always ordered with latest month on top, with persistent backup fallback
   const historyList: ProgressPlanHistoryItem[] = useMemo(() => {
@@ -231,6 +295,46 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
   }, [historyList, monthLabel]);
 
   const isActiveMonthLocked = Boolean(activeRecordMatch?.isLocked);
+
+  // Sync EFY Physical Plan values into activePlan when active period changes or external EFY edits arrive
+  useEffect(() => {
+    const efySig = JSON.stringify(project.efyPlans || {});
+    const periodKey = `${project.id}::${monthLabel}::${efyLabel}`;
+
+    if (!autoSyncEfy || (isActiveMonthLocked && !isMasterAdmin)) {
+      prevPeriodLinkedRef.current = { key: periodKey, linked: linkedEfy };
+      return;
+    }
+
+    // If this efyPlans update originated directly from ProgressPlanView's own save/push, preserve user's quarter/efy inputs
+    if (
+      lastPushedEfySigRef.current === efySig &&
+      prevPeriodLinkedRef.current?.key === periodKey
+    ) {
+      prevPeriodLinkedRef.current = { key: periodKey, linked: linkedEfy };
+      return;
+    }
+
+    const prevLinkedForPeriod =
+      prevPeriodLinkedRef.current?.key === periodKey ? prevPeriodLinkedRef.current.linked : undefined;
+    prevPeriodLinkedRef.current = { key: periodKey, linked: linkedEfy };
+
+    if (!linkedEfy.hasContractorData && !linkedEfy.hasEraData) return;
+
+    setActivePlan(prev => {
+      const merged = mergeLinkedEfyIntoProgressPlan(prev, linkedEfy, prevLinkedForPeriod, { maxLengthKm: totalLength });
+      const changed =
+        merged.contractor.month !== prev.contractor.month ||
+        merged.contractor.quarter !== prev.contractor.quarter ||
+        merged.contractor.efy !== prev.contractor.efy ||
+        merged.contractor.todate !== prev.contractor.todate ||
+        merged.era.month !== prev.era.month ||
+        merged.era.quarter !== prev.era.quarter ||
+        merged.era.efy !== prev.era.efy ||
+        merged.era.todate !== prev.era.todate;
+      return changed ? merged : prev;
+    });
+  }, [project.id, project.efyPlans, monthLabel, efyLabel, linkedEfy, autoSyncEfy, isActiveMonthLocked, isMasterAdmin, totalLength]);
 
   // Modal State for Editing / Adding Previous Milestone Record
   const [editingItem, setEditingItem] = useState<ProgressPlanHistoryItem | null>(null);
@@ -289,6 +393,47 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
     }
   };
 
+  // Helper: update current month input and auto-recompute Quarter (up to current month) & EFY (Jul to current month) when EFY Plan has prior months
+  const handleActiveMonthInputChange = (series: 'contractor' | 'era', val: number) => {
+    setActivePlan(prev => {
+      const nextSeries = { ...prev[series], month: val };
+      if (autoSyncEfy) {
+        const yearPlan = project.efyPlans?.[linkedEfy.slot.efyYear];
+        const field = series === 'contractor' ? 'physicalContractorPlan' : 'physicalEraPlan';
+        const arr = yearPlan?.[field];
+        if (Array.isArray(arr)) {
+          let hasPriorQuarter = false;
+          let priorQSum = 0;
+          for (const idx of linkedEfy.slot.quarterMonthIndices) {
+            if (idx < linkedEfy.slot.monthIndex && typeof arr[idx] === 'number') {
+              hasPriorQuarter = true;
+              priorQSum += arr[idx] as number;
+            }
+          }
+          if (hasPriorQuarter) {
+            nextSeries.quarter = Number((priorQSum + val).toFixed(2));
+          }
+
+          let hasPriorEfy = false;
+          let priorEfySum = 0;
+          for (let i = 0; i < linkedEfy.slot.monthIndex; i++) {
+            if (typeof arr[i] === 'number') {
+              hasPriorEfy = true;
+              priorEfySum += arr[i] as number;
+            }
+          }
+          if (hasPriorEfy) {
+            nextSeries.efy = Number((priorEfySum + val).toFixed(2));
+          }
+        }
+      }
+      return {
+        ...prev,
+        [series]: nextSeries
+      };
+    });
+  };
+
   // Helper to calculate percentages
   const toPct = (km: number) => {
     if (!totalLength || totalLength <= 0) return '0.00%';
@@ -326,8 +471,14 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
 
   // Save current active plan snapshot to history
   const handleSaveActiveToSnapshot = () => {
+    const cappedPlan: ProgressPlan = {
+      contractor: { ...activePlan.contractor, todate: clampTodate(activePlan.contractor.todate) },
+      era: { ...activePlan.era, todate: clampTodate(activePlan.era.todate) },
+      actual: { ...activePlan.actual, todate: clampTodate(activePlan.actual.todate) }
+    };
+
     const calculatedPhysicalProgress = totalLength > 0 
-      ? Number(((activePlan.actual.todate / totalLength) * 100).toFixed(2)) 
+      ? Number(((cappedPlan.actual.todate / totalLength) * 100).toFixed(2)) 
       : (project.physicalProgress || 0);
 
     const snapshotId = `hist_${monthLabel.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`;
@@ -344,18 +495,18 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
       monthLabel,
       quarterLabel,
       efyLabel,
-      contractorMonth: activePlan.contractor.month,
-      contractorQuarter: activePlan.contractor.quarter,
-      contractorEfy: activePlan.contractor.efy,
-      contractorTodate: activePlan.contractor.todate,
-      eraMonth: activePlan.era.month,
-      eraQuarter: activePlan.era.quarter,
-      eraEfy: activePlan.era.efy,
-      eraTodate: activePlan.era.todate,
-      actualMonth: activePlan.actual.month,
-      actualQuarter: activePlan.actual.quarter,
-      actualEfy: activePlan.actual.efy,
-      actualTodate: activePlan.actual.todate,
+      contractorMonth: cappedPlan.contractor.month,
+      contractorQuarter: cappedPlan.contractor.quarter,
+      contractorEfy: cappedPlan.contractor.efy,
+      contractorTodate: cappedPlan.contractor.todate,
+      eraMonth: cappedPlan.era.month,
+      eraQuarter: cappedPlan.era.quarter,
+      eraEfy: cappedPlan.era.efy,
+      eraTodate: cappedPlan.era.todate,
+      actualMonth: cappedPlan.actual.month,
+      actualQuarter: cappedPlan.actual.quarter,
+      actualEfy: cappedPlan.actual.efy,
+      actualTodate: cappedPlan.actual.todate,
       physicalProgress: calculatedPhysicalProgress,
       isLocked: existingTarget?.isLocked,
       approvedByDirectorate: existingTarget?.approvedByDirectorate,
@@ -372,15 +523,111 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
       localStorage.setItem(`era_hist_backup_${project.id}`, JSON.stringify(updatedHistory));
     } catch {}
 
-    onUpdateProject({
-      progressPlan: activePlan,
+    setActivePlan(cappedPlan);
+
+    const updates: Partial<Project> = {
+      progressPlan: cappedPlan,
       progressPlanLabels: { monthLabel, quarterLabel, efyLabel },
       progressPlanHistory: updatedHistory,
       physicalProgress: calculatedPhysicalProgress
-    }, `Progress snapshot saved & updated to ${monthLabel}`);
+    };
+
+    if (autoSyncEfy) {
+      const { nextEfyPlans } = buildEfyPlansFromProgressPlan(
+        project.efyPlans,
+        monthLabel,
+        efyLabel,
+        cappedPlan.contractor.month,
+        cappedPlan.era.month
+      );
+      lastPushedEfySigRef.current = JSON.stringify(nextEfyPlans);
+      updates.efyPlans = nextEfyPlans;
+    }
+
+    onUpdateProject(updates, `Progress snapshot saved & updated to ${monthLabel}`);
 
     setSelectedArchivedKey(snapshotId);
     setSaveSuccessMsg(`Snapshot for ${monthLabel} saved & updated successfully!`);
+    setTimeout(() => setSaveSuccessMsg(null), 3000);
+  };
+
+  // Explicit pull from Monthly Cumulative EFY Physical Plan into active Monthly Status Report
+  const handlePullFromEfyPlan = (includeTodate = false) => {
+    if (isActiveMonthLocked && !isMasterAdmin) {
+      alert(`Unauthorized: The monthly record for "${monthLabel}" is locked by Directorate Admin.`);
+      return;
+    }
+    if (!linkedEfy.hasContractorData && !linkedEfy.hasEraData) {
+      setSaveSuccessMsg(`No ${linkedEfy.slot.efyYear} EFY Physical Plan data entered for ${linkedEfy.slot.gregorianMonthLabel} yet.`);
+      setTimeout(() => setSaveSuccessMsg(null), 3500);
+      return;
+    }
+
+    const mergedPlan = mergeLinkedEfyIntoProgressPlan(activePlan, linkedEfy, undefined, {
+      includeTodate,
+      maxLengthKm: totalLength
+    });
+    setActivePlan(mergedPlan);
+
+    const existing = project.progressPlanHistory && project.progressPlanHistory.length > 0 ? project.progressPlanHistory : historyList;
+    const matchIdx = existing.findIndex(
+      h => h.monthLabel && h.monthLabel.trim().toLowerCase() === monthLabel.trim().toLowerCase()
+    );
+    const updates: Partial<Project> = {
+      progressPlan: mergedPlan,
+      progressPlanLabels: { monthLabel, quarterLabel, efyLabel }
+    };
+
+    if (matchIdx >= 0 && (!existing[matchIdx].isLocked || isMasterAdmin)) {
+      const updatedHistory = existing.map((h, i) =>
+        i === matchIdx
+          ? {
+              ...h,
+              contractorMonth: mergedPlan.contractor.month,
+              contractorQuarter: mergedPlan.contractor.quarter,
+              contractorEfy: mergedPlan.contractor.efy,
+              contractorTodate: mergedPlan.contractor.todate,
+              eraMonth: mergedPlan.era.month,
+              eraQuarter: mergedPlan.era.quarter,
+              eraEfy: mergedPlan.era.efy,
+              eraTodate: mergedPlan.era.todate
+            }
+          : h
+      );
+      const sorted = sortProgressPlanHistoryDescending(updatedHistory);
+      try {
+        localStorage.setItem(`era_hist_backup_${project.id}`, JSON.stringify(sorted));
+      } catch {}
+      updates.progressPlanHistory = sorted;
+    }
+
+    onUpdateProject(
+      updates,
+      `Synced Contractor & ERA schedules for ${monthLabel} from ${linkedEfy.slot.efyYear} EFY Physical Plan`
+    );
+    setSaveSuccessMsg(`Synced ${linkedEfy.slot.gregorianMonthLabel} (${linkedEfy.slot.efyYear} EFY) from EFY Plan!`);
+    setTimeout(() => setSaveSuccessMsg(null), 3000);
+  };
+
+  // Explicit push of current month Contractor & ERA targets into Monthly Cumulative EFY Physical Plan
+  const handlePushToEfyPlan = () => {
+    if (isActiveMonthLocked && !isMasterAdmin) {
+      alert(`Unauthorized: The monthly record for "${monthLabel}" is locked by Directorate Admin.`);
+      return;
+    }
+    const { nextEfyPlans, slot } = buildEfyPlansFromProgressPlan(
+      project.efyPlans,
+      monthLabel,
+      efyLabel,
+      activePlan.contractor.month,
+      activePlan.era.month
+    );
+    lastPushedEfySigRef.current = JSON.stringify(nextEfyPlans);
+    onUpdateProject(
+      { efyPlans: nextEfyPlans },
+      `Pushed ${monthLabel} Contractor (${activePlan.contractor.month.toFixed(2)} Km) & ERA (${activePlan.era.month.toFixed(2)} Km) targets to ${slot.efyYear} EFY Physical Plan`
+    );
+    setSaveSuccessMsg(`Pushed ${slot.gregorianMonthLabel} targets to ${slot.efyYear} EFY Physical Plan!`);
     setTimeout(() => setSaveSuccessMsg(null), 3000);
   };
 
@@ -566,13 +813,20 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
       return;
     }
 
+    const cappedContractorTodate = clampTodate(editingItem.contractorTodate || 0);
+    const cappedEraTodate = clampTodate(editingItem.eraTodate || 0);
+    const cappedActualTodate = clampTodate(editingItem.actualTodate || 0);
+
     // Recalculate physical progress from actual todate / lengthKm
     const calculatedProgress = totalLength > 0 && editingItem.actualTodate !== undefined
-      ? Number(((editingItem.actualTodate / totalLength) * 100).toFixed(2))
+      ? Number(((cappedActualTodate / totalLength) * 100).toFixed(2))
       : (editingItem.physicalProgress || 0);
 
     const updatedItem: ProgressPlanHistoryItem = {
       ...editingItem,
+      contractorTodate: cappedContractorTodate,
+      eraTodate: cappedEraTodate,
+      actualTodate: cappedActualTodate,
       physicalProgress: calculatedProgress
     };
 
@@ -599,23 +853,35 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
           month: updatedItem.contractorMonth,
           quarter: updatedItem.contractorQuarter || 0,
           efy: updatedItem.contractorEfy,
-          todate: updatedItem.contractorTodate || 0
+          todate: cappedContractorTodate
         },
         era: {
           month: updatedItem.eraMonth,
           quarter: updatedItem.eraQuarter || 0,
           efy: updatedItem.eraEfy,
-          todate: updatedItem.eraTodate || 0
+          todate: cappedEraTodate
         },
         actual: {
           month: updatedItem.actualMonth,
           quarter: updatedItem.actualQuarter || 0,
           efy: updatedItem.actualEfy,
-          todate: updatedItem.actualTodate || 0
+          todate: cappedActualTodate
         }
       };
       projectUpdates.physicalProgress = calculatedProgress;
       setActivePlan(projectUpdates.progressPlan);
+    }
+
+    if (autoSyncEfy && (!updatedItem.isLocked || isMasterAdmin)) {
+      const { nextEfyPlans } = buildEfyPlansFromProgressPlan(
+        project.efyPlans,
+        updatedItem.monthLabel,
+        updatedItem.efyLabel,
+        updatedItem.contractorMonth,
+        updatedItem.eraMonth
+      );
+      lastPushedEfySigRef.current = JSON.stringify(nextEfyPlans);
+      projectUpdates.efyPlans = nextEfyPlans;
     }
 
     onUpdateProject(projectUpdates, modalMode === 'add_previous' ? `Added previous milestone record for ${updatedItem.monthLabel}` : `Milestone record ${updatedItem.monthLabel} updated`);
@@ -863,6 +1129,91 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
           </div>
         </div>
 
+        {/* EFY Physical Plan Link Bar */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 px-4 py-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/25 border border-blue-200/80 dark:border-blue-800/60 text-xs">
+          <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-blue-600/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+              <Link2 className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="font-bold text-slate-800 dark:text-slate-100 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span>Linked with {linkedEfy.slot.efyYear} EFY Physical Plan</span>
+                <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">
+                  ({linkedEfy.slot.gregorianMonthLabel} · Q{linkedEfy.slot.quarterIndex + 1})
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                {linkedEfy.hasContractorData || linkedEfy.hasEraData ? (
+                  <>
+                    <span>
+                      Contractor: <strong className="text-slate-800 dark:text-slate-200">{linkedEfy.contractor.month !== null ? `${linkedEfy.contractor.month.toFixed(2)} Km` : '—'}</strong>
+                      {linkedEfy.contractor.quarter !== null && <> (Qtr thru {linkedEfy.slot.gregorianMonthLabel}: {linkedEfy.contractor.quarter.toFixed(2)}, EFY {linkedEfy.slot.efyRangeLabel}: {linkedEfy.contractor.efy?.toFixed(2)})</>}
+                    </span>
+                    <span>
+                      ERA: <strong className="text-slate-800 dark:text-slate-200">{linkedEfy.era.month !== null ? `${linkedEfy.era.month.toFixed(2)} Km` : '—'}</strong>
+                      {linkedEfy.era.quarter !== null && <> (Qtr thru {linkedEfy.slot.gregorianMonthLabel}: {linkedEfy.era.quarter.toFixed(2)}, EFY {linkedEfy.slot.efyRangeLabel}: {linkedEfy.era.efy?.toFixed(2)})</>}
+                    </span>
+                  </>
+                ) : (
+                  <span>
+                    No values recorded yet in {linkedEfy.slot.efyYear} EFY Physical Plan for {linkedEfy.slot.gregorianMonthLabel}.
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleToggleAutoSyncEfy}
+              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                autoSyncEfy
+                  ? 'bg-emerald-600/10 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+              }`}
+              title="Toggle automatic two-way synchronization between EFY Physical Plan and Monthly Status Report"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              <span>Auto-Sync: {autoSyncEfy ? 'ON' : 'OFF'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handlePullFromEfyPlan(false)}
+              disabled={(isActiveMonthLocked && !isMasterAdmin) || (!linkedEfy.hasContractorData && !linkedEfy.hasEraData)}
+              className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-white dark:bg-slate-800 hover:bg-blue-600 hover:text-white border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              title={`Pull Contractor & ERA Month (${linkedEfy.slot.gregorianMonthLabel}), Quarter-to-date (${linkedEfy.slot.quarterRangeLabel}), and EFY-to-date (${linkedEfy.slot.efyRangeLabel}) sums from EFY Physical Plan`}
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Pull from EFY Plan</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePushToEfyPlan}
+              disabled={isActiveMonthLocked && !isMasterAdmin}
+              className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-2xs"
+              title={`Push Contractor (${activePlan.contractor.month.toFixed(2)} Km) & ERA (${activePlan.era.month.toFixed(2)} Km) to ${linkedEfy.slot.efyYear} EFY Physical Plan (${linkedEfy.slot.gregorianMonthLabel})`}
+            >
+              <Save className="w-3 h-3" />
+              <span>Push Month to EFY Plan</span>
+            </button>
+
+            {onSwitchTab && (
+              <button
+                type="button"
+                onClick={() => onSwitchTab('monthly')}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer flex items-center gap-1"
+                title="Open Monthly Cumulative & EFY Plan Schedule"
+              >
+                <ExternalLink className="w-3 h-3" />
+                <span>Open EFY Plan</span>
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Main Comparison Metrics Table */}
         <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
           <table className="w-full text-left border-collapse text-xs">
@@ -876,10 +1227,16 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                 <th className="p-4 text-center">
                   <div>Current Quarter</div>
                   <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mt-0.5">{quarterLabel}</div>
+                  <div className="text-[9px] text-slate-500 dark:text-slate-400 font-semibold normal-case mt-0.5">
+                    Up to {linkedEfy.slot.gregorianMonthLabel}
+                  </div>
                 </th>
                 <th className="p-4 text-center">
                   <div>Current EFY</div>
                   <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mt-0.5">{efyLabel}</div>
+                  <div className="text-[9px] text-slate-500 dark:text-slate-400 font-semibold normal-case mt-0.5">
+                    {linkedEfy.slot.efyRangeLabel}
+                  </div>
                 </th>
                 <th className="p-4 text-center bg-blue-50/50 dark:bg-blue-950/20">
                   <div>Cumulative to date</div>
@@ -891,9 +1248,17 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               {/* Row 1: Contractor Program Schedule */}
               {(selectedCategory === 'all' || selectedCategory === 'contractor') && (
                 <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                  <td className="p-4 font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-xs"></span>
-                    Contractor Program Schedule
+                  <td className="p-4 font-black text-slate-800 dark:text-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-xs shrink-0"></span>
+                      <span>Contractor Program Schedule</span>
+                    </div>
+                    {linkedEfy.contractor.month !== null && (
+                      <div className="ml-4.5 mt-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                        <Link2 className="w-2.5 h-2.5 shrink-0" />
+                        <span>{linkedEfy.slot.efyYear} EFY ({linkedEfy.slot.gregorianMonthLabel}): {linkedEfy.contractor.month.toFixed(2)} Km</span>
+                      </div>
+                    )}
                   </td>
                   <td className="p-4 text-center">
                     <input
@@ -901,10 +1266,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       step="0.01"
                       value={activePlan.contractor.month}
                       disabled={isActiveMonthLocked && !isMasterAdmin}
-                      onChange={(e) => setActivePlan({
-                        ...activePlan,
-                        contractor: { ...activePlan.contractor, month: parseFloat(e.target.value) || 0 }
-                      })}
+                      onChange={(e) => handleActiveMonthInputChange('contractor', parseFloat(e.target.value) || 0)}
                       className={`w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100 ${
                         isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
                       }`}
@@ -947,17 +1309,21 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                     <input
                       type="number"
                       step="0.01"
+                      max={totalLength}
                       value={activePlan.contractor.todate}
                       disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
-                        contractor: { ...activePlan.contractor, todate: parseFloat(e.target.value) || 0 }
+                        contractor: { ...activePlan.contractor, todate: clampTodate(parseFloat(e.target.value) || 0) }
                       })}
                       className={`w-24 text-center px-2 py-1 bg-blue-100/50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 rounded-lg font-black text-sm text-blue-900 dark:text-blue-100 ${
                         isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
                       }`}
                     />
-                    <div className="text-[10px] text-blue-600 dark:text-blue-400 mt-1 font-bold">{toPct(activePlan.contractor.todate)}</div>
+                    <div className="text-[10px] text-blue-600 dark:text-blue-400 mt-1 font-bold">
+                      {toPct(activePlan.contractor.todate)}
+                      {activePlan.contractor.todate >= totalLength ? ' · Max Reached' : ''}
+                    </div>
                   </td>
                 </tr>
               )}
@@ -965,9 +1331,17 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
               {/* Row 2: ERA Approved Milestone Plan */}
               {(selectedCategory === 'all' || selectedCategory === 'era') && (
                 <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                  <td className="p-4 font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                    ERA Approved Milestone Plan
+                  <td className="p-4 font-black text-slate-800 dark:text-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
+                      <span>ERA Approved Milestone Plan</span>
+                    </div>
+                    {linkedEfy.era.month !== null && (
+                      <div className="ml-4.5 mt-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                        <Link2 className="w-2.5 h-2.5 shrink-0" />
+                        <span>{linkedEfy.slot.efyYear} EFY ({linkedEfy.slot.gregorianMonthLabel}): {linkedEfy.era.month.toFixed(2)} Km</span>
+                      </div>
+                    )}
                   </td>
                   <td className="p-4 text-center">
                     <input
@@ -975,10 +1349,7 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       step="0.01"
                       value={activePlan.era.month}
                       disabled={isActiveMonthLocked && !isMasterAdmin}
-                      onChange={(e) => setActivePlan({
-                        ...activePlan,
-                        era: { ...activePlan.era, month: parseFloat(e.target.value) || 0 }
-                      })}
+                      onChange={(e) => handleActiveMonthInputChange('era', parseFloat(e.target.value) || 0)}
                       className={`w-24 text-center px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-black text-sm text-slate-850 dark:text-slate-100 ${
                         isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
                       }`}
@@ -1021,17 +1392,21 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                     <input
                       type="number"
                       step="0.01"
+                      max={totalLength}
                       value={activePlan.era.todate}
                       disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
-                        era: { ...activePlan.era, todate: parseFloat(e.target.value) || 0 }
+                        era: { ...activePlan.era, todate: clampTodate(parseFloat(e.target.value) || 0) }
                       })}
                       className={`w-24 text-center px-2 py-1 bg-emerald-100/50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-lg font-black text-sm text-emerald-900 dark:text-emerald-100 ${
                         isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
                       }`}
                     />
-                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 font-bold">{toPct(activePlan.era.todate)}</div>
+                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 font-bold">
+                      {toPct(activePlan.era.todate)}
+                      {activePlan.era.todate >= totalLength ? ' · Max Reached' : ''}
+                    </div>
                   </td>
                 </tr>
               )}
@@ -1095,17 +1470,21 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                     <input
                       type="number"
                       step="0.01"
+                      max={totalLength}
                       value={activePlan.actual.todate}
                       disabled={isActiveMonthLocked && !isMasterAdmin}
                       onChange={(e) => setActivePlan({
                         ...activePlan,
-                        actual: { ...activePlan.actual, todate: parseFloat(e.target.value) || 0 }
+                        actual: { ...activePlan.actual, todate: clampTodate(parseFloat(e.target.value) || 0) }
                       })}
                       className={`w-24 text-center px-2 py-1 bg-indigo-600 text-white border-2 border-indigo-700 rounded-lg font-black text-sm shadow-xs ${
                         isActiveMonthLocked && !isMasterAdmin ? 'cursor-not-allowed opacity-70' : ''
                       }`}
                     />
-                    <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1 font-black">{toPct(activePlan.actual.todate)}</div>
+                    <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1 font-black">
+                      {toPct(activePlan.actual.todate)}
+                      {activePlan.actual.todate >= totalLength ? ' · Max Reached' : ''}
+                    </div>
                   </td>
                 </tr>
               )}
@@ -1518,19 +1897,19 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                             month: item.contractorMonth,
                             quarter: item.contractorQuarter || 0,
                             efy: item.contractorEfy,
-                            todate: item.contractorTodate || 0
+                            todate: clampTodate(item.contractorTodate || 0)
                           },
                           era: {
                             month: item.eraMonth,
                             quarter: item.eraQuarter || 0,
                             efy: item.eraEfy,
-                            todate: item.eraTodate || 0
+                            todate: clampTodate(item.eraTodate || 0)
                           },
                           actual: {
                             month: item.actualMonth,
                             quarter: item.actualQuarter || 0,
                             efy: item.actualEfy,
-                            todate: item.actualTodate || 0
+                            todate: clampTodate(item.actualTodate || 0)
                           }
                         });
                       }}
@@ -1688,19 +2067,19 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                             month: item.contractorMonth,
                             quarter: item.contractorQuarter || 0,
                             efy: item.contractorEfy,
-                            todate: item.contractorTodate || 0
+                            todate: clampTodate(item.contractorTodate || 0)
                           },
                           era: {
                             month: item.eraMonth,
                             quarter: item.eraQuarter || 0,
                             efy: item.eraEfy,
-                            todate: item.eraTodate || 0
+                            todate: clampTodate(item.eraTodate || 0)
                           },
                           actual: {
                             month: item.actualMonth,
                             quarter: item.actualQuarter || 0,
                             efy: item.actualEfy,
-                            todate: item.actualTodate || 0
+                            todate: clampTodate(item.actualTodate || 0)
                           }
                         });
                       }}
@@ -2122,9 +2501,10 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       <input
                         type="number"
                         step="0.01"
+                        max={totalLength}
                         value={editingItem.contractorTodate || 0}
                         disabled={editingItem.isLocked && !isMasterAdmin}
-                        onChange={(e) => setEditingItem({ ...editingItem, contractorTodate: parseFloat(e.target.value) || 0 })}
+                        onChange={(e) => setEditingItem({ ...editingItem, contractorTodate: clampTodate(parseFloat(e.target.value) || 0) })}
                         className={`w-24 text-center px-2 py-1 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-bold text-blue-900 dark:text-blue-100 ${
                           editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-white dark:bg-slate-800'
                         }`}
@@ -2187,9 +2567,10 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       <input
                         type="number"
                         step="0.01"
+                        max={totalLength}
                         value={editingItem.eraTodate || 0}
                         disabled={editingItem.isLocked && !isMasterAdmin}
-                        onChange={(e) => setEditingItem({ ...editingItem, eraTodate: parseFloat(e.target.value) || 0 })}
+                        onChange={(e) => setEditingItem({ ...editingItem, eraTodate: clampTodate(parseFloat(e.target.value) || 0) })}
                         className={`w-24 text-center px-2 py-1 border border-emerald-300 dark:border-emerald-700 rounded-lg text-xs font-bold text-emerald-900 dark:text-emerald-100 ${
                           editingItem.isLocked && !isMasterAdmin ? 'bg-slate-100 dark:bg-slate-900 cursor-not-allowed opacity-75' : 'bg-white dark:bg-slate-800'
                         }`}
@@ -2252,10 +2633,11 @@ export const ProgressPlanView: React.FC<ProgressPlanViewProps> = ({
                       <input
                         type="number"
                         step="0.01"
+                        max={totalLength}
                         value={editingItem.actualTodate || 0}
                         disabled={editingItem.isLocked && !isMasterAdmin}
                         onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
+                          const val = clampTodate(parseFloat(e.target.value) || 0);
                           setEditingItem({ 
                             ...editingItem, 
                             actualTodate: val,

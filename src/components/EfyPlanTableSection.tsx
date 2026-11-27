@@ -1,6 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarRange, DownloadCloud, Plus, RotateCcw } from 'lucide-react';
+import { CalendarRange, DownloadCloud, Link2, Plus, RefreshCw, RotateCcw } from 'lucide-react';
 import { EfyAnnualLayerPlan, Project } from '../types';
+import {
+  buildEfyPlansFromProgressPlan,
+  createEmpty12,
+  normalize12,
+  normalizeEfyYearPlan,
+  resolveEfySlot
+} from '../lib/efyPlanSync';
 
 const EFY_MONTH_SHORT = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
 
@@ -58,24 +65,6 @@ const EFY_PLAN_BLOCKS: EfyPlanBlockConfig[] = [
   }
 ];
 
-function createEmpty12(): Array<number | null> {
-  return Array.from({ length: 12 }, () => null);
-}
-
-function normalize12(arr?: Array<number | null>): Array<number | null> {
-  const out = createEmpty12();
-  if (!Array.isArray(arr)) return out;
-  for (let i = 0; i < 12; i++) {
-    const v = arr[i];
-    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) {
-      out[i] = v;
-    } else {
-      out[i] = null;
-    }
-  }
-  return out;
-}
-
 function createEmptyEfyPlan(efyYear: string): EfyAnnualLayerPlan {
   return {
     efyYear,
@@ -91,18 +80,7 @@ function createEmptyEfyPlan(efyYear: string): EfyAnnualLayerPlan {
 }
 
 function normalizeEfyPlan(efyYear: string, raw?: Partial<EfyAnnualLayerPlan>): EfyAnnualLayerPlan {
-  return {
-    efyYear,
-    physicalContractorPlan: normalize12(raw?.physicalContractorPlan),
-    physicalEraPlan: normalize12(raw?.physicalEraPlan),
-    subBasePlan: normalize12(raw?.subBasePlan),
-    subBaseActual: normalize12(raw?.subBaseActual),
-    baseCoursePlan: normalize12(raw?.baseCoursePlan),
-    baseCourseActual: normalize12(raw?.baseCourseActual),
-    asphaltPlan: normalize12(raw?.asphaltPlan),
-    asphaltActual: normalize12(raw?.asphaltActual),
-    updatedAt: raw?.updatedAt
-  };
+  return normalizeEfyYearPlan(efyYear, raw);
 }
 
 export function getEfyMonthHeaders(efyYearStr: string): string[] {
@@ -218,12 +196,17 @@ export const EfyPlanTableSection: React.FC<EfyPlanTableSectionProps> = ({
     setConfirmClearYear(false);
   }, [project.id]);
 
+  const activeProgressSlot = useMemo(
+    () => resolveEfySlot(project.progressPlanLabels?.monthLabel, project.progressPlanLabels?.efyLabel),
+    [project.progressPlanLabels?.monthLabel, project.progressPlanLabels?.efyLabel]
+  );
+
   const availableYears = useMemo(() => {
     const defaults = ['2015', '2016', '2017', '2018', '2019', '2020', '2021'];
     const existing = Object.keys(project.efyPlans || {}).filter(k => /^\d{4}$/.test(k));
-    const merged = Array.from(new Set([...defaults, ...existing, selectedEfyYear]));
+    const merged = Array.from(new Set([...defaults, ...existing, selectedEfyYear, activeProgressSlot.efyYear]));
     return merged.sort((a, b) => Number(a) - Number(b));
-  }, [project.efyPlans, selectedEfyYear]);
+  }, [project.efyPlans, selectedEfyYear, activeProgressSlot.efyYear]);
 
   const activePlan = useMemo(
     () => normalizeEfyPlan(selectedEfyYear, project.efyPlans?.[selectedEfyYear]),
@@ -234,6 +217,26 @@ export const EfyPlanTableSection: React.FC<EfyPlanTableSectionProps> = ({
     () => getEfyMonthHeaders(selectedEfyYear),
     [selectedEfyYear]
   );
+
+  const handlePullFromProgressComparisons = () => {
+    if (isReadonly || !onSaveEfyPlans) return;
+    const activeMonthLabel = project.progressPlanLabels?.monthLabel || activeProgressSlot.gregorianMonthLabel;
+    const activeEfyLabel = project.progressPlanLabels?.efyLabel || `EFY ${activeProgressSlot.efyYear}`;
+    const contractorMonth = Number(project.progressPlan?.contractor?.month ?? 0);
+    const eraMonth = Number(project.progressPlan?.era?.month ?? 0);
+    const { nextEfyPlans, slot } = buildEfyPlansFromProgressPlan(
+      project.efyPlans,
+      activeMonthLabel,
+      activeEfyLabel,
+      contractorMonth,
+      eraMonth
+    );
+    setSelectedEfyYear(slot.efyYear);
+    onSaveEfyPlans(
+      nextEfyPlans,
+      `Synced ${slot.efyYear} EFY Physical Plan (${slot.gregorianMonthLabel}) from Progress Comparisons`
+    );
+  };
 
   const handleCellCommit = (field: EfyPlanFieldKey, monthIdx: number, nextVal: number | null) => {
     if (isReadonly || !onSaveEfyPlans) return;
@@ -326,8 +329,16 @@ export const EfyPlanTableSection: React.FC<EfyPlanTableSectionProps> = ({
             <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wide">
               {selectedEfyYear} EFY Plan &amp; Pavement Progress Schedule (Km)
             </h3>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Record monthly Contractor/ERA Physical Plan and Sub Base, Base Course, and Asphalt Plan vs. Actual in Km ({monthHeaders[0]} – {monthHeaders[11]}).
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span>
+                Record monthly Contractor/ERA Physical Plan and Sub Base, Base Course, and Asphalt Plan vs. Actual in Km ({monthHeaders[0]} – {monthHeaders[11]}).
+              </span>
+              <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
+                <Link2 className="w-3 h-3 shrink-0" />
+                <span>
+                  Auto-linked to Progress Comparisons ({project.progressPlanLabels?.monthLabel || activeProgressSlot.gregorianMonthLabel} · {activeProgressSlot.efyYear} EFY)
+                </span>
+              </span>
             </p>
           </div>
         </div>
@@ -389,6 +400,18 @@ export const EfyPlanTableSection: React.FC<EfyPlanTableSectionProps> = ({
             >
               <Plus className="w-3.5 h-3.5" />
               <span>EFY Year</span>
+            </button>
+          )}
+
+          {!isReadonly && onSaveEfyPlans && (
+            <button
+              type="button"
+              onClick={handlePullFromProgressComparisons}
+              className="px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs font-medium flex items-center gap-1.5 transition whitespace-nowrap shrink-0 cursor-pointer"
+              title={`Import Contractor (${(project.progressPlan?.contractor?.month ?? 0).toFixed(2)} Km) & ERA (${(project.progressPlan?.era?.month ?? 0).toFixed(2)} Km) for ${project.progressPlanLabels?.monthLabel || activeProgressSlot.gregorianMonthLabel} into ${activeProgressSlot.efyYear} EFY Plan`}
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Pull Active Month ({activeProgressSlot.gregorianMonthLabel})</span>
             </button>
           )}
 
@@ -490,19 +513,34 @@ export const EfyPlanTableSection: React.FC<EfyPlanTableSectionProps> = ({
                       >
                         {row.label}
                       </th>
-                      {monthHeaders.map((mLabel, mIdx) => (
-                        <td
-                          key={`${block.id}-${row.field}-${mIdx}`}
-                          className="p-0 border border-slate-300 dark:border-slate-700"
-                        >
-                          <EfyCellInput
-                            value={rowValues[mIdx] ?? null}
-                            disabled={isReadonly}
-                            ariaLabel={`${selectedEfyYear} ${block.titleSuffix} - ${row.label} - ${mLabel}`}
-                            onCommit={val => handleCellCommit(row.field, mIdx, val)}
-                          />
-                        </td>
-                      ))}
+                      {monthHeaders.map((mLabel, mIdx) => {
+                        const isLinkedCell =
+                          block.id === 'physical' &&
+                          selectedEfyYear === activeProgressSlot.efyYear &&
+                          mIdx === activeProgressSlot.monthIndex;
+                        return (
+                          <td
+                            key={`${block.id}-${row.field}-${mIdx}`}
+                            className={`p-0 border border-slate-300 dark:border-slate-700 ${
+                              isLinkedCell
+                                ? 'bg-blue-50/70 dark:bg-blue-950/30 ring-1 ring-inset ring-blue-400/70 dark:ring-blue-600/70'
+                                : ''
+                            }`}
+                            title={
+                              isLinkedCell
+                                ? `Linked with Progress Comparisons Monthly Status Report (${project.progressPlanLabels?.monthLabel || mLabel})`
+                                : undefined
+                            }
+                          >
+                            <EfyCellInput
+                              value={rowValues[mIdx] ?? null}
+                              disabled={isReadonly}
+                              ariaLabel={`${selectedEfyYear} ${block.titleSuffix} - ${row.label} - ${mLabel}`}
+                              onCommit={val => handleCellCommit(row.field, mIdx, val)}
+                            />
+                          </td>
+                        );
+                      })}
                       <td className="py-1 px-2 text-right font-mono font-semibold text-[11px] tabular-nums text-slate-800 dark:text-slate-100 border border-slate-300 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/40">
                         {hasValues ? rowTotal.toFixed(2) : ''}
                       </td>

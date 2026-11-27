@@ -6,6 +6,8 @@ import { buildKpiHierarchy, getIntegratedKpiAllocated } from '../data/defaultPro
 import { isKpiAuthorizedRole } from '../App';
 import { calculateProgressKpiScores, ProgressKpiCalculationResult } from '../lib/kpiProgressCalculator';
 import { calculateProjectEvm } from '../lib/evmCalculations';
+import { resolveCurrentMonthKey } from '../lib/monthlySync';
+import { getEfyMonthHeaders } from './EfyPlanTableSection';
 import {
   evaluateContractorPerformance,
   getPerformanceAuditGrade,
@@ -110,7 +112,9 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
   const isAuthorized = isKpiAuthorizedRole(currentUserObj ?? null);
 
   const [selectedGroupId, setSelectedGroupId] = React.useState<string>('all');
-  const [selectedMonth, setSelectedMonth] = React.useState<string>(() => project.kpiActiveMonth || 'Oct-26');
+  const [selectedMonth, setSelectedMonth] = React.useState<string>(
+    () => project.kpiActiveMonth || resolveCurrentMonthKey(project) || 'Oct-26'
+  );
   const selectedMonthInfo = React.useMemo(() => getMonthLockInfo(selectedMonth), [selectedMonth]);
 
   const [kpiProgressBasis, setKpiProgressBasis] = React.useState<'monthly' | 'cumulative'>('monthly');
@@ -219,13 +223,13 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
   }, []);
 
   const [draftKpis, setDraftKpis] = React.useState<KpiAllocatedItem[]>(() => {
-    const activeMonthKey = project.kpiActiveMonth || 'Oct-26';
+    const activeMonthKey = project.kpiActiveMonth || resolveCurrentMonthKey(project) || 'Oct-26';
     const rec = project.kpiMonthlyRecords?.[activeMonthKey];
     if (rec?.items?.length) {
       const activeLock = Boolean(rec.isLocked || getMonthLockInfo(activeMonthKey).isPast10Days);
-      return activeLock ? rec.items : mergeLiveAutoKpis(rec.items, project);
+      return activeLock ? rec.items : mergeLiveAutoKpis(rec.items, { ...project, kpiActiveMonth: activeMonthKey });
     }
-    return getIntegratedKpiAllocated(project);
+    return getIntegratedKpiAllocated({ ...project, kpiActiveMonth: activeMonthKey });
   });
   const kpis = draftKpis;
 
@@ -237,33 +241,82 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
   );
   const prevBondsSyncSignatureRef = React.useRef(bondsSyncSignature);
 
+  const liveProgressSignature = React.useMemo(
+    () =>
+      JSON.stringify([
+        selectedMonth,
+        kpiProgressBasis,
+        progressKpiResult.pp1Score,
+        progressKpiResult.pavement.pp3Score
+      ]),
+    [selectedMonth, kpiProgressBasis, progressKpiResult.pp1Score, progressKpiResult.pavement.pp3Score]
+  );
+  const prevLiveProgressSignatureRef = React.useRef(liveProgressSignature);
+
   React.useEffect(() => {
     const projectChanged = prevProjectKpiIdRef.current !== project.id;
     const lenChanged = prevKpiAllocatedLengthRef.current !== (project.kpiAllocated?.length || 0);
     const bondsChanged = prevBondsSyncSignatureRef.current !== bondsSyncSignature;
+    const progressChanged = prevLiveProgressSignatureRef.current !== liveProgressSignature;
 
-    if (projectChanged || lenChanged || bondsChanged) {
+    if (projectChanged || lenChanged || bondsChanged || progressChanged) {
       prevProjectKpiIdRef.current = project.id;
       prevKpiAllocatedLengthRef.current = project.kpiAllocated?.length || 0;
       prevBondsSyncSignatureRef.current = bondsSyncSignature;
+      prevLiveProgressSignatureRef.current = liveProgressSignature;
       if (!isMonthLocked) {
-        setDraftKpis(prev => projectChanged || lenChanged ? getIntegratedKpiAllocated(project) : mergeLiveAutoKpis(prev, project));
+        const scopedProject = { ...project, kpiActiveMonth: selectedMonth };
+        setDraftKpis(prev => {
+          const nextBase =
+            projectChanged || lenChanged
+              ? getIntegratedKpiAllocated(scopedProject)
+              : mergeLiveAutoKpis(prev, scopedProject);
+          return nextBase.map(k => {
+            if (k.isOverridden) return k;
+            if (k.itemId === 'PP-1') return { ...k, alloc: progressKpiResult.pp1Score };
+            if (k.itemId === 'PP-3') return { ...k, alloc: progressKpiResult.pavement.pp3Score };
+            return k;
+          });
+        });
       }
     }
-  }, [project, project.id, project.kpiAllocated, bondsSyncSignature, isMonthLocked, mergeLiveAutoKpis]);
+  }, [
+    project,
+    project.id,
+    project.kpiAllocated,
+    bondsSyncSignature,
+    liveProgressSignature,
+    selectedMonth,
+    isMonthLocked,
+    mergeLiveAutoKpis,
+    progressKpiResult.pp1Score,
+    progressKpiResult.pavement.pp3Score
+  ]);
 
   const handleSelectMonth = (monthKey: string) => {
     setSelectedMonth(monthKey);
     const rec = project.kpiMonthlyRecords?.[monthKey];
     const targetLocked = Boolean(rec?.isLocked || getMonthLockInfo(monthKey).isPast10Days);
+    const calc = calculateProgressKpiScores(project, monthKey, kpiProgressBasis);
     if (rec && rec.items && rec.items.length > 0) {
-      setDraftKpis(targetLocked ? rec.items : mergeLiveAutoKpis(rec.items, { ...project, kpiActiveMonth: monthKey }));
+      setDraftKpis(
+        targetLocked
+          ? rec.items
+          : mergeLiveAutoKpis(rec.items, { ...project, kpiActiveMonth: monthKey }).map(k => {
+              if (k.isOverridden) return k;
+              if (k.itemId === 'PP-1') return { ...k, alloc: calc.pp1Score };
+              if (k.itemId === 'PP-3') return { ...k, alloc: calc.pavement.pp3Score };
+              return k;
+            })
+      );
     } else {
-      const calc = calculateProgressKpiScores(project, monthKey);
       const base = getIntegratedKpiAllocated({ ...project, kpiActiveMonth: monthKey });
       const updated = base.map(k => {
         if (k.itemId === 'PP-1' && !k.isOverridden) {
           return { ...k, alloc: calc.pp1Score };
+        }
+        if (k.itemId === 'PP-3' && !k.isOverridden) {
+          return { ...k, alloc: calc.pavement.pp3Score };
         }
         return k;
       });
@@ -282,6 +335,13 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
           isOverridden: false
         };
       }
+      if (k.itemId === 'PP-3') {
+        return {
+          ...k,
+          alloc: progressKpiResult.pavement.pp3Score,
+          isOverridden: false
+        };
+      }
       return k;
     });
     setDraftKpis(updated);
@@ -289,14 +349,19 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
     const basisLabel = kpiProgressBasis === 'monthly' ? 'Monthly' : 'Cumulative';
     const planVal = kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan;
     const actVal = kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment;
+    const acLayer = progressKpiResult.pavement.asphalt;
+    const acPlan = kpiProgressBasis === 'monthly' && acLayer.monthPlanKm > 0 ? acLayer.monthPlanKm : acLayer.todatePlanKm;
+    const acAct = kpiProgressBasis === 'monthly' && acLayer.monthPlanKm > 0 ? acLayer.monthActualKm : acLayer.todateActualKm;
     if (onProjectUpdate) {
       onProjectUpdate(
         { kpiAllocated: updated },
-        `Computed PP-1 score (${progressKpiResult.pp1Score.toFixed(2)}%) from ${selectedMonth} Monthly Status Report by dividing actual (${actVal} ${progressKpiResult.unit}) for ERA plan (${planVal} ${progressKpiResult.unit})`
+        `Applied Linear PP-1 (${progressKpiResult.pp1Score.toFixed(2)}%) and Pavement PP-3 (${progressKpiResult.pavement.pp3Score.toFixed(2)}%) for ${selectedMonth} from EFY Plan & Daily Activities`
       );
     }
-    setSaveMessage(`Applied PP-1 score (${progressKpiResult.pp1Score.toFixed(2)}%) computed from ${selectedMonth} Monthly Status Report (${basisLabel} Actual: ${actVal} ${progressKpiResult.unit} / ERA Plan: ${planVal} ${progressKpiResult.unit})!`);
-    setTimeout(() => setSaveMessage(null), 3500);
+    setSaveMessage(
+      `Applied PP-1 (${progressKpiResult.pp1Score.toFixed(2)}%: ${actVal} / ${planVal} ${progressKpiResult.unit}) & PP-3 (${progressKpiResult.pavement.pp3Score.toFixed(2)}%: ${acAct.toFixed(3)} / ${acPlan.toFixed(3)} Km) for ${selectedMonth} (${basisLabel})!`
+    );
+    setTimeout(() => setSaveMessage(null), 4000);
   };
 
   const hasKpiChangesRef = React.useRef(false);
@@ -683,8 +748,8 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
 
   const getKpiTooltip = (id: string, desc: string): string => {
     const kpiTooltips: Record<string, string> = {
-      'PP-1': 'Computed from Monthly Status Report of the specific month by dividing actual accomplishment for ERA plan (% of Actual Divided by ERA Plan = (Actual / ERA Plan) * 100). Capped score is 100% when accomplishment meets or exceeds the ERA plan.',
-      'PP-3': 'Auto-linked to live Linear Asphalt Layer progress (Main + Spur executed km vs planned km) or Bill Quantities asphalt progress.',
+      'PP-1': 'Computed from the EFY Plan & Pavement Progress Schedule (physical plan for the specific month) vs Daily Activities monthly cumulative Km accomplishment (with Monthly Status Report fallback). Capped at 100%.',
+      'PP-3': 'Computed from EFY Plan & Pavement Progress Schedule (Asphalt Plan Km for the specific month) vs Daily Activities Section 11 (AC) monthly cumulative Km (with Linear Asphalt fallback). Capped at 100%.',
       'MS-1': 'Has the contractor completed initial mobilization? Yes = 1, No = 0.',
       'MS-2': 'Are all key personnel deployed per contract? Yes = 1, No = 0.',
       'MS-3': "Have the Engineer's office/lab facility been provided? Yes = 1, No = 0.",
@@ -756,6 +821,14 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
           return {
             ...k,
             alloc: progressKpiResult.pp1Score,
+            naActive: false,
+            isOverridden: false
+          };
+        }
+        if (itemId === 'PP-3') {
+          return {
+            ...k,
+            alloc: progressKpiResult.pavement.pp3Score,
             naActive: false,
             isOverridden: false
           };
@@ -906,8 +979,22 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
     const defaultM = ['Jul-26', 'Aug-26', 'Sep-26', 'Oct-26', 'Nov-26', 'Dec-26'];
     const projMonthly = (project.monthly || []).map(m => m.month).filter(Boolean);
     const recMonthly = Object.keys(project.kpiMonthlyRecords || {});
-    return Array.from(new Set([...defaultM, ...projMonthly, ...recMonthly]));
-  }, [project.monthly, project.kpiMonthlyRecords]);
+    const efyMonths = Object.keys(project.efyPlans || {})
+      .filter(k => /^\d{4}$/.test(k))
+      .sort((a, b) => Number(b) - Number(a))
+      .flatMap(yr => getEfyMonthHeaders(yr));
+    const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const toMonYy = (dateStr?: string) => {
+      if (!dateStr || !/^\d{4}-\d{2}/.test(dateStr)) return null;
+      const yr = parseInt(dateStr.slice(0, 4), 10);
+      const moIdx = parseInt(dateStr.slice(5, 7), 10) - 1;
+      if (isNaN(yr) || moIdx < 0 || moIdx > 11) return null;
+      return `${MONTH_SHORT[moIdx]}-${String(yr % 100).padStart(2, '0')}`;
+    };
+    const dailyActMonths = (project.dailyActivities || []).map(a => toMonYy(a.date)).filter(Boolean) as string[];
+    const siteLogMonths = Object.keys(project.dailySiteLogs || {}).map(d => toMonYy(d)).filter(Boolean) as string[];
+    return Array.from(new Set([...defaultM, ...projMonthly, ...recMonthly, ...efyMonths, ...dailyActMonths, ...siteLogMonths]));
+  }, [project.monthly, project.kpiMonthlyRecords, project.efyPlans, project.dailyActivities, project.dailySiteLogs]);
 
   if (!isAuthorized) {
     return (
@@ -1874,11 +1961,41 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                                   <div className="flex items-center gap-2 mt-1 flex-wrap pl-1">
                                     <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                                       <Zap className="w-3 h-3 text-indigo-500" />
-                                      Monthly Status Report ({selectedMonth} {kpiProgressBasis === 'monthly' ? 'Month' : 'Cumulative'}): Actual {kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment} {progressKpiResult.unit} / ERA Plan {kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan} {progressKpiResult.unit}
+                                      {progressKpiResult.usesEfyPhysicalPlan
+                                        ? `EFY Plan vs Daily Activities (${selectedMonth} ${kpiProgressBasis === 'monthly' ? 'Month' : 'To-Date'}):`
+                                        : `Progress (${selectedMonth} ${kpiProgressBasis === 'monthly' ? 'Month' : 'To-Date'}):`}{' '}
+                                      Actual {(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)} {progressKpiResult.unit} / Plan {(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)} {progressKpiResult.unit}
                                     </span>
                                     <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                                      % Divided for ERA Plan: <strong>{progressKpiResult.performanceRatio.toFixed(2)}%</strong> &bull; Score: <strong className="text-indigo-600 dark:text-indigo-400 font-mono">{progressKpiResult.pp1Score.toFixed(1)}%</strong>
+                                      Ratio: <strong>{progressKpiResult.performanceRatio.toFixed(2)}%</strong> &bull; Score: <strong className="text-indigo-600 dark:text-indigo-400 font-mono">{progressKpiResult.pp1Score.toFixed(1)}%</strong>
                                     </span>
+                                  </div>
+                                ) : it.id === 'PP-3' ? (
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap pl-1">
+                                    {(() => {
+                                      const ac = progressKpiResult.pavement.asphalt;
+                                      const useMonthly = kpiProgressBasis === 'monthly' && ac.monthPlanKm > 0;
+                                      const acActual = useMonthly ? ac.monthActualKm : (ac.hasTodatePlan ? ac.todateActualKm : ac.monthActualKm);
+                                      const acPlan = useMonthly ? ac.monthPlanKm : ac.todatePlanKm;
+                                      return (
+                                        <>
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+                                            <Zap className="w-3 h-3 text-teal-500" />
+                                            {ac.hasMonthPlan || ac.hasTodatePlan
+                                              ? `EFY Asphalt Plan vs Daily Activities (${selectedMonth}): Actual ${acActual.toFixed(3)} km / Plan ${acPlan.toFixed(3)} km`
+                                              : progressKpiResult.pavement.pp3SourceDescription}
+                                          </span>
+                                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                                            Ratio: <strong>{progressKpiResult.pavement.pp3PerformanceRatio.toFixed(2)}%</strong> &bull; Score: <strong className="text-teal-600 dark:text-teal-400 font-mono">{progressKpiResult.pavement.pp3Score.toFixed(1)}%</strong>
+                                          </span>
+                                          {(progressKpiResult.pavement.subbase.hasMonthPlan || progressKpiResult.pavement.subbase.monthActualKm > 0 || progressKpiResult.pavement.basecourse.hasMonthPlan || progressKpiResult.pavement.basecourse.monthActualKm > 0) && (
+                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                                              [Sub-Base: {progressKpiResult.pavement.subbase.monthActualKm.toFixed(3)}/{progressKpiResult.pavement.subbase.monthPlanKm.toFixed(3)} km ({progressKpiResult.pavement.subbase.monthlyRatioPct.toFixed(0)}%) &bull; Base Course: {progressKpiResult.pavement.basecourse.monthActualKm.toFixed(3)}/{progressKpiResult.pavement.basecourse.monthPlanKm.toFixed(3)} km ({progressKpiResult.pavement.basecourse.monthlyRatioPct.toFixed(0)}%)]
+                                            </span>
+                                          )}
+                                        </>
+                                      );
+                                    })()}
                                   </div>
                                 ) : isAutoLinkedKpiId(it.id) && (
                                   <div className="text-[10px] text-slate-500 dark:text-slate-400 pl-1">
@@ -1904,6 +2021,24 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                                       <span className="text-[9px] font-bold bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-900/30 flex items-center gap-1">
                                         <Check className="w-2.5 h-2.5 text-indigo-500" />
                                         Progress Auto Active ({progressKpiResult.pp1Score.toFixed(1)}%)
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : it.id === 'PP-3' ? (
+                                  <div className="flex items-center">
+                                    {kpi.isOverridden ? (
+                                      <button
+                                        onClick={() => handleResetToAuto('PP-3')}
+                                        className="text-[9px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-900/40 transition cursor-pointer flex items-center gap-1"
+                                        title="Click to reset and sync with EFY Pavement Schedule & Daily Activities"
+                                      >
+                                        <RefreshCw className="w-2.5 h-2.5" />
+                                        Manual ({kpi.alloc}%) &rarr; Sync Auto ({progressKpiResult.pavement.pp3Score.toFixed(1)}%)
+                                      </button>
+                                    ) : (
+                                      <span className="text-[9px] font-bold bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded-md border border-teal-200 dark:border-teal-900/30 flex items-center gap-1">
+                                        <Check className="w-2.5 h-2.5 text-teal-500" />
+                                        Pavement Auto Active ({progressKpiResult.pavement.pp3Score.toFixed(1)}%)
                                       </span>
                                     )}
                                   </div>
@@ -2121,7 +2256,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                         <Activity className="w-4 h-4 text-indigo-300" />
                       </span>
                       <h3 className="text-xs sm:text-sm font-black tracking-tight text-white uppercase">
-                        Monthly Status Report Progress Engine • PP-1 Breakdown
+                        Linear Progress Comparison • PP-1 ({progressKpiResult.usesEfyPhysicalPlan ? 'EFY Plan vs Daily Activities' : 'Monthly Status Report'})
                       </h3>
                       <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
                         progressKpiResult.status === 'Ahead' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
@@ -2133,7 +2268,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                       </span>
                     </div>
                     <p className="text-2xs text-indigo-200/90 leading-relaxed">
-                      <strong>PP-1 (Planned vs actual physical completion)</strong> is computed directly from the Monthly Status Report of <strong>{selectedMonth}</strong> by dividing <strong>actual accomplishment for ERA plan</strong> (<em>% of Actual Divided by ERA Plan</em>).
+                      <strong>PP-1 (Linear / Physical completion)</strong> compares the <strong>EFY Plan &amp; Pavement Progress Schedule</strong> target for <strong>{selectedMonth}</strong> against the <strong>Daily Activities monthly cumulative</strong> Km accomplishment ({progressKpiResult.dailyLoggedDaysCount || 0} logged day{(progressKpiResult.dailyLoggedDaysCount || 0) === 1 ? '' : 's'}).
                     </p>
                   </div>
 
@@ -2173,7 +2308,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                         className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm cursor-pointer border border-indigo-400/30"
                       >
                         <RefreshCw className="w-3.5 h-3.5 text-indigo-200" />
-                        <span>Apply Score ({progressKpiResult.pp1Score.toFixed(1)}%)</span>
+                        <span>Apply PP-1 &amp; PP-3</span>
                       </button>
                     )}
                   </div>
@@ -2183,50 +2318,56 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
                   <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 space-y-1">
                     <span className="text-[10px] uppercase font-bold text-indigo-200/70 block">
-                      {kpiProgressBasis === 'monthly' ? 'ERA Month Plan' : 'ERA To-Date Plan'}
+                      {kpiProgressBasis === 'monthly' ? 'EFY Month Plan' : 'EFY To-Date Plan'}
                     </span>
                     <div className="flex items-baseline gap-1">
                       <span className="text-base font-black font-mono text-white">
-                        {(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(2)}
+                        {(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)}
                       </span>
                       <span className="text-[10px] text-indigo-300/80 font-mono">{progressKpiResult.unit}</span>
                     </div>
-                    <span className="text-[9px] text-indigo-300/80 block truncate">Status Report target</span>
+                    <span className="text-[9px] text-indigo-300/80 block truncate">
+                      {progressKpiResult.usesEfyPhysicalPlan ? 'EFY Physical Schedule' : 'Status Report Target'}
+                    </span>
                   </div>
 
                   <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 space-y-1">
                     <span className="text-[10px] uppercase font-bold text-indigo-200/70 block">
-                      {kpiProgressBasis === 'monthly' ? 'Actual Month' : 'Actual To-Date'}
+                      {kpiProgressBasis === 'monthly' ? 'Daily Act. Month' : 'Daily Act. To-Date'}
                     </span>
                     <div className="flex items-baseline gap-1">
                       <span className="text-base font-black font-mono text-white">
-                        {(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(2)}
+                        {(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)}
                       </span>
                       <span className="text-[10px] text-indigo-300/80 font-mono">{progressKpiResult.unit}</span>
                     </div>
-                    <span className="text-[9px] text-indigo-300/80 block truncate">Road Completed</span>
+                    <span className="text-[9px] text-indigo-300/80 block truncate">
+                      {progressKpiResult.usesDailyKmAccomplishment
+                        ? `${progressKpiResult.dailyLoggedDaysCount || 0} logged days (${progressKpiResult.targetMonthYYYYMM})`
+                        : 'Road Completed'}
+                    </span>
                   </div>
 
                   <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 space-y-1">
-                    <span className="text-[10px] uppercase font-bold text-indigo-200/70 block">Actual / ERA Plan</span>
+                    <span className="text-[10px] uppercase font-bold text-indigo-200/70 block">Actual / Plan Ratio</span>
                     <div className="flex items-baseline gap-1">
                       <span className="text-base font-black font-mono text-amber-300">
                         {progressKpiResult.performanceRatio.toFixed(2)}%
                       </span>
                     </div>
-                    <span className="text-[9px] text-indigo-300/80 block truncate">% Divided for ERA Plan</span>
+                    <span className="text-[9px] text-indigo-300/80 block truncate">Monthly Conformance %</span>
                   </div>
 
                   <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 space-y-1">
-                    <span className="text-[10px] uppercase font-bold text-indigo-200/70 block">Variance (Km)</span>
+                    <span className="text-[10px] uppercase font-bold text-indigo-200/70 block">Variance ({progressKpiResult.unit})</span>
                     <div className="flex items-baseline gap-1">
                       <span className={`text-base font-black font-mono ${progressKpiResult.variancePctPoints >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {progressKpiResult.variancePctPoints >= 0 ? '+' : ''}{progressKpiResult.variancePctPoints.toFixed(2)}
+                        {progressKpiResult.variancePctPoints >= 0 ? '+' : ''}{progressKpiResult.variancePctPoints.toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)}
                       </span>
                       <span className="text-[10px] text-indigo-300/80 font-mono">{progressKpiResult.unit}</span>
                     </div>
                     <span className="text-[9px] text-indigo-300/80 block truncate">
-                      {progressKpiResult.variancePctPoints >= 0 ? 'Ahead of ERA plan' : 'Behind ERA plan'}
+                      {progressKpiResult.variancePctPoints >= 0 ? 'Ahead of plan' : 'Behind plan'}
                     </span>
                   </div>
 
@@ -2238,7 +2379,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                       </span>
                     </div>
                     <span className="text-[9px] text-indigo-300/80 block truncate">
-                      {progressKpiResult.spi >= 1.0 ? 'SPI ≥ 1.0 (On schedule)' : 'SPI < 1.0 (Slippage)'}
+                      {progressKpiResult.spi >= 1.0 ? 'SPI >= 1.0 (On schedule)' : 'SPI < 1.0 (Slippage)'}
                     </span>
                   </div>
 
@@ -2259,7 +2400,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                 {/* Dual Comparison Audit Breakdown */}
                 <div className="bg-white/5 rounded-xl p-3 border border-white/10 space-y-2 text-xs">
                   <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-indigo-300 border-b border-white/10 pb-1.5 flex-wrap gap-2">
-                    <span>Monthly Status Report (% of Actual Divided by ERA Plan)</span>
+                    <span>Linear Progress Comparison (Daily Activities Cumulative / EFY Schedule Plan)</span>
                     <span className="font-mono text-[10px] text-slate-400">Data Source: {progressKpiResult.sourceDescription}</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
@@ -2277,7 +2418,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                         <span className="font-mono text-amber-300 font-black">{progressKpiResult.monthlyPerformanceRatio.toFixed(2)}%</span>
                       </div>
                       <div className="text-[10px] text-slate-300 mt-1">
-                        Actual: <strong>{progressKpiResult.actualMonthAccomplishment.toFixed(2)} {progressKpiResult.unit}</strong> / ERA Plan: <strong>{progressKpiResult.eraMonthPlan.toFixed(2)} {progressKpiResult.unit}</strong> &bull; Score: <strong className="text-emerald-400">{progressKpiResult.monthlyPp1Score.toFixed(1)}%</strong>
+                        Actual: <strong>{progressKpiResult.actualMonthAccomplishment.toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)} {progressKpiResult.unit}</strong> / Plan: <strong>{progressKpiResult.eraMonthPlan.toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)} {progressKpiResult.unit}</strong> &bull; Score: <strong className="text-emerald-400">{progressKpiResult.monthlyPp1Score.toFixed(1)}%</strong>
                       </div>
                     </div>
 
@@ -2295,7 +2436,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                         <span className="font-mono text-amber-300 font-black">{progressKpiResult.cumulativePerformanceRatio.toFixed(2)}%</span>
                       </div>
                       <div className="text-[10px] text-slate-300 mt-1">
-                        Actual: <strong>{progressKpiResult.actualTodateAccomplishment.toFixed(2)} {progressKpiResult.unit}</strong> / ERA Plan: <strong>{progressKpiResult.eraTodatePlan.toFixed(2)} {progressKpiResult.unit}</strong> &bull; Score: <strong className="text-emerald-400">{progressKpiResult.cumulativePp1Score.toFixed(1)}%</strong>
+                        Actual: <strong>{progressKpiResult.actualTodateAccomplishment.toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)} {progressKpiResult.unit}</strong> / Plan: <strong>{progressKpiResult.eraTodatePlan.toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)} {progressKpiResult.unit}</strong> &bull; Score: <strong className="text-emerald-400">{progressKpiResult.cumulativePp1Score.toFixed(1)}%</strong>
                       </div>
                     </div>
                   </div>
@@ -2303,6 +2444,103 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
 
                 <div className="text-[11px] text-indigo-200/90 pt-1 border-t border-indigo-800/50">
                   <strong>Audit Formula:</strong> {progressKpiResult.formulaExplanation}
+                </div>
+              </div>
+
+              {/* SECTION 1B: Pavement Progress Schedule Comparison (Sub-Base, Base Course & Asphalt -> PP-3) */}
+              <div className="bg-gradient-to-br from-slate-900 via-teal-950/80 to-slate-900 text-white rounded-2xl p-4 sm:p-5 border border-teal-700/50 shadow-md space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-teal-800/50 pb-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="p-1 rounded-lg bg-teal-500/20 text-teal-300">
+                        <TrendingUp className="w-4 h-4 text-teal-300" />
+                      </span>
+                      <h3 className="text-xs sm:text-sm font-black tracking-tight text-white uppercase">
+                        Pavement Progress Comparison • PP-3 (EFY Pavement Schedule vs Daily Activities)
+                      </h3>
+                      <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/40">
+                        PP-3 Score: {progressKpiResult.pavement.pp3Score.toFixed(1)}%
+                      </span>
+                    </div>
+                    <p className="text-2xs text-teal-100/80 leading-relaxed">
+                      Monthly plans for <strong>Sub-Base (Sec 8)</strong>, <strong>Base Course (Sec 9)</strong>, and <strong>Asphalt Concrete (Sec 11)</strong> are linked from the <strong>EFY Plan &amp; Pavement Progress Schedule</strong> for <strong>{selectedMonth}</strong> and compared against monthly cumulative quantities from <strong>Daily Activities ({progressKpiResult.pavement.targetMonthYYYYMM})</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-xl border border-teal-800/50 bg-black/25">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-teal-950/60 text-[10px] uppercase font-extrabold text-teal-200 border-b border-teal-800/50">
+                      <tr>
+                        <th className="px-3.5 py-2.5">Pavement Layer</th>
+                        <th className="px-3 py-2.5 text-right">EFY Month Plan (Km)</th>
+                        <th className="px-3 py-2.5 text-right">Daily Activities Month (Km)</th>
+                        <th className="px-3 py-2.5 text-right">To-Date (Actual / Plan)</th>
+                        <th className="px-3 py-2.5 text-right">Variance (Km)</th>
+                        <th className="px-3.5 py-2.5 text-right">Ratio &amp; Score</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-teal-900/40 font-medium">
+                      {progressKpiResult.pavement.layers.map((layer) => (
+                        <tr key={layer.key} className="hover:bg-white/5 transition">
+                          <td className="px-3.5 py-2.5">
+                            <div className="font-bold text-white flex items-center gap-1.5">
+                              <span>{layer.label}</span>
+                              {layer.key === 'asphalt' && (
+                                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-teal-500/20 text-teal-300 border border-teal-500/40">
+                                  PP-3
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-teal-200/70">
+                              Daily Activities Sec {layer.sectionId} &bull; {layer.dailyEntryCount} entries ({layer.dailyLoggedDays}d)
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono text-white font-bold">
+                            {layer.monthPlanKm.toFixed(3)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono text-amber-300 font-bold">
+                            {layer.monthActualKm.toFixed(3)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-300">
+                            {layer.todateActualKm.toFixed(3)} / {layer.todatePlanKm.toFixed(3)}
+                          </td>
+                          <td className={`px-3 py-2.5 text-right font-mono font-bold ${layer.varianceKm >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {layer.varianceKm >= 0 ? '+' : ''}{layer.varianceKm.toFixed(3)}
+                          </td>
+                          <td className="px-3.5 py-2.5 text-right font-mono">
+                            <span className="text-teal-200 font-bold">
+                              {(kpiProgressBasis === 'monthly' && layer.monthPlanKm > 0 ? layer.monthlyRatioPct : layer.cumulativeRatioPct).toFixed(1)}%
+                            </span>
+                            <span className="text-slate-400 mx-1">&bull;</span>
+                            <span className="text-emerald-400 font-black">{layer.scorePct.toFixed(1)}%</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-teal-950/50 text-[11px] font-black border-t border-teal-800/60">
+                      <tr>
+                        <td className="px-3.5 py-2 text-teal-100 uppercase">Combined Pavement Layers Total</td>
+                        <td className="px-3 py-2 text-right font-mono text-white">
+                          {progressKpiResult.pavement.plannedMonthTotalKm.toFixed(3)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-amber-300">
+                          {progressKpiResult.pavement.actualMonthTotalKm.toFixed(3)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-slate-300" colSpan={2}>
+                          Monthly Overall Layer Ratio
+                        </td>
+                        <td className="px-3.5 py-2 text-right font-mono text-emerald-400">
+                          {progressKpiResult.pavement.overallMonthlyRatioPct.toFixed(1)}%
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <div className="text-[11px] text-teal-100/80 pt-1 border-t border-teal-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span><strong>PP-3 Audit Formula:</strong> {progressKpiResult.pavement.pp3FormulaExplanation}</span>
+                  <span className="text-[10px] font-mono text-teal-300/80 shrink-0">{progressKpiResult.pavement.pp3SourceDescription}</span>
                 </div>
               </div>
 
@@ -2398,27 +2636,27 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                 </div>
 
                 <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  The overall KPI grade <strong>Grade {currentRecord?.overallGrade || overallGrade}</strong> for <strong>{selectedMonth}</strong> is evaluated directly against the official <strong>Monthly Status Report</strong> source baseline and ERA 10-Area Contractor Scorecard. The key contributing factors are detailed below:
+                  The overall KPI grade <strong>Grade {currentRecord?.overallGrade || overallGrade}</strong> for <strong>{selectedMonth}</strong> evaluates linear and pavement progress directly against the <strong>EFY Plan &amp; Pavement Progress Schedule</strong> and <strong>Daily Activities Monthly Cumulative</strong> logs. Key contributing factors:
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {/* Factor 1: S-Curve Physical Progress Alignment */}
+                  {/* Factor 1: Linear Progress Alignment */}
                   <div className="bg-white dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase font-extrabold text-blue-600 dark:text-blue-400">Factor 1: S-Curve Baseline Alignment</span>
-                      <span className="text-[9px] font-mono bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-1.5 py-0.25 rounded font-bold">G1 Physical Progress</span>
+                      <span className="text-[10px] uppercase font-extrabold text-blue-600 dark:text-blue-400">Factor 1: Linear Baseline Alignment</span>
+                      <span className="text-[9px] font-mono bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-1.5 py-0.25 rounded font-bold">G1 PP-1 Linear</span>
                     </div>
                     <div className="text-xs font-bold text-slate-800 dark:text-zinc-100">
-                      Target Accomplishment vs Actual Completion
+                      EFY Plan vs Daily Activities Accomplishment
                     </div>
                     <div className="space-y-1 text-[11px] text-slate-500 dark:text-slate-400">
                       <div className="flex justify-between">
-                        <span>ERA Monthly Plan:</span>
-                        <strong className="text-slate-700 dark:text-slate-200 font-mono">{(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(2)} {progressKpiResult.unit}</strong>
+                        <span>{progressKpiResult.usesEfyPhysicalPlan ? 'EFY Month Plan:' : 'ERA Month Plan:'}</span>
+                        <strong className="text-slate-700 dark:text-slate-200 font-mono">{(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)} {progressKpiResult.unit}</strong>
                       </div>
                       <div className="flex justify-between">
-                        <span>Actual Accomplishment:</span>
-                        <strong className="text-slate-700 dark:text-slate-200 font-mono">{(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(2)} {progressKpiResult.unit}</strong>
+                        <span>{progressKpiResult.usesDailyKmAccomplishment ? 'Daily Act. Cumulative:' : 'Actual Accomplishment:'}</span>
+                        <strong className="text-slate-700 dark:text-slate-200 font-mono">{(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)} {progressKpiResult.unit}</strong>
                       </div>
                       <div className="flex justify-between border-t border-slate-100 dark:border-slate-750 pt-1 font-bold">
                         <span>Physical Completion Ratio:</span>
@@ -2430,10 +2668,10 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                     </div>
                   </div>
 
-                  {/* Factor 2: Schedule Performance Index (SPI) */}
+                  {/* Factor 2: Pavement & Schedule Conformance */}
                   <div className="bg-white dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase font-extrabold text-blue-600 dark:text-blue-400">Factor 2: Schedule Index (SPI)</span>
+                      <span className="text-[10px] uppercase font-extrabold text-blue-600 dark:text-blue-400">Factor 2: Pavement &amp; Schedule Index</span>
                       <span className={`text-[9px] font-mono px-1.5 py-0.25 rounded font-bold ${
                         progressKpiResult.spi >= 1.0 ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300' : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
                       }`}>
@@ -2441,7 +2679,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                       </span>
                     </div>
                     <div className="text-xs font-bold text-slate-800 dark:text-zinc-100">
-                      Earned Value Schedule Conformance
+                      Asphalt (PP-3) &amp; Linear Score
                     </div>
                     <div className="space-y-1 text-[11px] text-slate-500 dark:text-slate-400">
                       <div className="flex justify-between">
@@ -2451,16 +2689,16 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                         </strong>
                       </div>
                       <div className="flex justify-between">
-                        <span>Milestone Variance:</span>
-                        <strong className="text-slate-700 dark:text-slate-200 font-mono">{progressKpiResult.variancePctPoints >= 0 ? '+' : ''}{progressKpiResult.variancePctPoints.toFixed(2)} {progressKpiResult.unit}</strong>
+                        <span>PP-1 Linear Score:</span>
+                        <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{progressKpiResult.pp1Score.toFixed(1)}%</strong>
                       </div>
                       <div className="flex justify-between border-t border-slate-100 dark:border-slate-750 pt-1 font-bold">
-                        <span>PP-1 Capped Score:</span>
-                        <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{progressKpiResult.pp1Score.toFixed(1)}%</strong>
+                        <span>PP-3 Pavement (AC) Score:</span>
+                        <strong className="text-teal-600 dark:text-teal-400 font-mono">{progressKpiResult.pavement.pp3Score.toFixed(1)}%</strong>
                       </div>
                     </div>
                     <div className="text-[10px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-750">
-                      Source: Monthly Status Report Program Schedule
+                      Source: {progressKpiResult.pavement.pp3SourceDescription}
                     </div>
                   </div>
 
@@ -2511,18 +2749,21 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  {/* Monthly Cumulative S-Curve Baseline Link */}
+                  {/* EFY Plan & Daily Activities Baseline Link */}
                   <div className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-1.5">
                     <span className="text-[10px] uppercase font-bold text-indigo-200/80 block">
-                      Monthly Cumulative S-Curve Baseline
+                      EFY Schedule &amp; Daily Activities Link
                     </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-1">
                       <span className="text-xs font-mono font-bold text-amber-300">
-                        {progressKpiResult.sourceDescription}
+                        Linear (PP-1): {progressKpiResult.sourceDescription}
+                      </span>
+                      <span className="text-[11px] font-mono font-bold text-teal-300">
+                        Pavement (PP-3): {progressKpiResult.pavement.pp3SourceDescription}
                       </span>
                     </div>
                     <p className="text-[10px] text-indigo-200/70 leading-relaxed">
-                      Source telemetry extracted from active project baseline schedule & Monthly Status Report record ({selectedMonth}).
+                      Plans sourced from EFY Plan &amp; Pavement Progress Schedule ({selectedMonth}); monthly cumulative accomplishments computed from Daily Activities.
                     </p>
                   </div>
 
@@ -2534,8 +2775,8 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                     <p className="text-[11px] font-mono font-bold text-emerald-300 leading-snug">
                       {progressKpiResult.formulaExplanation}
                     </p>
-                    <p className="text-[10px] text-indigo-200/70 leading-relaxed">
-                      Standard ERA score computation: Physical Completion Performance Ratio (%) capped between 0.0% and 100.0%.
+                    <p className="text-[10px] font-mono text-teal-300 leading-snug">
+                      {progressKpiResult.pavement.pp3FormulaExplanation}
                     </p>
                   </div>
                 </div>
@@ -2553,7 +2794,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                         Source Data Explorer • Scoring Engine Audit
                       </h3>
                       <p className="text-2xs text-slate-400">
-                        Side-by-side verification between active KPI score parameters and raw Monthly Status Report data points ({selectedMonth}).
+                        Side-by-side verification between active KPI score parameters, EFY Plan Schedule targets, and Daily Activities cumulative totals ({selectedMonth}).
                       </p>
                     </div>
                   </div>
@@ -2572,7 +2813,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                           Current KPI Scorecard Value
                         </th>
                         <th className="px-3.5 py-2.5 text-center bg-slate-900/90 text-emerald-400">
-                          Raw Monthly Status Report Data
+                          EFY Plan / Daily Activities Data
                         </th>
                         <th className="px-3.5 py-2.5 text-right">Scoring Engine Logic Verification</th>
                       </tr>
@@ -2581,14 +2822,14 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                       {/* Row 1: Planned Month Accomplishment */}
                       <tr className="hover:bg-slate-900/50 transition">
                         <td className="px-3.5 py-2.5">
-                          <div className="font-bold text-white">Planned Month Progress (ERA Plan)</div>
-                          <div className="text-[10px] text-slate-400 font-mono">Month target baseline for {selectedMonth}</div>
+                          <div className="font-bold text-white">Planned Linear Progress ({progressKpiResult.usesEfyPhysicalPlan ? 'EFY Schedule' : 'ERA Plan'})</div>
+                          <div className="text-[10px] text-slate-400 font-mono">Target baseline for {selectedMonth}</div>
                         </td>
                         <td className="px-3.5 py-2.5 text-center font-mono font-bold text-amber-300 bg-indigo-950/20 border-x border-slate-800">
-                          {(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(2)} {progressKpiResult.unit}
+                          {(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)} {progressKpiResult.unit}
                         </td>
                         <td className="px-3.5 py-2.5 text-center font-mono font-bold text-emerald-400 bg-slate-900/40">
-                          {(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(2)} {progressKpiResult.unit}
+                          {(kpiProgressBasis === 'monthly' ? progressKpiResult.eraMonthPlan : progressKpiResult.eraTodatePlan).toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)} {progressKpiResult.unit}
                         </td>
                         <td className="px-3.5 py-2.5 text-right">
                           <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
@@ -2600,14 +2841,14 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                       {/* Row 2: Actual Month Accomplishment */}
                       <tr className="hover:bg-slate-900/50 transition">
                         <td className="px-3.5 py-2.5">
-                          <div className="font-bold text-white">Actual Month Accomplishment</div>
-                          <div className="text-[10px] text-slate-400 font-mono">Physical work executed in {selectedMonth}</div>
+                          <div className="font-bold text-white">Actual Linear Accomplishment ({progressKpiResult.usesDailyKmAccomplishment ? 'Daily Activities' : 'Reported'})</div>
+                          <div className="text-[10px] text-slate-400 font-mono">Monthly cumulative Km in {selectedMonth}</div>
                         </td>
                         <td className="px-3.5 py-2.5 text-center font-mono font-bold text-amber-300 bg-indigo-950/20 border-x border-slate-800">
-                          {(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(2)} {progressKpiResult.unit}
+                          {(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)} {progressKpiResult.unit}
                         </td>
                         <td className="px-3.5 py-2.5 text-center font-mono font-bold text-emerald-400 bg-slate-900/40">
-                          {(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(2)} {progressKpiResult.unit}
+                          {(kpiProgressBasis === 'monthly' ? progressKpiResult.actualMonthAccomplishment : progressKpiResult.actualTodateAccomplishment).toFixed(progressKpiResult.unit === 'Km' ? 3 : 2)} {progressKpiResult.unit}
                         </td>
                         <td className="px-3.5 py-2.5 text-right">
                           <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
@@ -2619,8 +2860,8 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                       {/* Row 3: Performance Ratio */}
                       <tr className="hover:bg-slate-900/50 transition">
                         <td className="px-3.5 py-2.5">
-                          <div className="font-bold text-white">Performance Ratio (% Divided)</div>
-                          <div className="text-[10px] text-slate-400 font-mono">(Actual / ERA Plan) * 100</div>
+                          <div className="font-bold text-white">Linear Performance Ratio (% Divided)</div>
+                          <div className="text-[10px] text-slate-400 font-mono">(Daily Activities / EFY Plan) * 100</div>
                         </td>
                         <td className="px-3.5 py-2.5 text-center font-mono font-bold text-amber-300 bg-indigo-950/20 border-x border-slate-800">
                           {progressKpiResult.performanceRatio.toFixed(2)}%
@@ -2659,7 +2900,7 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                       {/* Row 5: Final PP-1 KPI Score */}
                       <tr className="hover:bg-slate-900/50 transition bg-indigo-950/30">
                         <td className="px-3.5 py-2.5">
-                          <div className="font-bold text-white">Final Scorecard PP-1 Score</div>
+                          <div className="font-bold text-white">Final Scorecard PP-1 Score (Linear)</div>
                           <div className="text-[10px] text-slate-400 font-mono">Scorecard input after capping (0 - 100%)</div>
                         </td>
                         <td className="px-3.5 py-2.5 text-center font-mono font-black text-emerald-400 bg-indigo-950/60 border-x border-slate-800 text-sm">
@@ -2671,6 +2912,25 @@ export default function KpiEditorView({ project, currentUserObj, onUpdateKpi, on
                         <td className="px-3.5 py-2.5 text-right">
                           <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-300 font-bold bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-700/60">
                             Min(100, Max(0, Ratio)) = {progressKpiResult.pp1Score.toFixed(1)}%
+                          </span>
+                        </td>
+                      </tr>
+
+                      {/* Row 6: Final PP-3 Pavement Score */}
+                      <tr className="hover:bg-slate-900/50 transition bg-teal-950/20">
+                        <td className="px-3.5 py-2.5">
+                          <div className="font-bold text-white">Final Scorecard PP-3 Score (Asphalt / Pavement)</div>
+                          <div className="text-[10px] text-slate-400 font-mono">EFY Asphalt Plan vs Daily Activities Sec 11 AC</div>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-black text-teal-300 bg-indigo-950/60 border-x border-slate-800 text-sm">
+                          {progressKpiResult.pavement.pp3Score.toFixed(1)}%
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-black text-teal-300 bg-slate-900/60 text-sm">
+                          {progressKpiResult.pavement.pp3Score.toFixed(1)}%
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono text-teal-200 font-bold bg-teal-950/80 px-2 py-0.5 rounded border border-teal-700/60">
+                            Ratio {progressKpiResult.pavement.pp3PerformanceRatio.toFixed(1)}% &rarr; {progressKpiResult.pavement.pp3Score.toFixed(1)}%
                           </span>
                         </td>
                       </tr>

@@ -27,10 +27,7 @@ import {
   BarChart3,
   BarChart2,
   Bell,
-
-  Timer,
   Settings,
-  Plus,
   Printer
 } from 'lucide-react';
 import { 
@@ -52,6 +49,7 @@ import { Project, LinearData, formatAccounting, User, ProjectLifecycleStatus, is
 import CircularGauge from './CircularGauge';
 import BillSummaryPriceAdjChart from './BillSummaryPriceAdjChart';
 import DlpDefectModal from './DlpDefectModal';
+import { DefectLiabilityManagementPanel } from './DefectLiabilityManagementPanel';
 import ProjectLifecycleStatusDropdown from './ProjectLifecycleStatusDropdown';
 import { buildKpiHierarchy, getIntegratedKpiAllocated, parseStation } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
@@ -64,7 +62,9 @@ export { sortProgressPlanHistoryDescending };
 
 interface DashboardViewProps {
   project: Project;
+  allProjects?: Project[];
   currentUserObj?: User;
+  onSelectProject?: (id: string) => void;
   onSetPhysical: (val: number) => void;
   onUploadImage: (fileData: string) => void;
   onRemoveImage: (idx: number) => void;
@@ -77,7 +77,9 @@ interface DashboardViewProps {
 
 export default function DashboardView({
   project,
+  allProjects = [],
   currentUserObj,
+  onSelectProject,
   onSetPhysical,
   onUploadImage,
   onRemoveImage,
@@ -114,6 +116,14 @@ export default function DashboardView({
 
   // DLP Detail & Defect Logging Modal State
   const [isDlpDefectModalOpen, setIsDlpDefectModalOpen] = useState(false);
+  const [dlpModalInitialTab, setDlpModalInitialTab] = useState<'list' | 'add' | 'edit' | 'settings'>('list');
+  const [dlpModalDefectId, setDlpModalDefectId] = useState<string | null>(null);
+
+  const openDlpModal = (tab: 'list' | 'add' | 'edit' | 'settings' = 'list', defectId: string | null = null) => {
+    setDlpModalInitialTab(tab);
+    setDlpModalDefectId(defectId);
+    setIsDlpDefectModalOpen(true);
+  };
 
   const currentMonthKey = resolveCurrentMonthKey(project);
   const lastActualInfo = getLastActualProgress(project.monthly, currentMonthKey);
@@ -1242,166 +1252,17 @@ export default function DashboardView({
         );
       })()}
 
-      {/* Defect Liability Period (DLP) Automated Countdown Timer Component - ONLY rendered when project lifecycle is Completed or Completed and Closed */}
-      {(project.status === 'Completed' || project.status === 'Completed and Closed' || isClosed) && (() => {
-        const dlpInfo = getProjectDlpInfo(project, currentTick);
-        const pad = (n: number) => String(n).padStart(2, '0');
-        const defectsList = project.dlpDefects || [];
-        const openDefects = defectsList.filter(d => d.status === 'Open' || d.status === 'Under Rectification').length;
-
-        return (
-          <div className="mb-3">
-            <div className={`p-3.5 sm:p-4 rounded-2xl border shadow-xs transition-all ${
-              dlpInfo.isExpired
-                ? 'bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 border-blue-500/40 text-white'
-                : dlpInfo.isNearExpiry
-                  ? 'bg-gradient-to-br from-slate-900 via-amber-950 to-slate-900 border-amber-500/50 text-white'
-                  : 'bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 border-emerald-500/40 text-white'
-            }`}>
-              {/* Header row */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-white/10">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className={`p-2.5 rounded-xl shrink-0 ${
-                    dlpInfo.isExpired 
-                      ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' 
-                      : dlpInfo.isNearExpiry 
-                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse' 
-                        : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                  }`}>
-                    <Timer className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
-                        Defect Liability Period (DLP) Countdown Timer
-                      </h3>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase border ${
-                        dlpInfo.isExpired
-                          ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                          : dlpInfo.isNearExpiry
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
-                            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          dlpInfo.isExpired ? 'bg-blue-400' : dlpInfo.isNearExpiry ? 'bg-amber-400 animate-ping' : 'bg-emerald-400 animate-pulse'
-                        }`} />
-                        {dlpInfo.isCountingDown ? (dlpInfo.isExpired ? 'DLP Concluded' : dlpInfo.isNearExpiry ? 'Expiring in < 30 Days' : 'Live Countdown Ticking') : 'Standby / Configured'}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-300 font-medium mt-0.5 truncate">
-                      Start Date: <strong className="text-white font-mono">{dlpInfo.startDateStr}</strong> • Expiry Target: <strong className="text-white font-mono">{dlpInfo.endDateStr}</strong> • Duration: <strong className="text-white font-mono">{dlpInfo.dlpDays} Days</strong>
-                    </p>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                  <button
-                    onClick={() => setIsDlpDefectModalOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Report / View Defects ({defectsList.length})</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Ticker Grid - Clicking anywhere on ticker opens modal */}
-              <div 
-                onClick={() => setIsDlpDefectModalOpen(true)}
-                className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 my-3 cursor-pointer group"
-                title="Click to view full DLP details, countdown status, and log defects"
-              >
-                {/* Days */}
-                <div className="bg-black/40 group-hover:bg-black/60 p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col items-center justify-center transition">
-                  <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white group-hover:scale-105 transition">
-                    {dlpInfo.daysRemaining}
-                  </span>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
-                    Days Remaining
-                  </span>
-                </div>
-
-                {/* Hours */}
-                <div className="bg-black/40 group-hover:bg-black/60 p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col items-center justify-center transition">
-                  <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white group-hover:scale-105 transition">
-                    {pad(dlpInfo.hoursRemaining)}
-                  </span>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
-                    Hours Remaining
-                  </span>
-                </div>
-
-                {/* Minutes */}
-                <div className="bg-black/40 group-hover:bg-black/60 p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col items-center justify-center transition">
-                  <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white group-hover:scale-105 transition">
-                    {pad(dlpInfo.minutesRemaining)}
-                  </span>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
-                    Minutes Remaining
-                  </span>
-                </div>
-
-                {/* Seconds */}
-                <div className="bg-black/40 group-hover:bg-black/60 p-2.5 sm:p-3 rounded-xl border border-white/10 flex flex-col items-center justify-center transition">
-                  <span className={`text-2xl sm:text-3xl font-black font-mono tracking-tight group-hover:scale-105 transition ${
-                    dlpInfo.isExpired ? 'text-blue-400' : dlpInfo.isNearExpiry ? 'text-amber-400' : 'text-emerald-400'
-                  }`}>
-                    {pad(dlpInfo.secondsRemaining)}
-                  </span>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
-                    Seconds (Live)
-                  </span>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              <div className="space-y-1">
-                <div className="flex justify-between items-center text-[10px] font-mono">
-                  <span className="text-slate-300">
-                    Elapsed: <strong className="text-white font-bold">{dlpInfo.daysElapsed} Days</strong> ({dlpInfo.elapsedPct.toFixed(1)}%)
-                  </span>
-                  <span className="text-slate-300">
-                    Defects Logged: <strong className={openDefects > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>{defectsList.length} ({openDefects} Open)</strong>
-                  </span>
-                </div>
-                <div className="w-full bg-black/50 h-2 rounded-full overflow-hidden border border-white/10">
-                  <div
-                    className={`h-full rounded-full transition-all duration-300 ${
-                      dlpInfo.isExpired 
-                        ? 'bg-blue-500' 
-                        : dlpInfo.isNearExpiry 
-                          ? 'bg-gradient-to-r from-amber-500 to-rose-500' 
-                          : 'bg-gradient-to-r from-emerald-500 to-teal-400'
-                    }`}
-                    style={{ width: `${dlpInfo.elapsedPct}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Banner text & trigger */}
-              <div 
-                onClick={() => setIsDlpDefectModalOpen(true)}
-                className={`mt-2.5 p-2 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 cursor-pointer transition ${
-                  dlpInfo.isExpired
-                    ? 'bg-blue-950/60 border-blue-500/40 text-blue-200 hover:bg-blue-900/60'
-                    : dlpInfo.isNearExpiry
-                      ? 'bg-amber-950/60 border-amber-500/40 text-amber-200 hover:bg-amber-900/60'
-                      : 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200 hover:bg-emerald-900/60'
-                }`}
-              >
-                <div className="flex items-center gap-2 text-[10.5px]">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{dlpInfo.alertMessage}</span>
-                </div>
-                <span className="text-[9.5px] font-extrabold underline text-white hover:text-emerald-300 shrink-0 font-mono">
-                  Open DLP Countdown & Defect Modal →
-                </span>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* Defect Liability Management Panel (Highlights DLP Phase Projects, Prioritized Defects, Remedial Status & FAC Countdown) */}
+      <DefectLiabilityManagementPanel
+        project={project}
+        allProjects={allProjects}
+        currentTick={currentTick}
+        currentUserObj={currentUserObj}
+        onSelectProject={onSelectProject}
+        onProjectUpdate={onProjectUpdate}
+        onUpdateProjectStatus={onUpdateProjectStatus}
+        onOpenDlpModal={openDlpModal}
+      />
 
       {/* Three prominent Master Gauges */}
       <section className="grid grid-cols-3 gap-3 sm:gap-5 max-w-5xl mx-auto w-full my-3 sm:my-4">
@@ -2858,11 +2719,16 @@ export default function DashboardView({
       {/* Dedicated DLP Detail & Defect Logging Modal */}
       <DlpDefectModal
         isOpen={isDlpDefectModalOpen}
-        onClose={() => setIsDlpDefectModalOpen(false)}
+        onClose={() => {
+          setIsDlpDefectModalOpen(false);
+          setDlpModalDefectId(null);
+        }}
         project={project}
         currentUserObj={currentUserObj}
         onUpdateProject={onProjectUpdate}
         onUpdateProjectStatus={onUpdateProjectStatus}
+        initialTab={dlpModalInitialTab}
+        initialDefectId={dlpModalDefectId}
       />
 
       </div>

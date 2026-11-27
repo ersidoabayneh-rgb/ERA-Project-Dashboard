@@ -50,6 +50,8 @@ interface DlpDefectModalProps {
   currentUserObj?: User | null;
   onUpdateProject?: (fields: Partial<Project>, sectionName: string) => void;
   onUpdateProjectStatus?: (id: string, status: ProjectLifecycleStatus) => void;
+  initialTab?: 'list' | 'add' | 'edit' | 'settings';
+  initialDefectId?: string | null;
 }
 
 export const DEFECT_CATEGORIES = [
@@ -106,7 +108,9 @@ export default function DlpDefectModal({
   project,
   currentUserObj,
   onUpdateProject,
-  onUpdateProjectStatus
+  onUpdateProjectStatus,
+  initialTab,
+  initialDefectId
 }: DlpDefectModalProps) {
   const isAuthorizedAuditAdmin = 
     currentUserObj?.role === 'master_admin' || 
@@ -193,6 +197,25 @@ export default function DlpDefectModal({
       setFormReporter(currentUserObj?.fullName || currentUserObj?.username || 'Resident Engineer Inspector');
     }
   }, [project, currentUserObj, editingDefectId]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (initialDefectId) {
+      const target = defectsList.find(d => d.id === initialDefectId);
+      if (target) {
+        handleStartEdit(target);
+        return;
+      }
+    }
+    if (initialTab === 'add') {
+      resetForm();
+      setActiveTab('add');
+    } else if (initialTab === 'settings') {
+      setActiveTab('settings');
+    } else if (initialTab === 'list') {
+      setActiveTab('list');
+    }
+  }, [isOpen, initialTab, initialDefectId]);
 
   if (!isOpen) return null;
 
