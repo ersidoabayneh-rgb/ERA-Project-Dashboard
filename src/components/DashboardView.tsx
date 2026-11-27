@@ -49,7 +49,6 @@ import { Project, LinearData, formatAccounting, User, ProjectLifecycleStatus, is
 import CircularGauge from './CircularGauge';
 import BillSummaryPriceAdjChart from './BillSummaryPriceAdjChart';
 import DlpDefectModal from './DlpDefectModal';
-import { DefectLiabilityManagementPanel } from './DefectLiabilityManagementPanel';
 import ProjectLifecycleStatusDropdown from './ProjectLifecycleStatusDropdown';
 import { buildKpiHierarchy, getIntegratedKpiAllocated, parseStation } from '../data/defaultProject';
 import { calculateProjectEvm } from '../lib/evmCalculations';
@@ -1085,184 +1084,195 @@ export default function DashboardView({
         // Show DLP Alert Card ONLY when project lifecycle is Completed or Completed and Closed
         const showDlpAlert = isCompletedLifecycle;
 
-        const totalActiveAlerts = (hasCriticalBonds ? 1 : 0) + (isNearingCompletionAlert ? 1 : 0) + (hasSignificantPhysicalSlippage ? 1 : 0) + (showDlpAlert ? 1 : 0);
-        if (totalActiveAlerts === 0) return null;
+        const otherActiveAlertsCount = (hasCriticalBonds ? 1 : 0) + (isNearingCompletionAlert ? 1 : 0) + (hasSignificantPhysicalSlippage ? 1 : 0);
+        if (!showDlpAlert && otherActiveAlertsCount === 0) return null;
 
         const pad = (n: number) => String(n).padStart(2, '0');
         const defectsCount = (project.dlpDefects || []).length;
+        const gridColsClass = otherActiveAlertsCount >= 3 ? 'md:grid-cols-3' : otherActiveAlertsCount === 2 ? 'md:grid-cols-2' : 'grid-cols-1';
 
         return (
-          <div className="mb-2.5">
-            <div className={`grid grid-cols-1 ${
-              totalActiveAlerts >= 3 ? 'md:grid-cols-3' : totalActiveAlerts === 2 ? 'md:grid-cols-2' : 'grid-cols-1'
-            } gap-2 items-stretch`}>
-              
-              {/* Alert Card: Defect Liability Period (DLP) Countdown */}
-              {showDlpAlert && (
-                <div 
-                  onClick={() => setIsDlpDefectModalOpen(true)}
-                  className={`border-l-3 rounded-lg p-2 shadow-2xs flex flex-col justify-between cursor-pointer transition hover:scale-[1.01] hover:shadow-md ${
-                    dlpInfo.isExpired
-                      ? 'bg-gradient-to-r from-slate-50 to-blue-50/70 dark:from-slate-900/60 dark:to-blue-950/40 border-blue-500'
-                      : dlpInfo.isNearExpiry
-                        ? 'bg-gradient-to-r from-amber-50 to-rose-50/80 dark:from-amber-950/40 dark:to-rose-950/30 border-amber-500'
-                        : 'bg-gradient-to-r from-emerald-50 to-teal-50/80 dark:from-emerald-950/40 dark:to-teal-950/30 border-emerald-500'
-                  }`}
-                  title="Click to view full DLP details, real-time countdown clock, and report/flag defects"
-                >
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <ShieldCheck className={`w-3.5 h-3.5 shrink-0 ${
-                        dlpInfo.isExpired ? 'text-blue-600 dark:text-blue-400' : dlpInfo.isNearExpiry ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+          <div className="mb-3 space-y-3">
+            {/* BIG SIZE PROMINENT DEFECT LIABILITY PERIOD (DLP) BANNER CARD */}
+            {showDlpAlert && (
+              <div 
+                onClick={() => setIsDlpDefectModalOpen(true)}
+                className={`border-l-4 rounded-xl p-4 sm:p-5 shadow-md flex flex-col justify-between cursor-pointer transition hover:scale-[1.005] hover:shadow-lg ${
+                  dlpInfo.isExpired
+                    ? 'bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white border-blue-500'
+                    : dlpInfo.isNearExpiry
+                      ? 'bg-gradient-to-r from-amber-950 via-rose-950 to-amber-950 text-white border-amber-500'
+                      : 'bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white border-emerald-500'
+                }`}
+                title="Click to view full DLP details, real-time countdown clock, and report/flag defects"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-white/10 border border-white/20 shrink-0">
+                      <ShieldCheck className={`w-6 h-6 ${
+                        dlpInfo.isExpired ? 'text-blue-400' : dlpInfo.isNearExpiry ? 'text-amber-400' : 'text-emerald-400'
                       }`} />
-                      <span className={`text-[10px] font-black uppercase truncate ${
-                        dlpInfo.isExpired ? 'text-blue-950 dark:text-blue-200' : dlpInfo.isNearExpiry ? 'text-amber-950 dark:text-amber-200' : 'text-emerald-950 dark:text-emerald-200'
-                      }`}>
-                        Defect Liability Period (DLP)
-                      </span>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {defectsCount > 0 && (
-                        <span className="text-[7.5px] font-extrabold bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 px-1 py-0.2 rounded border border-rose-200 dark:border-rose-900">
-                          {defectsCount} Defect{defectsCount > 1 ? 's' : ''}
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm sm:text-base font-black uppercase tracking-tight text-white">
+                          Defect Liability Period (DLP) &amp; Final Acceptance Status
+                        </h3>
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                          dlpInfo.isExpired
+                            ? 'bg-blue-500/30 text-blue-300 border border-blue-500/50'
+                            : dlpInfo.isNearExpiry
+                              ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50 animate-pulse'
+                              : 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
+                        }`}>
+                          {dlpInfo.statusLabel}
                         </span>
-                      )}
-                      <span className={`text-[8px] font-black uppercase px-1.5 py-0.2 rounded ${
-                        dlpInfo.isExpired
-                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/80 dark:text-blue-200'
-                          : dlpInfo.isNearExpiry
-                            ? 'bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 animate-pulse'
-                            : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/80 dark:text-emerald-200'
-                      }`}>
-                        {dlpInfo.statusLabel}
-                      </span>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        Project completed. Real-time Defect Liability Period countdown, remedial work tracking, and Final Acceptance Certificate (FAC) eligibility.
+                      </p>
                     </div>
                   </div>
 
-                  <p className="text-[10px] font-extrabold text-slate-850 dark:text-slate-100 leading-tight mb-1">
-                    {dlpInfo.isExpired ? (
-                      `DLP Ended (${dlpInfo.dlpDays} days passed). Eligible for Final Acceptance Certificate (FAC).`
-                    ) : (
-                      <span>
-                        Countdown: <strong className="font-mono text-emerald-700 dark:text-emerald-300">{dlpInfo.daysRemaining}d {pad(dlpInfo.hoursRemaining)}h {pad(dlpInfo.minutesRemaining)}m {pad(dlpInfo.secondsRemaining)}s</strong> (Ends: {dlpInfo.endDateStr})
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    {defectsCount > 0 && (
+                      <span className="text-xs font-black bg-rose-500/30 text-rose-300 px-3 py-1 rounded-lg border border-rose-500/50 flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-rose-400" />
+                        {defectsCount} Registered Defect{defectsCount > 1 ? 's' : ''}
                       </span>
                     )}
-                  </p>
+                    <span className="text-xs font-bold text-emerald-300 bg-emerald-500/20 px-3 py-1 rounded-lg border border-emerald-500/40 underline">
+                      Open DLP Dashboard →
+                    </span>
+                  </div>
+                </div>
 
-                  <div className="space-y-1 mt-auto pt-1 border-t border-slate-200/60 dark:border-slate-800/60 text-[8.5px]">
-                    <div className="flex justify-between items-center text-slate-500 dark:text-slate-400 font-mono">
-                      <span>DLP Duration: {dlpInfo.dlpDays} Days</span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-bold underline">
-                        Click for Details & Defect Log →
-                      </span>
+                <div className="bg-black/30 rounded-xl p-3 sm:p-4 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <span className="text-[10px] uppercase font-extrabold text-slate-400 block">
+                      {dlpInfo.isExpired ? 'Final Acceptance Eligibility' : 'Active DLP Countdown Clock'}
+                    </span>
+                    <div className="text-lg sm:text-xl font-black font-mono text-white mt-0.5">
+                      {dlpInfo.isExpired ? (
+                        <span className="text-blue-300">
+                          DLP Ended ({dlpInfo.dlpDays} days passed). Eligible for FAC issuance.
+                        </span>
+                      ) : (
+                        <span className="text-emerald-300">
+                          {dlpInfo.daysRemaining}d {pad(dlpInfo.hoursRemaining)}h {pad(dlpInfo.minutesRemaining)}m {pad(dlpInfo.secondsRemaining)}s <span className="text-xs font-normal text-slate-400">(Ends: {dlpInfo.endDateStr})</span>
+                        </span>
+                      )}
                     </div>
-                    <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                  </div>
+
+                  <div className="w-full sm:w-72 space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-mono text-slate-300">
+                      <span>DLP Duration: <strong>{dlpInfo.dlpDays} Days</strong></span>
+                      <span>{dlpInfo.elapsedPct.toFixed(1)}% Completed</span>
+                    </div>
+                    <div className="w-full bg-white/10 h-2.5 rounded-full overflow-hidden p-0.5 border border-white/15">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
-                          dlpInfo.isExpired ? 'bg-blue-500' : dlpInfo.isNearExpiry ? 'bg-amber-500' : 'bg-emerald-500'
+                          dlpInfo.isExpired ? 'bg-blue-400' : dlpInfo.isNearExpiry ? 'bg-amber-400' : 'bg-emerald-400'
                         }`}
                         style={{ width: `${dlpInfo.elapsedPct}%` }}
                       />
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Alert Card 1: Bank Guarantees */}
-              {hasCriticalBonds && (
-                <div className="bg-gradient-to-r from-rose-50 to-amber-50/80 dark:from-rose-950/30 dark:to-amber-950/30 border-l-3 border-rose-500 rounded-lg p-2 shadow-2xs flex flex-col justify-between">
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0 animate-pulse" />
-                      <span className="text-[10px] font-black uppercase text-rose-900 dark:text-rose-300 truncate">
-                        Bank Guarantees Warning
+            {/* Other Active Alerts Grid */}
+            {otherActiveAlertsCount > 0 && (
+              <div className={`grid grid-cols-1 ${gridColsClass} gap-2 items-stretch`}>
+
+                {/* Alert Card 1: Bank Guarantees */}
+                {hasCriticalBonds && (
+                  <div className="bg-gradient-to-r from-rose-50 to-amber-50/80 dark:from-rose-950/30 dark:to-amber-950/30 border-l-3 border-rose-500 rounded-lg p-2 shadow-2xs flex flex-col justify-between">
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0 animate-pulse" />
+                        <span className="text-[10px] font-black uppercase text-rose-900 dark:text-rose-300 truncate">
+                          Bank Guarantees Warning
+                        </span>
+                      </div>
+                      <span className="text-[8px] font-black uppercase bg-rose-200/80 dark:bg-rose-900 text-rose-900 dark:text-rose-200 px-1.5 py-0.2 rounded shrink-0">
+                        URGENT ({criticalBonds.length})
                       </span>
                     </div>
-                    <span className="text-[8px] font-black uppercase bg-rose-200/80 dark:bg-rose-900 text-rose-900 dark:text-rose-200 px-1.5 py-0.2 rounded shrink-0">
-                      URGENT ({criticalBonds.length})
-                    </span>
+                    <p className="text-[9.5px] text-rose-700 dark:text-rose-300 leading-tight mb-1">
+                      {criticalBonds.length} guarantee(s) expired or expiring &lt; 45 days. Action required!
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-auto pt-0.5 border-t border-rose-200/50 dark:border-rose-900/40 text-[9px]">
+                      {criticalBonds.slice(0, 2).map((b, bIdx) => (
+                        <span key={bIdx} className="bg-white/90 dark:bg-slate-900/80 px-1 py-0.1 rounded text-[8.5px] font-bold text-slate-700 dark:text-slate-200 truncate max-w-full">
+                          {b.type}: ETB {new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(b.amount)}
+                        </span>
+                      ))}
+                      {criticalBonds.length > 2 && (
+                        <span className="text-[8.5px] font-extrabold text-rose-600 dark:text-rose-400 self-center">
+                          +{criticalBonds.length - 2} more
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-[9.5px] text-rose-700 dark:text-rose-300 leading-tight mb-1">
-                    {criticalBonds.length} guarantee(s) expired or expiring &lt; 45 days. Action required!
-                  </p>
-                  <div className="flex flex-wrap gap-1 mt-auto pt-0.5 border-t border-rose-200/50 dark:border-rose-900/40 text-[9px]">
-                    {criticalBonds.slice(0, 2).map((b, bIdx) => (
-                      <span key={bIdx} className="bg-white/90 dark:bg-slate-900/80 px-1 py-0.1 rounded text-[8.5px] font-bold text-slate-700 dark:text-slate-200 truncate max-w-full">
-                        {b.type}: ETB {new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(b.amount)}
-                      </span>
-                    ))}
-                    {criticalBonds.length > 2 && (
-                      <span className="text-[8.5px] font-extrabold text-rose-600 dark:text-rose-400 self-center">
-                        +{criticalBonds.length - 2} more
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
+                )}
 
-              {/* Alert Card 2: Timeline / Milestone */}
-              {isNearingCompletionAlert && (
-                <div className="bg-gradient-to-r from-amber-50 to-amber-100/60 dark:from-amber-950/30 dark:to-amber-900/30 border-l-3 border-amber-500 rounded-lg p-2 shadow-2xs flex flex-col justify-between">
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                      <span className="text-[10px] font-black uppercase text-amber-900 dark:text-amber-300 truncate">
-                        Milestone / Timeline Warning
+                {/* Alert Card 2: Timeline / Milestone */}
+                {isNearingCompletionAlert && (
+                  <div className="bg-gradient-to-r from-amber-50 to-amber-100/60 dark:from-amber-950/30 dark:to-amber-900/30 border-l-3 border-amber-500 rounded-lg p-2 shadow-2xs flex flex-col justify-between">
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span className="text-[10px] font-black uppercase text-amber-900 dark:text-amber-300 truncate">
+                          Milestone / Timeline Warning
+                        </span>
+                      </div>
+                      <span className="text-[8px] font-black uppercase bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 px-1.5 py-0.2 rounded shrink-0">
+                        SCHEDULE
                       </span>
                     </div>
-                    <span className="text-[8px] font-black uppercase bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 px-1.5 py-0.2 rounded shrink-0">
-                      SCHEDULE
-                    </span>
+                    <p className="text-[10.5px] font-extrabold text-slate-800 dark:text-slate-100 leading-tight">
+                      {daysToCompletion <= 0 ? `Overdue by ${Math.abs(daysToCompletion)} days!` : `Completion in ${daysToCompletion} days`}
+                    </p>
+                    <p className="text-[9px] text-slate-500 dark:text-slate-400 mt-auto pt-0.5 border-t border-amber-200/50 dark:border-amber-900/40">
+                      Scheduled End Date: <strong className="text-slate-700 dark:text-slate-200">{estimatedCompletionDate.toLocaleDateString()}</strong>
+                    </p>
                   </div>
-                  <p className="text-[10.5px] font-extrabold text-slate-800 dark:text-slate-100 leading-tight">
-                    {daysToCompletion <= 0 ? `Overdue by ${Math.abs(daysToCompletion)} days!` : `Completion in ${daysToCompletion} days`}
-                  </p>
-                  <p className="text-[9px] text-slate-500 dark:text-slate-400 mt-auto pt-0.5 border-t border-amber-200/50 dark:border-amber-900/40">
-                    Scheduled End Date: <strong className="text-slate-700 dark:text-slate-200">{estimatedCompletionDate.toLocaleDateString()}</strong>
-                  </p>
-                </div>
-              )}
+                )}
 
-              {/* Alert Card 3: Critical Slippage */}
-              {hasSignificantPhysicalSlippage && (
-                <div className="bg-gradient-to-r from-orange-50 to-rose-50 dark:from-orange-950/30 dark:to-rose-950/30 border-l-3 border-orange-500 rounded-lg p-2 shadow-2xs flex flex-col justify-between">
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <TrendingDown className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 shrink-0" />
-                      <span className="text-[10px] font-black uppercase text-orange-900 dark:text-orange-300 truncate">
-                        Critical Physical Slippage &gt; 15%
+                {/* Alert Card 3: Critical Slippage */}
+                {hasSignificantPhysicalSlippage && (
+                  <div className="bg-gradient-to-r from-orange-50 to-rose-50 dark:from-orange-950/30 dark:to-rose-950/30 border-l-3 border-orange-500 rounded-lg p-2 shadow-2xs flex flex-col justify-between">
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <TrendingDown className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 shrink-0" />
+                        <span className="text-[10px] font-black uppercase text-orange-900 dark:text-orange-300 truncate">
+                          Critical Physical Slippage &gt; 15%
+                        </span>
+                      </div>
+                      <span className="text-[8.5px] font-black text-rose-600 dark:text-rose-400 shrink-0">
+                        -{physicalSlippageVal.toFixed(1)}% Gap
                       </span>
                     </div>
-                    <span className="text-[8.5px] font-black text-rose-600 dark:text-rose-400 shrink-0">
-                      -{physicalSlippageVal.toFixed(1)}% Gap
-                    </span>
+                    <p className="text-[10px] font-extrabold text-slate-900 dark:text-slate-100 leading-tight">
+                      Lagging by {physicalSlippageVal.toFixed(1)}% vs {evmMetrics.planLabel || 'Plan'}
+                    </p>
+                    <div className="flex items-center justify-between text-[9px] text-slate-600 dark:text-slate-300 mt-auto pt-0.5 border-t border-orange-200/50 dark:border-orange-900/40">
+                      <span>Actual: <strong className="font-bold text-slate-900 dark:text-white">{project.physicalProgress.toFixed(1)}%</strong></span>
+                      <span>Plan: <strong className="font-bold text-orange-600 dark:text-orange-400">{evmMetrics.plannedPct.toFixed(1)}%</strong></span>
+                    </div>
                   </div>
-                  <p className="text-[10px] font-extrabold text-slate-900 dark:text-slate-100 leading-tight">
-                    Lagging by {physicalSlippageVal.toFixed(1)}% vs {evmMetrics.planLabel || 'Plan'}
-                  </p>
-                  <div className="flex items-center justify-between text-[9px] text-slate-600 dark:text-slate-300 mt-auto pt-0.5 border-t border-orange-200/50 dark:border-orange-900/40">
-                    <span>Actual: <strong className="font-bold text-slate-900 dark:text-white">{project.physicalProgress.toFixed(1)}%</strong></span>
-                    <span>Plan: <strong className="font-bold text-orange-600 dark:text-orange-400">{evmMetrics.plannedPct.toFixed(1)}%</strong></span>
-                  </div>
-                </div>
-              )}
+                )}
 
-            </div>
+              </div>
+            )}
           </div>
         );
       })()}
 
-      {/* Defect Liability Management Panel (Highlights DLP Phase Projects, Prioritized Defects, Remedial Status & FAC Countdown) */}
-      <DefectLiabilityManagementPanel
-        project={project}
-        allProjects={allProjects}
-        currentTick={currentTick}
-        currentUserObj={currentUserObj}
-        onSelectProject={onSelectProject}
-        onProjectUpdate={onProjectUpdate}
-        onUpdateProjectStatus={onUpdateProjectStatus}
-        onOpenDlpModal={openDlpModal}
-      />
+
 
       {/* Three prominent Master Gauges */}
       <section className="grid grid-cols-3 gap-3 sm:gap-5 max-w-5xl mx-auto w-full my-3 sm:my-4">
