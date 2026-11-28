@@ -15,6 +15,8 @@ export interface EacScenarioResult {
   etc: number;
   eac: number;
   vac: number;
+  thresholdVac: number; // budgetThreshold - eac
+  exceedsBudgetThreshold: boolean; // eac > budgetThreshold
   tcpiEac: number | null;
 }
 
@@ -23,6 +25,13 @@ export interface EvmMetrics {
   AC: number;  // Actual Cost (ETB)
   EV: number;  // Earned Value (ETB)
   PV: number;  // Planned Value (ETB)
+  budgetThreshold: number; // Original Contract Amount + 20% (1.20 * BAC)
+  budgetThresholdAllowance: number; // 20% of Original Contract Amount (0.20 * BAC)
+  isOriginalBudgetExhausted: boolean; // AC >= BAC
+  isBudgetThresholdExceeded: boolean; // AC >= budgetThreshold
+  remainingFundsThreshold: number; // budgetThreshold - AC
+  thresholdVac: number; // budgetThreshold - EAC
+  tcpiThreshold: number | null; // (BAC - EV) / (budgetThreshold - AC), null if threshold exhausted
   plannedPct: number; // Planned physical progress % (Original cumulative plan %)
   originalPlannedPct?: number; // Baseline Original Plan %
   revisedPlannedPct?: number; // Optional Revised Plan % for reference
@@ -89,10 +98,15 @@ export function calculateProjectEvm(
   const MILLION = 1_000_000;
   
   // 1. Budget At Completion (BAC) = Original Contract Amount
-  const BAC = project.contractAmountEtb 
-    || ((project.origAmount || 0) * MILLION) 
-    || project.revisedContractAmountEtb 
-    || 1;
+  const rawContractAmount =
+    project.contractAmountEtb ||
+    ((project.origAmount || 0) * MILLION) ||
+    project.revisedContractAmountEtb ||
+    0;
+  const hasDefinedBudget = rawContractAmount > 0;
+  const BAC = hasDefinedBudget ? rawContractAmount : 1;
+  const budgetThreshold = BAC * 1.2; // Original Contract Amount + 20%
+  const budgetThresholdAllowance = BAC * 0.2;
 
   // 2. Actual Cost (AC) = Total Certified IPC Value
   const rateIpc = project.usdExchangeRate || 57.50;
@@ -120,6 +134,10 @@ export function calculateProjectEvm(
     // If no IPC records exist yet, fallback to 0 or estimated output
     AC = actualPct > 0 ? BAC * (actualPct / 100) * 0.95 : 0;
   }
+
+  const isOriginalBudgetExhausted = hasDefinedBudget && AC >= BAC;
+  const isBudgetThresholdExceeded = hasDefinedBudget && AC >= budgetThreshold;
+  const remainingFundsThreshold = budgetThreshold - AC;
 
   // 3. Earned Value (EV) = BAC * Physical Progress %
   const EV = BAC * (actualPct / 100);
@@ -273,6 +291,8 @@ export function calculateProjectEvm(
       etc: etcS1,
       eac: eacS1,
       vac: BAC - eacS1,
+      thresholdVac: budgetThreshold - eacS1,
+      exceedsBudgetThreshold: eacS1 > budgetThreshold,
       tcpiEac: computeTcpiForEac(eacS1),
     },
     {
@@ -284,6 +304,8 @@ export function calculateProjectEvm(
       etc: etcS2,
       eac: eacS2,
       vac: BAC - eacS2,
+      thresholdVac: budgetThreshold - eacS2,
+      exceedsBudgetThreshold: eacS2 > budgetThreshold,
       tcpiEac: computeTcpiForEac(eacS2),
     },
     {
@@ -295,6 +317,8 @@ export function calculateProjectEvm(
       etc: etcS3,
       eac: eacS3,
       vac: BAC - eacS3,
+      thresholdVac: budgetThreshold - eacS3,
+      exceedsBudgetThreshold: eacS3 > budgetThreshold,
       tcpiEac: computeTcpiForEac(eacS3),
     },
     {
@@ -306,6 +330,8 @@ export function calculateProjectEvm(
       etc: bottomUpEtc,
       eac: eacS4,
       vac: BAC - eacS4,
+      thresholdVac: budgetThreshold - eacS4,
+      exceedsBudgetThreshold: eacS4 > budgetThreshold,
       tcpiEac: computeTcpiForEac(eacS4),
     },
   ];
@@ -316,9 +342,11 @@ export function calculateProjectEvm(
   const EAC = selectedScenarioObj.eac;
   const ETC = selectedScenarioObj.etc;
   const VAC = BAC - EAC;
+  const thresholdVac = budgetThreshold - EAC;
   const remainingFundsBac = BAC - AC;
   const remainingFundsEac = EAC - AC;
   const tcpiBac = remainingWork <= 0 ? 0 : remainingFundsBac > 0 ? remainingWork / remainingFundsBac : null;
+  const tcpiThreshold = remainingWork <= 0 ? 0 : remainingFundsThreshold > 0 ? remainingWork / remainingFundsThreshold : null;
   const tcpiEac = selectedScenarioObj.tcpiEac;
   const TCPI = (BAC - AC) > 0 ? (BAC - EV) / (BAC - AC) : 1.0;
 
@@ -381,6 +409,13 @@ export function calculateProjectEvm(
     AC,
     EV,
     PV,
+    budgetThreshold,
+    budgetThresholdAllowance,
+    isOriginalBudgetExhausted,
+    isBudgetThresholdExceeded,
+    remainingFundsThreshold,
+    thresholdVac,
+    tcpiThreshold,
     plannedPct,
     originalPlannedPct,
     revisedPlannedPct,
