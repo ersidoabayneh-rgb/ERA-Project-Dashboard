@@ -2027,8 +2027,10 @@ let isBatchSyncRunning = false;
       }
     };
 
+    let wsFailedAttempts = 0;
     const initWebSocket = () => {
       if (isDisposed || typeof window === 'undefined' || typeof window.WebSocket !== 'function') return;
+      if (wsFailedAttempts >= 2) return; // Gracefully fallback to Firestore real-time sync if WebSocket server is not deployed/active
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -2036,6 +2038,7 @@ let isBatchSyncRunning = false;
         globalWsRef.current = wsSocket;
 
         wsSocket.onopen = () => {
+          wsFailedAttempts = 0;
           console.log('[Real-Time WS] Open-ended WebSocket connected successfully!');
         };
 
@@ -2048,18 +2051,21 @@ let isBatchSyncRunning = false;
           }
         };
 
-        wsSocket.onerror = (err) => {
-          console.warn('[Real-Time WS] WebSocket connection error encountered:', err);
+        wsSocket.onerror = () => {
+          wsFailedAttempts++;
+          // Silent or graceful fallback without console spam when WebSocket server is absent
         };
 
         wsSocket.onclose = () => {
           globalWsRef.current = null;
           if (isDisposed) return;
-          clearTimeout(wsReconnectTimeout);
-          wsReconnectTimeout = setTimeout(initWebSocket, 3000);
+          if (wsFailedAttempts < 2) {
+            clearTimeout(wsReconnectTimeout);
+            wsReconnectTimeout = setTimeout(initWebSocket, 5000);
+          }
         };
       } catch (err) {
-        console.warn('[Real-Time WS] WebSocket initialization warning:', err);
+        wsFailedAttempts++;
       }
     };
 
